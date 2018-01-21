@@ -2,7 +2,7 @@
 
 #include <list>
 
-namespace pixslam{
+namespace gnine{
 
 namespace{
     // Anonymous nested name space for functions required to implement parsing/printing

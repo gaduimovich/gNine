@@ -2,12 +2,10 @@
 #include <sstream>
 #include <fstream>
 
-
 #include "Image.h"
 #include "Parser.h"
-#include "JitImageFunction.h"
 
-using namespace pixslam;
+using namespace gnine;
 
 
 void logCommandLine(int argc, char *argv[], const std::string &filePrefix){
@@ -92,12 +90,11 @@ int main (int argc, char *argsRaw[])
 
     // Generate code.
     Cell code = cellFromString(codeString);
-    JitImageFunction cgFunction(code, logAsm);
 
     // Read in input images specified by arguments.
     int padding = 16;
     std::vector<Image> inputImages;
-    for(size_t i = 0; i < cgFunction.getNumArgs(); ++i){
+    for(size_t i = 0; i < 1; ++i){
         Image im(argv[2+i]);
 
         if(im.width()*im.height() == 0){
@@ -110,11 +107,11 @@ int main (int argc, char *argsRaw[])
 
     // Remaining arg, if preset is our output destination.
     std::string outputImagePath = "out.png";
-    if(argv.size() >= 3 + cgFunction.getNumArgs())
-        outputImagePath = argv[3 + cgFunction.getNumArgs() - 1];
+//    if(argv.size() >= 3 + cgFunction.getNumArgs())
+//        outputImagePath = argv[3 + cgFunction.getNumArgs() - 1];
 
     // log command line if requested (useful for easy to understand examples directory)
-    if(logCommand) logCommandLine(argc, argsRaw, outputImagePath);
+//    if(logCommand) logCommandLine(argc, argsRaw, outputImagePath);
 
     // Look at a subimages so we can process edges safely.
     std::vector<Image> inputImageViews;
@@ -125,10 +122,8 @@ int main (int argc, char *argsRaw[])
             im.width());
 
     // Perpare output image.
-    Image outIm(inputImageViews[0].width(), inputImageViews[0].height(), inputImageViews[0].stride());
+      Image outIm(inputImageViews[0].width(), inputImageViews[0].height(), inputImageViews[0].stride());
 
-    // Process images!
-    cgFunction(inputImageViews, outIm);
     
     // Write output.
     outIm.write(outputImagePath);

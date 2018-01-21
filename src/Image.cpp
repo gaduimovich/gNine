@@ -3,7 +3,7 @@
 #include "stb_image.h"
 #include "stb_image_write.h"
 
-namespace pixslam{
+namespace gnine{
 
 Image::Image(const std::string &path) : data(nullptr), w(0), h(0), ownsData(true){
     int n;

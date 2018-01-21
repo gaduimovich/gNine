@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 2.8)
-project(PIXSLAM)
+project(GNINE)
 
 macro(copy_files TARGET_NAME GLOBPAT DESTINATION)
   file(GLOB COPY_FILES
@@ -24,11 +24,11 @@ add_subdirectory(examples)
 add_subdirectory(example_data)
 
 # C++11
-SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11") 
+SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++14") 
 
-include_directories(${PIXSLAM_SOURCE_DIR}/src ${PIXSLAM_SOURCE_DIR}/libs/asmjit/src ${PIXSLAM_SOURCE_DIR}/libs/stb_image)
+include_directories(${GNINE_SOURCE_DIR}/src ${GNINE_SOURCE_DIR}/libs/stb_image)
 
 # aux_source_directory(src ${SOURCES})
-add_executable(pixslam src/main.cpp src/Image.cpp src/Parser.cpp src/JitImageFunction.cpp)
+add_executable(gnine src/main.cpp src/Image.cpp src/Parser.cpp)
 
-target_link_libraries(pixslam asmjit stb_image)
+target_link_libraries(gnine stb_image)

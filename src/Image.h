@@ -3,7 +3,7 @@
 #include <string>
 #include <vector>
 
-namespace pixslam{
+namespace gnine{
 
 class Image{
 private:

@@ -3,7 +3,7 @@
 #include <vector>
 #include <string>
 
-namespace pixslam{
+namespace gnine{
 
 struct Cell{
     enum Type {Symbol, Number, List};
