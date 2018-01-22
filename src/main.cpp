@@ -5,6 +5,7 @@
 #include "Image.h"
 #include "Parser.h"
 #include "Jit.hpp"
+#include "JitImageFunction.hpp"
 
 using namespace gnine;
 
@@ -92,6 +93,7 @@ int main (int argc, char *argsRaw[])
 
     // Generate code.
     Cell code = cellFromString(codeString);
+    JitImageFunction cgFunction(code, logAsm);
 
     // Read in input images specified by arguments.
     int padding = 16;
@@ -137,7 +139,10 @@ int main (int argc, char *argsRaw[])
 
     
     // Write output.
-    outIm.write(outputImagePath);
+//outIm.write(outputImagePath);
+    inputImages[0].write(outputImagePath);
+//    cgFunction(inputImageViews, outIm);
+
     shutdownJit();
 
     return 0;
