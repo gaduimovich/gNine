@@ -1,5 +1,6 @@
-cmake_minimum_required(VERSION 2.8)
+cmake_minimum_required(VERSION 3.2)
 project(GNINE)
+
 
 macro(copy_files TARGET_NAME GLOBPAT DESTINATION)
   file(GLOB COPY_FILES
@@ -19,16 +20,39 @@ macro(copy_files TARGET_NAME GLOBPAT DESTINATION)
   endforeach(FILENAME)
 endmacro(copy_files)
 
+list(APPEND CMAKE_MODULE_PATH
+cmake/Modules
+${CMAKE_CURRENT_LIST_DIR}/libs/omr/cmake/modules/
+)
+
+include(OmrPlatform)
+
+# Global Configuration
+
+omr_platform_global_setup()
+
+set(CMAKE_CXX_STANDARD 14)
+
+set(CMAKE_EXPORT_COMPILE_COMMANDS true)
+
+enable_testing()
+
+# OMR Configuration
+
+set(OMR_COMPILER   ON  CACHE INTERNAL "Enable the Compiler.")
+set(OMR_JITBUILDER ON  CACHE INTERNAL "We use OMR's jitbuilder tool for the b9 JIT")
+set(OMR_GC         ON CACHE INTERNAL "We don't use the GC in b9 (yet)")
+set(OMR_FVTEST     OFF CACHE INTERNAL "Disable OMR's internal test suite, it's incompatible with b9")
+set(OMR_WARNINGS_AS_ERRORS OFF CACHE INTERNAL "OMR doesn't compile cleanly on my laptop :p")
+
+
 add_subdirectory(libs)
 add_subdirectory(examples)
 add_subdirectory(example_data)
-
-# C++11
-SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++14") 
 
 include_directories(${GNINE_SOURCE_DIR}/src ${GNINE_SOURCE_DIR}/libs/stb_image)
 
 # aux_source_directory(src ${SOURCES})
 add_executable(gnine src/main.cpp src/Image.cpp src/Parser.cpp)
 
-target_link_libraries(gnine stb_image)
+target_link_libraries(gnine PUBLIC stb_image jitbuilder)

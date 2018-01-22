@@ -4,6 +4,7 @@
 
 #include "Image.h"
 #include "Parser.h"
+#include "Jit.hpp"
 
 using namespace gnine;
 
@@ -20,6 +21,7 @@ void logCommandLine(int argc, char *argv[], const std::string &filePrefix){
         out << argv[i] << " ";
 
     out << std::endl;
+    
 }
 
 int main (int argc, char *argsRaw[])
@@ -104,9 +106,18 @@ int main (int argc, char *argsRaw[])
 
         inputImages.emplace_back(im, padding, padding);
     }
+    
+    printf("Step 1: initialize JIT\n");
+    bool initialized = initializeJit();
+    if (!initialized)
+    {
+        fprintf(stderr, "FAIL: could not initialize JIT\n");
+        exit(-1);
+    }
+
 
     // Remaining arg, if preset is our output destination.
-    std::string outputImagePath = "out.png";
+    std::string outputImagePath = "/Users/geoff/dev/Pixslam/out.png";
 //    if(argv.size() >= 3 + cgFunction.getNumArgs())
 //        outputImagePath = argv[3 + cgFunction.getNumArgs() - 1];
 
@@ -127,6 +138,8 @@ int main (int argc, char *argsRaw[])
     
     // Write output.
     outIm.write(outputImagePath);
+    shutdownJit();
+
     return 0;
 }
 
