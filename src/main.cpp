@@ -6,146 +6,175 @@
 #include "Parser.h"
 #include "Jit.hpp"
 #include "JitImageFunction.hpp"
+#include "ImageArray.hpp"
+#include "ilgen/TypeDictionary.hpp"
 
 using namespace gnine;
 
 
 void logCommandLine(int argc, char *argv[], const std::string &filePrefix){
-    #ifdef _WIN32
-        std::string fileName = filePrefix + ".bat";
-    #else
-        std::string fileName = filePrefix + ".sh";
-    #endif
-    std::ofstream out(fileName, std::ios::out);
-
-    for(int i = 0; i < argc; ++i)
-        out << argv[i] << " ";
-
-    out << std::endl;
-    
+#ifdef _WIN32
+   std::string fileName = filePrefix + ".bat";
+#else
+   std::string fileName = filePrefix + ".sh";
+#endif
+   std::ofstream out(fileName, std::ios::out);
+   
+   for(int i = 0; i < argc; ++i)
+      out << argv[i] << " ";
+   
+   out << std::endl;
+   
 }
 
 int main (int argc, char *argsRaw[])
 {
-    if(argc < 3){
-        std::cout << "Usage:\n\n";
-        std::cout << "    pixslam <code> [input-images] <output>\n\n";
-        std::cout << "Code can either be supplied directly, or as a file path to read in.\n";
-        std::cout << "The number of input images read is dependent on the supplied code.\n";
-        std::cout << "The output argument is optional, defaults to out.png.\n\n";
-        std::cout << "e.g:\n";
-        std::cout << "Multiply image by 2 and output to out.png.\n\n";
-        std::cout << "    pixslam \"((A) (* A 2))\" image.png\n\n";
-        std::cout << "If file mult_by_two.pixslam contains \"(* A 2)\" then the following \n";
-        std::cout << "multiplies image.png by 2 and output to image_times_two.png.\n\n";
-        std::cout << "    pixslam mult_by_two.pixslam image.png image_times_two.png\n\n";
-        std::cout << "Blend two images together equally and output to blend.png.\n";
-        std::cout << "    pixslam ((A B) (* 0.5 (+ A B))) image1.png image2.png blend.png\n\n";
-        std::cout << "Arguments:\n\n";
-        std::cout << "--logAsm     Dumps the generated assembly code to standard output.\n";
-        return 1;
-    }
+   if(argc < 3){
+      std::cout << "Usage:\n\n";
+      std::cout << "    pixslam <code> [input-images] <output>\n\n";
+      std::cout << "Code can either be supplied directly, or as a file path to read in.\n";
+      std::cout << "The number of input images read is dependent on the supplied code.\n";
+      std::cout << "The output argument is optional, defaults to out.png.\n\n";
+      std::cout << "e.g:\n";
+      std::cout << "Multiply image by 2 and output to out.png.\n\n";
+      std::cout << "    pixslam \"((A) (* A 2))\" image.png\n\n";
+      std::cout << "If file mult_by_two.pixslam contains \"(* A 2)\" then the following \n";
+      std::cout << "multiplies image.png by 2 and output to image_times_two.png.\n\n";
+      std::cout << "    pixslam mult_by_two.pixslam image.png image_times_two.png\n\n";
+      std::cout << "Blend two images together equally and output to blend.png.\n";
+      std::cout << "    pixslam ((A B) (* 0.5 (+ A B))) image1.png image2.png blend.png\n\n";
+      std::cout << "Arguments:\n\n";
+      std::cout << "--logAsm     Dumps the generated assembly code to standard output.\n";
+      return 1;
+   }
+   
+   std::vector<std::string> argv;
+   std::vector<std::string> options;
+   
+   // separate options from file/code arguments
+   for(int i = 0; i < argc; ++i){
+      char *s = argsRaw[i];
+      if(*s != '-')
+         argv.emplace_back(s);
+      else
+         options.emplace_back(s);
+   }
+   
+   // parse command line arguments
+   bool logAsm = false;
+   bool logCommand = false;
+   for(auto s : options){
+      if(s == "--logAsm")
+         logAsm = true;
+      else if(s == "--logCommand")
+         logCommand = true;
+      else{
+         std::cerr << "Unrecognised command line switch: " << s << std::endl;
+         return 1;
+      }
+      
+   }
+   
+   // See if first arg is a file and read code from it.
+   // We infer file by checking that first char is not a '(' (cheeky but it works!)
+   // Otherwise we interperate the argument as code directly.
+   std::string codeString;
+   if(argv[1].size() > 0 && argv[1][0] != '('){
+      std::ifstream ifs(argv[1]);
+      if(ifs){
+         std::stringstream buffer;
+         buffer << ifs.rdbuf();
+         codeString = buffer.str();
+      }else{
+         std::cout << "Could not find file " << argv[1] << std::endl;
+         return 1;
+      }
+   }else{ 
+      codeString = argv[1];
+   }
+   
+   // Generate code.
+   Cell code = cellFromString(codeString);
+   JitImageFunction cgFunction(code, logAsm);
+   
+   // Read in input images specified by arguments.
+   int padding = 0;
+   std::vector<Image> inputImages;
+   for(size_t i = 0; i < 1; ++i){
+      Image im(argv[2+i]);
+      
+      if(im.width()*im.height() == 0){
+         std::cout << "Failed to load image " << argv[2+i] << std::endl;
+         return 1;
+      }
+      
+      inputImages.emplace_back(im, padding, padding);
+   }
+   
+   printf("Step 1: initialize JIT\n");
+   bool initialized = initializeJit();
+   if (!initialized)
+   {
+      fprintf(stderr, "FAIL: could not initialize JIT\n");
+      exit(-1);
+   }
+   
+   printf("Step 2: define type dictionary\n");
+   TR::TypeDictionary types;
+   
+   printf("Step 3: compile method builder\n");
+   ImageArray method(&types);
+   uint8_t *entry;
+   int32_t rc = compileMethodBuilder(&method, &entry);
+   if (rc != 0)
+   {
+      fprintf(stderr,"FAIL: compilation error %d\n", rc);
+      exit(-2);
+   }
+   
+   printf("Step 4: invoke compiled code and verify results\n");
+   ImageArrayFunctionType *test = (ImageArrayFunctionType *) entry;
+   
+   // Remaining arg, if preset is our output destination.
+  std::string outputImagePath = "/Users/geoff/dev/Pixslam/out.png";
+   //    if(argv.size() >= 3 + cgFunction.getNumArgs())
+   //        outputImagePath = argv[3 + cgFunction.getNumArgs() - 1];
+   
+   // log command line if requested (useful for easy to understand examples directory)
+   //    if(logCommand) logCommandLine(argc, argsRaw, outputImagePath);
+   
+   // Look at a subimages so we can process edges safely.
+   std::vector<Image> inputImageViews;
+   for(Image &im : inputImages)
+      inputImageViews.emplace_back(
+                                   im.getData() + padding*im.width() + padding, 
+                                   im.width() - padding*2, im.height() - padding*2,
+                                   im.width());
+   
+   // Perpare output image.
+   Image outIm(inputImageViews[0].width(), inputImageViews[0].height(), inputImageViews[0].stride());
+   //size, width, height, stride, data, result
+   
+   Image *image = &inputImages[0];
+   int size = image->width() * image->height();
+   double* result = new double[size];
+   
+   for(int i = 0; i < 10000; i++) {
+      test(size, image->width(), image->height(), image->stride(),
+           image->getData(), image->getData());
+   }
+   
+   test(size, image->width(), image->height() , image->stride(),
+        image->getData(), outIm.getData());
 
-    std::vector<std::string> argv;
-    std::vector<std::string> options;
 
-    // separate options from file/code arguments
-    for(int i = 0; i < argc; ++i){
-        char *s = argsRaw[i];
-        if(*s != '-')
-            argv.emplace_back(s);
-        else
-            options.emplace_back(s);
-    }
-
-    // parse command line arguments
-    bool logAsm = false;
-    bool logCommand = false;
-    for(auto s : options){
-        if(s == "--logAsm")
-            logAsm = true;
-        else if(s == "--logCommand")
-            logCommand = true;
-        else{
-            std::cerr << "Unrecognised command line switch: " << s << std::endl;
-            return 1;
-        }
-            
-    }
-
-    // See if first arg is a file and read code from it.
-    // We infer file by checking that first char is not a '(' (cheeky but it works!)
-    // Otherwise we interperate the argument as code directly.
-    std::string codeString;
-    if(argv[1].size() > 0 && argv[1][0] != '('){
-        std::ifstream ifs(argv[1]);
-        if(ifs){
-            std::stringstream buffer;
-            buffer << ifs.rdbuf();
-            codeString = buffer.str();
-        }else{
-            std::cout << "Could not find file " << argv[1] << std::endl;
-            return 1;
-        }
-    }else{ 
-        codeString = argv[1];
-    }
-
-    // Generate code.
-    Cell code = cellFromString(codeString);
-    JitImageFunction cgFunction(code, logAsm);
-
-    // Read in input images specified by arguments.
-    int padding = 16;
-    std::vector<Image> inputImages;
-    for(size_t i = 0; i < 1; ++i){
-        Image im(argv[2+i]);
-
-        if(im.width()*im.height() == 0){
-            std::cout << "Failed to load image " << argv[2+i] << std::endl;
-            return 1;
-        }
-
-        inputImages.emplace_back(im, padding, padding);
-    }
-    
-    printf("Step 1: initialize JIT\n");
-    bool initialized = initializeJit();
-    if (!initialized)
-    {
-        fprintf(stderr, "FAIL: could not initialize JIT\n");
-        exit(-1);
-    }
-
-
-    // Remaining arg, if preset is our output destination.
-    std::string outputImagePath = "/Users/geoff/dev/Pixslam/out.png";
-//    if(argv.size() >= 3 + cgFunction.getNumArgs())
-//        outputImagePath = argv[3 + cgFunction.getNumArgs() - 1];
-
-    // log command line if requested (useful for easy to understand examples directory)
-//    if(logCommand) logCommandLine(argc, argsRaw, outputImagePath);
-
-    // Look at a subimages so we can process edges safely.
-    std::vector<Image> inputImageViews;
-    for(Image &im : inputImages)
-        inputImageViews.emplace_back(
-            im.getData() + padding*im.width() + padding, 
-            im.width() - padding*2, im.height() - padding*2,
-            im.width());
-
-    // Perpare output image.
-      Image outIm(inputImageViews[0].width(), inputImageViews[0].height(), inputImageViews[0].stride());
-
-    
-    // Write output.
-//outIm.write(outputImagePath);
-    inputImages[0].write(outputImagePath);
-//    cgFunction(inputImageViews, outIm);
-
-    shutdownJit();
-
-    return 0;
+   // Write output.
+outIm.write(outputImagePath);
+  // image->write(outputImagePath);
+   //    cgFunction(inputImageViews, outIm);
+   delete [] result;
+   shutdownJit();
+   return 0;
 }
 
 

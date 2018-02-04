@@ -21,3 +21,4 @@ std::string cellToString(const Cell & exp);
 Cell cellFromString(const std::string & s);
 
 }
+

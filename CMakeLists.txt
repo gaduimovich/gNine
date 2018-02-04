@@ -43,6 +43,7 @@ set(OMR_COMPILER   ON  CACHE INTERNAL "Enable the Compiler.")
 set(OMR_JITBUILDER ON  CACHE INTERNAL "We use OMR's jitbuilder tool for the b9 JIT")
 set(OMR_GC         ON CACHE INTERNAL "We don't use the GC in b9 (yet)")
 set(OMR_FVTEST     OFF CACHE INTERNAL "Disable OMR's internal test suite, it's incompatible with b9")
+set(OMR_JITBUILDER_ADDITIONAL ON "Turn tests on")
 set(OMR_WARNINGS_AS_ERRORS OFF CACHE INTERNAL "OMR doesn't compile cleanly on my laptop :p")
 
 
@@ -53,6 +54,6 @@ add_subdirectory(example_data)
 include_directories(${GNINE_SOURCE_DIR}/src ${GNINE_SOURCE_DIR}/libs/stb_image)
 
 # aux_source_directory(src ${SOURCES})
-add_executable(gnine src/main.cpp src/Image.cpp src/Parser.cpp src/JitImageFunction.cpp)
+add_executable(gnine src/main.cpp src/Image.cpp src/Parser.cpp src/JitImageFunction.cpp, src/ImageArray.cpp)
 
 target_link_libraries(gnine PUBLIC stb_image jitbuilder)
