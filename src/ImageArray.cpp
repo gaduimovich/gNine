@@ -26,11 +26,13 @@
 #include <stdint.h>
 #include <dlfcn.h>
 #include <errno.h>
-
+#include <vector>
+#include <Parser.h>
 #include "Jit.hpp"
 #include "ilgen/TypeDictionary.hpp"
 #include "ilgen/MethodBuilder.hpp"
 #include "ImageArray.hpp"
+#include <iostream>
 
 static void printArray(int32_t numLongs, int64_t *array)
    {
@@ -95,7 +97,6 @@ ImageArray::Store2D(TR::IlBuilder *bldr,
                                                   second)),
                  value);
 }
-
 TR::IlValue *
 ImageArray::Load2D(TR::IlBuilder *bldr,
                    TR::IlValue *base,
@@ -103,7 +104,6 @@ ImageArray::Load2D(TR::IlBuilder *bldr,
                    TR::IlValue *second,
                    TR::IlValue *W, TR::IlValue *H)
 {
-   
    return
    bldr->LoadAt(pDouble,
                 bldr->   IndexAt(pDouble,
@@ -179,17 +179,19 @@ ImageArray::ImageArray(TR::TypeDictionary *d)
    DefineFile(__FILE__);
 
    DefineName("imagearray");
-   
+
    //size, width, height, stride, data, result
 
    pInt32 = d->PointerTo(Int32);
    pInt64 = d->PointerTo(Int64);
    pDouble = d->PointerTo(Double);
+   ppDouble = d->PointerTo(pDouble);
+
    DefineParameter("size", Int32);
    DefineParameter("width", Int32);
    DefineParameter("height", Int32);
    DefineParameter("stride", Int32);
-   DefineParameter("data", pDouble);
+   DefineParameter("data", ppDouble);
    DefineParameter("result", pDouble);
    DefineReturnType(NoType);
 
@@ -253,6 +255,224 @@ ImageArray::PrintString(TR::IlBuilder *bldr, const char *s)
    bldr->Call("printString", 1,
               bldr->   ConstInt64((int64_t)(char *)s));
 }
+void
+ImageArray::runByteCodes(gnine::Cell cell)
+{
+   cell_ = cell;
+   
+//   uint8_t* entry;
+//   int rc = compileMethodBuilder(this, &entry);
+//   if (rc != 0) {
+//      std::cout << "Compilation failed" << std::endl;
+//      return;
+//   }
+//
+//   void (*compiledFunction)() = reinterpret_cast<decltype(compiledFunction)>(entry);
+//   (*compiledFunction)();
+
+}
+
+TR::IlValue* ImageArray::eval(TR::IlBuilder *bldr, gnine::Cell &c){
+   switch(c.type){
+      case gnine::Cell::Number:{
+         printf("evaling Number (%s) :\n", c.val.c_str());
+
+         return numberHandler(bldr, c.val.c_str());
+      }case gnine::Cell::List:{
+         std::vector<TR::IlValue*> evalArgs(c.list.size()-1);
+         
+         std::transform(c.list.begin()+1, c.list.end(), evalArgs.begin(),
+                        [this, &bldr](gnine::Cell &k) -> TR::IlValue * {
+                           printf("evaling List (%s) :\n", k.val.c_str());
+                           
+                           return eval(bldr, k);
+                           
+                        });
+         
+         return functionHandler(bldr, c.list[0].val, evalArgs);
+      }case gnine::Cell::Symbol:{
+         printf("evaling symbol (%s) :\n", c.val.c_str());
+
+         return symbolHandler(bldr, c.val);
+      }
+   }
+   throw std::runtime_error("Should never get here.");
+}
+
+
+
+TR::IlValue* ImageArray::functionHandler(TR::IlBuilder *bldr, const std::string &functionName,
+                                         std::vector<TR::IlValue*> &args) {
+   
+   printf("functionHandler List (%s) :\n", functionName.c_str());
+
+   char s = MUL;
+
+   if(functionName == "+") {
+      s = ADD;
+   } else if(functionName == "*") {
+      s = MUL;
+   } else if(functionName == "/") {
+      s = DIV;
+   } else if(functionName == "-") {
+      s = SUB;
+   } else if(functionName == "min") {
+      s = MIN;
+   } else if(functionName == "max") {
+      s = MAX;
+   } else if(functionName == "<") {
+      s = LT;
+   } else if(functionName == ">") {
+      s = GT;
+   } else if(functionName == "<=") {
+      s = LE;
+   } else if(functionName == ">=") {
+      s = GE;
+   } else if(functionName == "==") {
+      s = EQ;
+   } else if(functionName == "!=") {
+      s = NOTQ;
+   } else if(functionName[0] == '@') {
+      std::string imageName = std::string(functionName.begin()+1, functionName.end());
+      
+      if(argNameToIndex.find(imageName) == argNameToIndex.end())
+         std::runtime_error("Absolute indexing with unknown image " + imageName);
+      return Load2DAbs(bldr, argv[argNameToIndex.at(imageName)],
+                       bldr->ConvertTo(Int32, args[0]),
+                       bldr->ConvertTo(Int32, args[1]),
+                       symbols["w"], symbols["h"]);
+      
+   } else {
+
+      return Load2DAbs(bldr, argv[argNameToIndex.at(functionName)],
+                       bldr->Add(bldr->ConvertTo(Int32, args[0]), i),
+                       bldr->Add(bldr->ConvertTo(Int32, args[1]), j),
+                       symbols["w"], symbols["h"]);
+
+
+   }
+
+   return function(bldr, args, s);
+}
+
+TR::IlValue* ImageArray::numberHandler(TR::IlBuilder *bldr, const std::string &number) {
+   double x = std::atof(number.c_str());
+   return bldr->ConstDouble(x);
+}
+TR::IlValue* ImageArray::symbolHandler(TR::IlBuilder *bldr, const std::string &name){
+   
+   if(argNameToIndex.find(name) != argNameToIndex.end()){
+      return Load2DAbs(bldr, argv[argNameToIndex.at(name)],
+                       i, j, symbols["w"], symbols["h"]);
+   }else if(name == "i" || name == "j"){ // special symbols
+      return name == "i" ? i : j;
+   }else if(name == "width" || name == "height"){
+      return name == "w" ? symbols["wd"] : symbols["h"];
+   }else if(symbols.find(name) != symbols.end()){
+      return symbols[name];
+   } else {
+      throw std::runtime_error("Unable to find symbol: " + name);
+   }
+   
+   return bldr->ConstInt32(32);
+}
+
+
+TR::IlValue* ImageArray::function(TR::IlBuilder *bldr, std::vector<TR::IlValue*> &vects, char &function) {
+   TR::IlBuilder *rc3True = NULL;
+   TR::IlValue *one = bldr->ConstDouble(1.0);
+   TR::IlValue *zero = bldr->ConstDouble(0.0);
+   
+   bldr->Store("sum", vects[0]);
+   for (unsigned int l = 1; l < vects.size(); l++) {
+      switch (function) {
+         case ADD:
+            bldr->Store("sum", bldr->Add(vects[l], bldr->Load("sum")));
+            break;
+         case SUB:
+            bldr->Store("sum", bldr->Sub(vects[l], bldr->Load("sum")));
+            break;
+         case MUL:
+            bldr->Store("sum", bldr->Mul(vects[l], bldr->Load("sum")));
+            break;
+         case DIV:
+            bldr->Store("sum", bldr->Sub(vects[l], bldr->Load("sum")));
+            break;
+         case MIN:
+            rc3True = NULL;
+            
+            bldr->IfThen(&rc3True,
+                         bldr->LessThan(vects[l], bldr->Load("sum")));
+            rc3True->Store("sum",
+                           vects[l]);
+            break;
+         case MAX:
+            rc3True = NULL;
+            bldr->IfThen(&rc3True,
+                         bldr->GreaterThan(vects[l], bldr->Load("sum")));
+            rc3True->Store("sum",
+                           vects[l]);
+            break;
+         case GT:
+            rc3True = NULL;
+            bldr->Store("sum", zero);
+            bldr->IfThen(&rc3True,
+                         bldr->GreaterThan(vects[0], vects[1]));
+            rc3True->Store("sum",
+                           one);
+            return bldr->Load("sum");
+         case LT:
+            rc3True = NULL;
+            bldr->Store("sum", zero);
+            bldr->IfThen(&rc3True,
+                         bldr->LessThan(vects[0], vects[1]));
+            rc3True->Store("sum",
+                           one);
+            return bldr->Load("sum");
+         case GE:
+            rc3True = NULL;
+            bldr->Store("sum", zero);
+            bldr->IfThen(&rc3True,
+                         bldr->GreaterOrEqualTo(vects[0], vects[1]));
+            rc3True->Store("sum",
+                           one);
+            return bldr->Load("sum");
+
+         case LE:
+            rc3True = NULL;
+            bldr->Store("sum", zero);
+            bldr->IfThen(&rc3True,
+                         bldr->LessOrEqualTo(vects[0], vects[1]));
+            rc3True->Store("sum",
+                           one);
+            return bldr->Load("sum");
+         case EQ:
+            rc3True = NULL;
+            bldr->Store("sum", zero);
+            bldr->IfThen(&rc3True,
+                         bldr->EqualTo(vects[0], vects[1]));
+            rc3True->Store("sum",
+                           one);
+            return bldr->Load("sum");
+         case NOTQ:
+            rc3True = NULL;
+            bldr->Store("sum", zero);
+            bldr->IfThen(&rc3True,
+                         bldr->NotEqualTo(vects[0], vects[1]));
+            rc3True->Store("sum",
+                           one);
+            return bldr->Load("sum");
+
+         default:
+            break;
+      }
+      
+   }
+   return bldr->Load("sum");
+}
+
+
+
 
 bool
 ImageArray::buildIL()
@@ -267,15 +487,91 @@ ImageArray::buildIL()
       TR::IlValue *width = Sub(Load("width"), one);
       TR::IlValue *height = Sub(Load("height"), one);
       TR::IlValue *stride = Sub(Load("stride"), one);
-      TR::IlValue *data = Load("data");
-      TR::IlValue *result = Load("result");
+      
+      
+      TR::IlValue *data = LoadAt(ppDouble, IndexAt(ppDouble, Load("data"), ConstInt32(0)));
+      
 
-      TR::IlValue *A_upper;
-      TR::IlValue *A_lower;
-      TR::IlValue *A_middle;
-      TR::IlValue *A_result;
-//      Call("printInt32", 1,
-//           MaxAbs(this, ConstInt32(25), ConstInt32(20)));      PrintString(this, "\n");
+      
+      
+      PrintString(this, "   data is ");
+      Call("printPointer", 1,
+           data);
+      PrintString(this, "\n");
+
+      TR::IlValue *result = Load("result");
+      symbols["w"] = Sub(Load("width"), one);
+      symbols["h"] = Sub(Load("width"), one);
+
+      TR::IlBuilder *builder  = this;
+
+      
+      gnine::Cell &argsCell = cell_.list[0];
+      gnine::Cell &code = cell_.list[1];
+      
+      // Load arguments
+      std::vector<std::string> argNames;
+      for(gnine::Cell c : argsCell.list){
+         if(c.type == gnine::Cell::Symbol)
+            argNames.push_back(c.val);
+         else
+            throw std::runtime_error(
+                                     "Function cell must be of form ((arg1 arg2 ...) (code))");
+      }
+      
+      for(size_t i = 0; i < argNames.size(); ++i)
+         argNameToIndex[argNames[i]] = i;
+   
+      for(size_t i = 0; i < argNames.size(); ++i) {
+         argv.push_back(builder->LoadAt(ppDouble, builder->IndexAt(ppDouble, Load("data"), ConstInt32(i))));
+      }
+      
+      std::vector<double> second (0,100.0);
+      second.push_back(33.0);
+      second.push_back(33.0);
+
+      std::vector<TR::IlValue*> vects;
+//      TR::IlValue* first = ConstDouble(second[0]);
+//
+//      for(int k = 0; k < second.size(); ++k){
+//         vects.push_back(builder->ConstDouble(second[k]));
+//      }
+
+//      builder->Store("sum", vects[0]);
+//      for (unsigned int l = 1; l < vects.size(); l++) {
+//         builder->Store("sum", builder->Add(vects[l], builder->Load("sum")));
+//      }
+      
+
+//      Call("printDouble", 1,
+//                      symbolHandler(this, "B"));      PrintString(this, "\n");
+      
+//      for(int32_t i = 0; i < argNames.size(); ++i) {
+//         this->Call("printInt32", 1,
+//              ConstInt32(9));      PrintString(this, "\n");
+//
+//      }
+      
+      
+//      GpVar pargv = compiler.getGpArg(0);
+//      for(size_t i = 0; i < argNameToIndex.size(); ++i){
+//         argv.push_back(compiler.newGpVar());
+//         compiler.mov(argv.back(), ptr(pargv, i*sizeof(double)));
+//      }
+
+      
+//      for(gnine::Cell c : code.list){
+//         if(c.type == gnine::Cell::Number) {
+//            std::atof(c.val.c_str());
+//         } else if (c.type == gnine::Cell::List) {
+//
+//         }
+//
+//      }
+
+      
+
+      
 //      Call("printInt32", 1,
 //           MaxAbs(this, ConstInt32(20), ConstInt32(20)));      PrintString(this, "\n");
 //      Call("printInt32", 1,
@@ -322,40 +618,21 @@ ImageArray::buildIL()
       // y|
       //  |
       //i is x j is y
-      TR::IlValue *i, *j;
+
+      
       TR::IlBuilder *iloop=NULL, *jloop=NULL;
-      ForLoopUp("i", &iloop, zero, Add(one, width), one);
+      ForLoopUp("i", &iloop, zero, Add(one, height), one);
       {
          i = iloop->Load("i");
          
-         iloop->ForLoopUp("j", &jloop, zero, iloop->Add(one, height), one);
+         iloop->ForLoopUp("j", &jloop, zero, iloop->Add(one, width), one);
          {
             j = jloop->Load("j");
+            TR::IlValue *ret = eval(jloop, code);
             
-            A_upper =
-            jloop->Add(
-            jloop->Add(
-                       Load2DAbs(jloop, data, jloop->Add(i, neg), jloop->Add(j, neg), width, height),
-                       Load2DAbs(jloop, data, jloop->Add(i, zero), jloop->Add(j, neg), width, height)),
-                       Load2DAbs(jloop, data, jloop->Add(i, one), jloop->Add(j, neg), width, height));
-            A_middle =
-            jloop->Add(
-            jloop->Add(Load2DAbs(jloop, data, jloop->Add(i, neg), j, width, height),
-                       Load2DAbs(jloop, data, i, j, width, height)),
-                       Load2DAbs(jloop, data, jloop->Add(i, one), j, width, height));
 
-            A_lower =
-            jloop->Add(
-            jloop->Add(
-                       Load2DAbs(jloop, data, jloop->Add(i, neg), jloop->Add(j, one), width, height),
-                       Load2DAbs(jloop, data, i, jloop->Add(j, one), width, height)),
-                       Load2DAbs(jloop, data, jloop->Add(i, one), jloop->Add(j, one), width, height));
-            
-            
-            A_result = jloop->Div(jloop->Add(jloop->Add(A_middle, A_lower), A_upper), jloop->ConstDouble(9.0));
-            
-            Store2D(jloop, result, i, j, stride, A_result);
-            
+            Store2D(jloop, result, i, j, stride, ret);
+
          }
       }
 

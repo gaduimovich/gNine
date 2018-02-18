@@ -24,12 +24,27 @@
 #ifndef IMAGEARRAY_INCL
 #define IMAGEARRAY_INCL
 
-#include "ilgen/MethodBuilder.hpp"
+#define ADD   '+'
+#define SUB   '-'
+#define MUL   '*'
+#define DIV   '/'
+#define MIN   'M'
+#define MAX   'X'
+#define LT   'L'
+#define GT   'G'
+#define GE   'g'
+#define LE   'l'
+#define EQ   'E'
+#define NOTQ   'N'
 
+
+#include "ilgen/MethodBuilder.hpp"
+#include "Parser.h"
+#include "Image.h"
 namespace TR { class TypeDictionary; }
 
 //size, width, height, stride, data, result
-typedef void (ImageArrayFunctionType)(int32_t, int32_t, int32_t, int32_t, double *, double *);
+typedef void (ImageArrayFunctionType)(int32_t, int32_t, int32_t, int32_t, double **, double *);
 
 class ImageArray : public TR::MethodBuilder
    {
@@ -55,15 +70,31 @@ class ImageArray : public TR::MethodBuilder
 
    TR::IlValue *
       MaxAbs(TR::IlBuilder *bldr, TR::IlValue *first, TR::IlValue *max);
-
+   TR::IlValue *
+      function(TR::IlBuilder *bldr, std::vector<TR::IlValue*> &vects, char &function);
       
    void PrintString (TR::IlBuilder *bldr, const char *s);
    TR::IlType *pInt32;
    TR::IlType *pInt64;
    TR::IlType *pDouble;
+   TR::IlType *ppDouble;
+   TR::IlValue *i, *j;
+   gnine::Cell cell_;
+   std::map<std::string, TR::IlValue*> symbols;
+   std::map<std::string, size_t> argNameToIndex;
+   std::vector<TR::IlValue*> argv;
    public:
+      void runByteCodes(gnine::Cell);
+      
+      TR::IlValue* eval(TR::IlBuilder *bldr, gnine::Cell &c);
+      TR::IlValue* functionHandler(TR::IlBuilder *, const std::string &functionName,
+                                             std::vector<TR::IlValue*> &args);
+                                   TR::IlValue* numberHandler(TR::IlBuilder *, const std::string &number);
+                                   TR::IlValue* symbolHandler(TR::IlBuilder *, const std::string &name);
+
+      
    ImageArray(TR::TypeDictionary *);
-   virtual bool buildIL();
+      bool buildIL() override;
    };
 
 #endif // !defined(IMAGEARRAY_INCL)

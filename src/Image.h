@@ -13,12 +13,14 @@ namespace gnine{
       // could get complex!
       typedef double PixType;
       
-      PixType *data;
+      //PixType *data;
       int w, h;
       int s;
       bool ownsData;
       
    public:
+      PixType *data;
+
       // Load from png image.
       // File errors result in a 0x0 sized image.
       explicit Image(const std::string &path);

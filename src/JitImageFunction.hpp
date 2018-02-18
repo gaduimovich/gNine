@@ -117,7 +117,6 @@ namespace gnine{
       
       int32_t zero;
       int32_t one;
-      std::vector<Image *> argv;
       
       std::map<std::string, double *> symbols;
       

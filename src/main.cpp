@@ -95,12 +95,12 @@ int main (int argc, char *argsRaw[])
    
    // Generate code.
    Cell code = cellFromString(codeString);
-   JitImageFunction cgFunction(code, logAsm);
+   //JitImageFunction cgFunction(code, logAsm);
    
    // Read in input images specified by arguments.
    int padding = 0;
    std::vector<Image> inputImages;
-   for(size_t i = 0; i < 1; ++i){
+   for(size_t i = 0; i < code.list[0].list.size(); ++i){
       Image im(argv[2+i]);
       
       if(im.width()*im.height() == 0){
@@ -124,6 +124,8 @@ int main (int argc, char *argsRaw[])
    
    printf("Step 3: compile method builder\n");
    ImageArray method(&types);
+   method.runByteCodes(code);
+
    uint8_t *entry;
    int32_t rc = compileMethodBuilder(&method, &entry);
    if (rc != 0)
@@ -153,26 +155,22 @@ int main (int argc, char *argsRaw[])
    
    // Perpare output image.
    Image outIm(inputImageViews[0].width(), inputImageViews[0].height(), inputImageViews[0].stride());
+
    //size, width, height, stride, data, result
    
    Image *image = &inputImages[0];
    int size = image->width() * image->height();
-   double* result = new double[size];
    
-   for(int i = 0; i < 10000; i++) {
-      test(size, image->width(), image->height(), image->stride(),
-           image->getData(), image->getData());
+   std::vector<double*> dataPtrs;
+   for(Image &im : inputImages) {
+      dataPtrs.push_back(im.getData());
    }
    
    test(size, image->width(), image->height() , image->stride(),
-        image->getData(), outIm.getData());
-
-
+        &dataPtrs[0], outIm.getData());
    // Write output.
-outIm.write(outputImagePath);
-  // image->write(outputImagePath);
-   //    cgFunction(inputImageViews, outIm);
-   delete [] result;
+   
+   outIm.write(outputImagePath);
    shutdownJit();
    return 0;
 }
