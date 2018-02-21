@@ -5,7 +5,6 @@
 #include "Image.h"
 #include "Parser.h"
 #include "Jit.hpp"
-#include "JitImageFunction.hpp"
 #include "ImageArray.hpp"
 #include "ilgen/TypeDictionary.hpp"
 
@@ -159,12 +158,12 @@ int main (int argc, char *argsRaw[])
       dataPtrs.push_back(im.getData());
    }
    
-   for (int i = 0; i < 10000; i++) {
+   for (int i = 0; i < 1; i++) {
    test(size, image->width(), image->height() , image->stride(),
         &dataPtrs[0], outIm.getData());
       
    }
-      outIm.write(outputImagePath);
+   outIm.write(outputImagePath);
    shutdownJit();
    return 0;
 }

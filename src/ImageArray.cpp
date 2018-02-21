@@ -24,6 +24,12 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdint.h>
+#include <functional>
+#include <map>
+#include <stdexcept>
+#include <algorithm>
+#include <numeric>
+#include <map>
 #include <dlfcn.h>
 #include <errno.h>
 #include <vector>
@@ -512,15 +518,11 @@ ImageArray::buildIL()
       //Constants
       TR::IlValue *one = ConstInt32(1);
       TR::IlValue *zero = ConstInt32(0);
-      TR::IlValue *neg = ConstInt32(-1);
       
       //size, width, height, stride, data, result
-      TR::IlValue *size = Load("size");
       TR::IlValue *width = Load("width");
       TR::IlValue *height = Load("height");
-      TR::IlValue *stride = Load("stride");
       TR::IlValue *result = Load("result");
-      TR::IlValue *data = LoadAt(ppDouble, IndexAt(ppDouble, Load("data"), ConstInt32(0)));
 
       PrintString(this, " \n");
 
@@ -530,7 +532,7 @@ ImageArray::buildIL()
 
       
       symbols["w"] = Sub(Load("width"), one);
-      symbols["h"] = Sub(Load("width"), one);
+      symbols["h"] = Sub(Load("height"), one);
 
       TR::IlBuilder *builder  = this;
 
