@@ -38,9 +38,25 @@
 #define NOTQ   'N'
 
 
-#include "ilgen/MethodBuilder.hpp"
-#include "Parser.h"
 #include "Image.h"
+#include <stdio.h>
+#include <stdlib.h>
+#include <stdint.h>
+#include <functional>
+#include <stdexcept>
+#include <algorithm>
+#include <numeric>
+#include <map>
+#include <dlfcn.h>
+#include <errno.h>
+#include <vector>
+#include <Parser.h>
+#include "Jit.hpp"
+#include "ilgen/TypeDictionary.hpp"
+#include "ilgen/MethodBuilder.hpp"
+#include <iostream>
+
+
 namespace TR { class TypeDictionary; }
 
 //size, width, height, stride, data, result

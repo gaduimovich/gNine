@@ -20,25 +20,7 @@
  * SPDX-License-Identifier: EPL-2.0 OR Apache-2.0 OR GPL-2.0 WITH Classpath-exception-2.0 OR LicenseRef-GPL-2.0 WITH Assembly-exception
  *******************************************************************************/
 
-
-#include <stdio.h>
-#include <stdlib.h>
-#include <stdint.h>
-#include <functional>
-#include <map>
-#include <stdexcept>
-#include <algorithm>
-#include <numeric>
-#include <map>
-#include <dlfcn.h>
-#include <errno.h>
-#include <vector>
-#include <Parser.h>
-#include "Jit.hpp"
-#include "ilgen/TypeDictionary.hpp"
-#include "ilgen/MethodBuilder.hpp"
 #include "ImageArray.hpp"
-#include <iostream>
 
 static void printArray(int32_t numLongs, double *array)
    {
