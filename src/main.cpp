@@ -136,7 +136,11 @@ int main (int argc, char *argsRaw[])
    ImageArrayFunctionType *test = (ImageArrayFunctionType *) entry;
    
    
-   std::string outputImagePath = "/Users/geoff/dev/Pixslam/out.png";
+   std::string outputImagePath = "out.png";
+   
+   if(argv.size() >= 3 + code.list[0].list.size())
+      outputImagePath = argv[3 + code.list[0].list.size() - 1];
+
    std::vector<Image> inputImageViews;
    for(Image &im : inputImages)
       inputImageViews.emplace_back(
@@ -157,7 +161,9 @@ int main (int argc, char *argsRaw[])
    
    for (int i = 0; i < 10000; i++) {
    test(size, image->width(), image->height() , image->stride(),
-        &dataPtrs[0], outIm.getData()); }
+        &dataPtrs[0], outIm.getData());
+      
+   }
       outIm.write(outputImagePath);
    shutdownJit();
    return 0;
