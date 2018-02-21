@@ -89,14 +89,12 @@ int main (int argc, char *argsRaw[])
          std::cout << "Could not find file " << argv[1] << std::endl;
          return 1;
       }
-   }else{ 
+   }else{
       codeString = argv[1];
    }
-   
-   // Generate code.
+   printf("Code String: %s", codeString.c_str());
+      // Generate code.
    Cell code = cellFromString(codeString);
-   //JitImageFunction cgFunction(code, logAsm);
-   
    // Read in input images specified by arguments.
    int padding = 0;
    std::vector<Image> inputImages;
@@ -125,7 +123,7 @@ int main (int argc, char *argsRaw[])
    printf("Step 3: compile method builder\n");
    ImageArray method(&types);
    method.runByteCodes(code);
-
+   
    uint8_t *entry;
    int32_t rc = compileMethodBuilder(&method, &entry);
    if (rc != 0)
@@ -137,26 +135,17 @@ int main (int argc, char *argsRaw[])
    printf("Step 4: invoke compiled code and verify results\n");
    ImageArrayFunctionType *test = (ImageArrayFunctionType *) entry;
    
-   // Remaining arg, if preset is our output destination.
-  std::string outputImagePath = "/Users/geoff/dev/Pixslam/out.png";
-   //    if(argv.size() >= 3 + cgFunction.getNumArgs())
-   //        outputImagePath = argv[3 + cgFunction.getNumArgs() - 1];
    
-   // log command line if requested (useful for easy to understand examples directory)
-   //    if(logCommand) logCommandLine(argc, argsRaw, outputImagePath);
-   
-   // Look at a subimages so we can process edges safely.
+   std::string outputImagePath = "/Users/geoff/dev/Pixslam/out.png";
    std::vector<Image> inputImageViews;
    for(Image &im : inputImages)
       inputImageViews.emplace_back(
-                                   im.getData() + padding*im.width() + padding, 
-                                   im.width() - padding*2, im.height() - padding*2,
+                                   im.getData() + padding*im.width(),
+                                   im.width(), im.height(),
                                    im.width());
    
-   // Perpare output image.
    Image outIm(inputImageViews[0].width(), inputImageViews[0].height(), inputImageViews[0].stride());
-
-   //size, width, height, stride, data, result
+   
    
    Image *image = &inputImages[0];
    int size = image->width() * image->height();
@@ -166,11 +155,10 @@ int main (int argc, char *argsRaw[])
       dataPtrs.push_back(im.getData());
    }
    
+   for (int i = 0; i < 10000; i++) {
    test(size, image->width(), image->height() , image->stride(),
-        &dataPtrs[0], outIm.getData());
-   // Write output.
-   
-   outIm.write(outputImagePath);
+        &dataPtrs[0], outIm.getData()); }
+      outIm.write(outputImagePath);
    shutdownJit();
    return 0;
 }

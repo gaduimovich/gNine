@@ -88,7 +88,7 @@ class ImageArray : public TR::MethodBuilder
       
       TR::IlValue* eval(TR::IlBuilder *bldr, gnine::Cell &c);
       TR::IlValue* functionHandler(TR::IlBuilder *, const std::string &functionName,
-                                             std::vector<TR::IlValue*> &args);
+                                          std::vector<TR::IlValue*> &args);
                                    TR::IlValue* numberHandler(TR::IlBuilder *, const std::string &number);
                                    TR::IlValue* symbolHandler(TR::IlBuilder *, const std::string &name);
 
