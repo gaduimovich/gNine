@@ -1,4 +1,7 @@
 #pragma once
+#ifndef PARSER_INCL
+#define PARSER_INCL
+
 
 #include <vector>
 #include <string>
@@ -21,3 +24,5 @@ std::string cellToString(const Cell & exp);
 Cell cellFromString(const std::string & s);
 
 }
+
+#endif // !defined(PARSER_INCL)
