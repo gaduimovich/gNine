@@ -139,18 +139,12 @@ int main (int argc, char *argsRaw[])
    
    if(argv.size() >= 3 + code.list[0].list.size())
       outputImagePath = argv[3 + code.list[0].list.size() - 1];
-
-   std::vector<Image> inputImageViews;
-   for(Image &im : inputImages)
-      inputImageViews.emplace_back(
-                                   im.getData() + padding*im.width(),
-                                   im.width(), im.height(),
-                                   im.width());
-   
-   Image outIm(inputImageViews[0].width(), inputImageViews[0].height(), inputImageViews[0].stride());
-   
    
    Image *image = &inputImages[0];
+
+   Image outIm(image->width(), image->height(), image->stride());
+   
+   
    int size = image->width() * image->height();
    
    std::vector<double*> dataPtrs;
@@ -161,10 +155,14 @@ int main (int argc, char *argsRaw[])
    for (int i = 0; i < 1; i++) {
    test(size, image->width(), image->height() , image->stride(),
         &dataPtrs[0], outIm.getData());
-      
    }
    outIm.write(outputImagePath);
    shutdownJit();
+   
+   inputImages.clear();
+   argv.clear();
+   options.clear();
+   dataPtrs.clear();
    return 0;
 }
 
