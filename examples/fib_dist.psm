@@ -1,0 +1,7 @@
+((A) ; input not used, just specifies size
+    ( +  
+        (/ (* (fib (/ i 1)) 5000.0) (+ (* (- i 100) (- i 100)) (* (- j 200) (- j 200)) )) ; ball medium size at (200, 100)
+        (/ (* (fib (/ i 2)) 700.0) (- i 300)) (* (- j 200) (- j 200)) )) ; ball large size at (300, 200)
+        (/ (* (fib (/ i 3)) 500.0) (- i 400)) (* (- j 400) (- j 400)) )) ; ball medium size at (400, 400)
+    )
+)

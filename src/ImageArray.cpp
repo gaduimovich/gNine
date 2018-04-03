@@ -88,7 +88,8 @@ ImageArray::Store2D(TR::IlBuilder *bldr,
                                                                      N),
                                                   second)),
                  value);
-}
+   
+   }
 TR::IlValue *
 ImageArray::Load2D(TR::IlBuilder *bldr,
                    TR::IlValue *base,
@@ -107,7 +108,6 @@ ImageArray::Load2D(TR::IlBuilder *bldr,
 //                                                 first,
 //                                                 W),
 //                              second)); PrintString(bldr, " arrayindex \n");
-   
    TR::IlValue *firstAbs, *secondAbs, *fy, *sy;
    fy = bldr->ShiftR(first, bldr->ConstInt32(31));
    sy = bldr->ShiftR(second, bldr->ConstInt32(31));
@@ -143,14 +143,96 @@ ImageArray::MaxAbs(TR::IlBuilder *bldr, TR::IlValue *first, TR::IlValue *max)
 
 }
 
-
-
 TR::IlValue *
 ImageArray::Abs(TR::IlBuilder *bldr, TR::IlValue *first)
 {
    TR::IlValue *fy;
-   fy = bldr->ShiftR(first, bldr->ConstInt32(31));
+   fy = bldr->ShiftR(first, bldr->ConstInt32(63));
    return bldr->Sub(bldr->Xor(first, fy), fy);
+}
+
+TR::IlValue *
+ImageArray::Fib(TR::IlBuilder *bldr, TR::IlValue *n) {
+   
+   TR::IlBuilder *returnN = NULL;
+   TR::IlBuilder *elseN = NULL;
+
+   bldr->Store("n", bldr->ConvertTo(Int32, n));
+
+   bldr->IfThenElse(&returnN, &elseN,
+          LessThan(
+                   bldr->Load("n"),
+                   bldr->ConstInt32(2)));
+   
+   returnN->Store("Sum", returnN->Load("n"));
+   
+
+   elseN->Store("LastSum",
+         elseN->ConstInt32(0));
+   
+   elseN->Store("Sum",
+         elseN->ConstInt32(1));
+   
+   TR::IlBuilder *iloop = NULL;
+   elseN->ForLoopUp("i", &iloop,
+             elseN->ConstInt32(1),
+             elseN->Load("n"),
+             elseN->ConstInt32(1));
+   
+   iloop->Store("tempSum",
+                iloop->   Add(
+                              iloop->      Load("Sum"),
+                              iloop->      Load("LastSum")));
+   iloop->Store("LastSum",
+                iloop->   Load("Sum"));
+   iloop->Store("Sum",
+                iloop->   Load("tempSum"));
+   
+   return bldr->ConvertTo(Double, bldr->Load("Sum"));
+
+}
+
+
+TR::IlValue *
+ImageArray::Pow2(TR::IlBuilder *bldr, TR::IlValue *first)
+{
+   
+   bldr->Store("a",
+         ConstDouble(1));
+   
+   bldr->Store("b",
+         ConstDouble(1));
+   
+   bldr->Store("i",
+         first);
+   
+   bldr->Store("keepIterating",
+         bldr->GreaterThan(
+                     bldr->Load("i"),
+                     bldr->ConstDouble(-1)));
+   
+   TR::IlBuilder *loopBody = NULL;
+   bldr->WhileDoLoop("keepIterating", &loopBody);
+   
+   loopBody->Store("a",
+                   loopBody->   Load("b"));
+   
+   loopBody->Store("b",
+                   loopBody->   Add(
+                                    loopBody->      Load("a"),
+                                    loopBody->      Load("b")));
+   
+   loopBody->Store("i",
+                   loopBody->   Sub(
+                                    loopBody->      Load("i"),
+                                    loopBody->      ConstDouble(1)));
+   
+   loopBody->Store("keepIterating",
+                   loopBody->   GreaterThan(
+                                            loopBody->      Load("i"),
+                                            loopBody->      ConstDouble(-1)));
+   return bldr->Load("a");
+
 }
 
 TR::IlValue *
@@ -263,8 +345,8 @@ ImageArray::ImageArray(TR::TypeDictionary *d)
 void
 ImageArray::PrintString(TR::IlBuilder *bldr, const char *s)
 {
-//   bldr->Call("printString", 1,
-//              bldr->   ConstInt64((int64_t)(char *)s));
+   bldr->Call("printString", 1,
+              bldr->   ConstInt64((int64_t)(char *)s));
 }
 void
 ImageArray::runByteCodes(gnine::Cell cell)
@@ -293,12 +375,14 @@ TR::IlValue* ImageArray::eval(TR::IlBuilder *bldr, gnine::Cell &c){
          std::transform(c.list.begin()+1, c.list.end(), evalArgs.begin(),
                         [this, &bldr](gnine::Cell &k) -> TR::IlValue * {
                            return eval(bldr, k);
-                     
                         });
          
+         
          return functionHandler(bldr, c.list[0].val, evalArgs);
+         
       }case gnine::Cell::Symbol:{
-
+         
+         
          return symbolHandler(bldr, c.val);
       }
    }
@@ -311,8 +395,17 @@ TR::IlValue* ImageArray::functionHandler(TR::IlBuilder *bldr, const std::string 
                                        std::vector<TR::IlValue*> &args) {
    
    char s = MUL;
-   if(functionName == "+") {
+   
+   
+   
+   
+   
+   if(functionName == "if") {
+      s = IF;
+   } else if(functionName == "+") {
       s = ADD;
+   } else if(functionName == "and" or functionName == "&") {
+      s = AND;
    } else if(functionName == "*") {
       s = MUL;
    } else if(functionName == "/") {
@@ -323,6 +416,10 @@ TR::IlValue* ImageArray::functionHandler(TR::IlBuilder *bldr, const std::string 
       s = MIN;
    } else if(functionName == "max") {
       s = MAX;
+   } else if(functionName == "abs") {
+      s = ABS;
+   } else if(functionName == "int") {
+      s = INT;
    } else if(functionName == "<") {
       s = LT;
    } else if(functionName == ">") {
@@ -335,6 +432,10 @@ TR::IlValue* ImageArray::functionHandler(TR::IlBuilder *bldr, const std::string 
       s = EQ;
    } else if(functionName == "!=") {
       s = NOTQ;
+   } else if(functionName == "pow2") {
+      s = POW2;
+   } else if(functionName == "fib") {
+      s = FIB;
    } else if(functionName[0] == '@') {
       std::string imageName = std::string(functionName.begin()+1, functionName.end());
 //      bldr->Call("printInt32", 1,
@@ -377,6 +478,7 @@ TR::IlValue* ImageArray::numberHandler(TR::IlBuilder *bldr, const std::string &n
    double x = std::atof(number.c_str());
    return bldr->ConstDouble(x);
 }
+
 TR::IlValue* ImageArray::symbolHandler(TR::IlBuilder *bldr, const std::string &name){
    
    if(argNameToIndex.find(name) != argNameToIndex.end()){
@@ -384,6 +486,8 @@ TR::IlValue* ImageArray::symbolHandler(TR::IlBuilder *bldr, const std::string &n
                        i, j, symbols["w"], symbols["h"]);
    }else if(name == "i" || name == "j"){ // special symbols
       return name == "i" ? bldr->ConvertTo(Double, i) : bldr->ConvertTo(Double, j);
+   } else if(name == "c") {
+      return bldr->ConvertTo(Double, c);
    }else if(name == "width" || name == "height"){
 //      bldr->Call("printInt32", 1,
 //                 symbols["w"]); PrintString(bldr, " wi \n");
@@ -391,7 +495,9 @@ TR::IlValue* ImageArray::symbolHandler(TR::IlBuilder *bldr, const std::string &n
 //                 symbols["h"]); PrintString(bldr, " height \n");
 //
       return name == "width" ? bldr->ConvertTo(Double, symbols["w"]) : bldr->ConvertTo(Double, symbols["h"]);
-   }else {
+   } else if(symbols.find(name) != symbols.end()) {
+      return symbols[name];
+   } else {
       throw std::runtime_error("Unable to find symbol: " + name);
    }
    
@@ -482,9 +588,26 @@ TR::IlValue* ImageArray::function(TR::IlBuilder *bldr, std::vector<TR::IlValue*>
             rc3True->Store("sum",
                            one);
             return bldr->Load("sum");
+         case ABS:
+            return Abs(bldr, vects[0]);
+         case INT:
+            return bldr->ConvertTo(Double, bldr->ConvertTo(Int32, vects[0]));
+         case POW2:
+            return Pow2(bldr, vects[0]);
+         case FIB:
+            return Fib(bldr, vects[0]);
+         case AND:
+            bldr->Call("printDouble", 1,
+                       vects[1]); PrintString(bldr, " i \n");
+         case IF:
+            rc3True = NULL;
+            TR::IlBuilder *rc3False = NULL;
 
-         default:
-            break;
+            bldr->IfThenElse(&rc3True, &rc3False,
+                         bldr->EqualTo(vects[0], zero));
+            
+            rc3True->Store("sum", vects[1]);
+            rc3False->Store("sum", vects[2]);
       }
       
    }
@@ -506,21 +629,20 @@ ImageArray::buildIL()
       TR::IlValue *height = Load("height");
       TR::IlValue *result = Load("result");
 
-      PrintString(this, " \n");
-
 //      Call("printArrayDouble", 2, ConstInt32(16),
 //                  data); PrintString(this, " data \n");
-
 
       
       symbols["w"] = Sub(Load("width"), one);
       symbols["h"] = Sub(Load("height"), one);
 
       TR::IlBuilder *builder  = this;
-
+      
+      
+      
       
       gnine::Cell &argsCell = cell_.list[0];
-      gnine::Cell &code = cell_.list[1];
+      
       
       // Load arguments
       std::vector<std::string> argNames;
@@ -538,20 +660,27 @@ ImageArray::buildIL()
       for(size_t i = 0; i < argNames.size(); ++i) {
          argv.push_back(builder->LoadAt(ppDouble, builder->IndexAt(ppDouble, Load("data"), ConstInt32(i))));
       }
+      cell_.list.erase(cell_.list.begin());
 
          
       TR::IlBuilder *iloop=NULL, *jloop=NULL;
-      ForLoopUp("i", &iloop, zero, height, one);
+      ForLoopUp("i", &iloop, zero, Sub(height, one) , one);
       {
          i = iloop->Load("i");
          
-         iloop->ForLoopUp("j", &jloop, zero, width, one);
+         iloop->ForLoopUp("j", &jloop, zero, iloop->Sub(width, one), one);
          {
             j = jloop->Load("j");
-            TR::IlValue *ret = eval(jloop, code);
-//          jloop->Call("printDouble", 1,
-//                       ret); PrintString(jloop, " output \n");
-            Store2D(jloop, result, i, j, width,ret );
+            c = jloop->Add(jloop->Mul(i, width), j);
+            for(gnine::Cell c : cell_.list) {
+               if (c.type == gnine::Cell::List and c.list[0].val == "define") {
+                     symbols[c.list[1].val] = eval(jloop, c.list[2]);
+               } else {
+                  gnine::Cell &code = c;
+                  TR::IlValue *ret = eval(jloop, code);
+                  Store2D(jloop, result, i, j, width,ret );
+               }
+            }
 
          }
       }
