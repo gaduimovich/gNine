@@ -28,15 +28,20 @@
 #define SUB   '-'
 #define MUL   '*'
 #define DIV   '/'
+#define IF   '3'
 #define MIN   'M'
 #define MAX   'X'
+#define ABS   'A'
 #define LT   'L'
 #define GT   'G'
 #define GE   'g'
 #define LE   'l'
 #define EQ   'E'
 #define NOTQ   'N'
-
+#define INT 'I'
+#define POW2 'P'
+#define FIB 'F'
+#define AND '5'
 
 #include "Image.h"
 #include <stdio.h>
@@ -55,7 +60,6 @@
 #include "ilgen/TypeDictionary.hpp"
 #include "ilgen/MethodBuilder.hpp"
 #include <iostream>
-
 
 namespace TR { class TypeDictionary; }
 
@@ -81,6 +85,8 @@ class ImageArray : public TR::MethodBuilder
                        TR::IlValue *first,
                        TR::IlValue *second,
                           TR::IlValue *W, TR::IlValue *H);
+      
+   
    TR::IlValue *
       Abs(TR::IlBuilder *bldr, TR::IlValue *first);
 
@@ -88,13 +94,22 @@ class ImageArray : public TR::MethodBuilder
       MaxAbs(TR::IlBuilder *bldr, TR::IlValue *first, TR::IlValue *max);
    TR::IlValue *
       function(TR::IlBuilder *bldr, std::vector<TR::IlValue*> &vects, char &function);
+   
+      TR::IlValue* min(TR::IlBuilder *bldr, TR::IlValue* val1, TR::IlValue* val2);
+
       
+   TR::IlValue *
+   Fib(TR::IlBuilder *bldr, TR::IlValue *n);
+
+   TR::IlValue *
+      Pow2(TR::IlBuilder *bldr, TR::IlValue *first);
+
    void PrintString (TR::IlBuilder *bldr, const char *s);
    TR::IlType *pInt32;
    TR::IlType *pInt64;
    TR::IlType *pDouble;
    TR::IlType *ppDouble;
-   TR::IlValue *i, *j;
+   TR::IlValue *i, *j, *c;
    gnine::Cell cell_;
    std::map<std::string, TR::IlValue*> symbols;
    std::map<std::string, size_t> argNameToIndex;

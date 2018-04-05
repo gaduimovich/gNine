@@ -1,0 +1,4 @@
+; Zero out image wherever it is below 0.5
+((A)
+ (* A (/ (+ (/ (* j j) 100) (* -4 j) 400) height))
+)

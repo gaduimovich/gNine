@@ -44,6 +44,7 @@ int main (int argc, char *argsRaw[])
       std::cout << "    pixslam ((A B) (* 0.5 (+ A B))) image1.png image2.png blend.png\n\n";
       std::cout << "Arguments:\n\n";
       std::cout << "--logAsm     Dumps the generated assembly code to standard output.\n";
+      std::cout << "TIMES=N Executes the jited function more then once.\n";
       return 1;
    }
    
@@ -62,18 +63,26 @@ int main (int argc, char *argsRaw[])
    // parse command line arguments
    bool logAsm = false;
    bool logCommand = false;
+   int n_times = 1;
    for(auto s : options){
+      
       if(s == "--logAsm")
          logAsm = true;
       else if(s == "--logCommand")
          logCommand = true;
-      else{
+      else if (s.length() > 8 and s.substr(0, 8)== "--times=") {
+         std::cout << s.substr(8) << " = s\n";
+         std::stringstream ss(s.substr(8));
+         ss >> n_times;
+      } else {
          std::cerr << "Unrecognised command line switch: " << s << std::endl;
          return 1;
       }
       
    }
    
+   std::cout << n_times << " = ntimes\n";
+
    // See if first arg is a file and read code from it.
    // We infer file by checking that first char is not a '(' (cheeky but it works!)
    // Otherwise we interperate the argument as code directly.
@@ -151,11 +160,11 @@ int main (int argc, char *argsRaw[])
    for(Image &im : inputImages) {
       dataPtrs.push_back(im.getData());
    }
-   
-   for (int i = 0; i < 1; i++) {
-   test(size, image->width(), image->height() , image->stride(),
-        &dataPtrs[0], outIm.getData());
+   for (int i = 0; i < n_times; i++) {
+      test(size, image->width(), image->height(), image->stride(), dataPtrs.data(), outIm.getData());
    }
+   
+   
    outIm.write(outputImagePath);
    shutdownJit();
    
@@ -165,5 +174,11 @@ int main (int argc, char *argsRaw[])
    dataPtrs.clear();
    return 0;
 }
+
+//((A)(* 1 (= (- i (/ width 2)) (- i (/ height 2)))))
+
+
+
+
 
 

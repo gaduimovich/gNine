@@ -1,0 +1,6 @@
+((A)
+  (define a (/ (* j j) 100))
+  (define b (* -4 j))
+  (define c 400)
+  (* (== i (int (+ a b c))) 1)
+ )
