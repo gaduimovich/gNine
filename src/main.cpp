@@ -7,7 +7,6 @@
 #include "Jit.hpp"
 #include "ImageArray.hpp"
 #include "ilgen/TypeDictionary.hpp"
-#include <thread>
 
 using namespace gnine;
 

@@ -1,4 +1,4 @@
 ; Zero out image wherever it is below 0.5
 ((A)
- (* (== i (int (+ (/ (* j j) 100) (* -4 j) 400))) 1)
+ (* (== i  (+ (/ (* j j) 100) (* -4 j) 400)) 1)
 )

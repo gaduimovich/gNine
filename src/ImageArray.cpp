@@ -334,6 +334,7 @@ ImageArray::ImageArray(TR::TypeDictionary *d)
                   NoType,
                   1,
                   Double);
+      
    DefineFunction((char *)"printPointer",
                   (char *)__FILE__,
                   (char *)PRINTPOINTER_LINE,
@@ -396,10 +397,7 @@ TR::IlValue* ImageArray::functionHandler(TR::IlBuilder *bldr, const std::string 
    
    char s = MUL;
    
-   
-   
-   
-   
+
    if(functionName == "if") {
       s = IF;
    } else if(functionName == "+") {
@@ -502,14 +500,35 @@ TR::IlValue* ImageArray::symbolHandler(TR::IlBuilder *bldr, const std::string &n
    }
    
 }
+TR::IlValue* ImageArray::min(TR::IlBuilder *bldr, TR::IlValue* val1, TR::IlValue* val2) {
+   TR::IlBuilder * rc3True = NULL;
+   
+   bldr->IfThen(&rc3True,
+                bldr->LessThan(val1, val2));
+   
+   rc3True->Store("sum",
+                  val1);
+   
+   return bldr->Load("sum");
 
+}
 
 TR::IlValue* ImageArray::function(TR::IlBuilder *bldr, std::vector<TR::IlValue*> &vects, char &function) {
-   TR::IlBuilder *rc3True = NULL;
-   TR::IlValue *one = bldr->ConstDouble(1.0);
-   TR::IlValue *zero = bldr->ConstDouble(0.0);
-   bldr->Store("sum", vects[0]);
    
+   
+   if (function == MIN) {
+   TR::IlBuilder *rc3True = NULL;
+   bldr->Store("sum1", vects[0]);
+   for (unsigned int l = 1; l < vects.size(); l++) {
+      bldr->Store("sum1", min(bldr, vects[l], bldr->Load("sum1")));
+   }
+   return bldr->Load("sum1");
+   }
+   
+   TR::IlBuilder *rc3True = NULL;
+   bldr->Store("sum", vects[0]);
+//   TR::IlBuilder *orphan = OrphanBuilder();
+//   orphan->Store("sum", vects[1]);
    for (unsigned int l = 1; l < vects.size(); l++) {
       switch (function) {
          case ADD:
@@ -526,9 +545,10 @@ TR::IlValue* ImageArray::function(TR::IlBuilder *bldr, std::vector<TR::IlValue*>
             break;
          case MIN:
             rc3True = NULL;
-            
+
             bldr->IfThen(&rc3True,
                          bldr->LessThan(vects[l], bldr->Load("sum")));
+
             rc3True->Store("sum",
                            vects[l]);
             break;
@@ -541,52 +561,52 @@ TR::IlValue* ImageArray::function(TR::IlBuilder *bldr, std::vector<TR::IlValue*>
             break;
          case GT:
             rc3True = NULL;
-            bldr->Store("sum", zero);
+            bldr->Store("sum", symbols["zero"]);
             bldr->IfThen(&rc3True,
                          bldr->GreaterThan(vects[0], vects[1]));
             rc3True->Store("sum",
-                           one);
+                           symbols["one"]);
             return bldr->Load("sum");
          case LT:
             rc3True = NULL;
-            bldr->Store("sum", zero);
+            bldr->Store("sum", symbols["zero"]);
             bldr->IfThen(&rc3True,
                          bldr->LessThan(vects[0], vects[1]));
             rc3True->Store("sum",
-                           one);
+                           symbols["one"]);
             return bldr->Load("sum");
          case GE:
             rc3True = NULL;
-            bldr->Store("sum", zero);
+            bldr->Store("sum", symbols["zero"]);
             bldr->IfThen(&rc3True,
                          bldr->GreaterOrEqualTo(vects[0], vects[1]));
             rc3True->Store("sum",
-                           one);
+                           symbols["one"]);
             return bldr->Load("sum");
 
          case LE:
             rc3True = NULL;
-            bldr->Store("sum", zero);
+            bldr->Store("sum", symbols["zero"]);
             bldr->IfThen(&rc3True,
                          bldr->LessOrEqualTo(vects[0], vects[1]));
             rc3True->Store("sum",
-                           one);
+                           symbols["one"]);
             return bldr->Load("sum");
          case EQ:
             rc3True = NULL;
-            bldr->Store("sum", zero);
+            bldr->Store("sum", symbols["zero"]);
             bldr->IfThen(&rc3True,
                          bldr->EqualTo(vects[0], vects[1]));
             rc3True->Store("sum",
-                           one);
+                           symbols["one"]);
             return bldr->Load("sum");
          case NOTQ:
             rc3True = NULL;
-            bldr->Store("sum", zero);
+            bldr->Store("sum", symbols["zero"]);
             bldr->IfThen(&rc3True,
                          bldr->NotEqualTo(vects[0], vects[1]));
             rc3True->Store("sum",
-                           one);
+                           symbols["one"]);
             return bldr->Load("sum");
          case ABS:
             return Abs(bldr, vects[0]);
@@ -604,7 +624,7 @@ TR::IlValue* ImageArray::function(TR::IlBuilder *bldr, std::vector<TR::IlValue*>
             TR::IlBuilder *rc3False = NULL;
 
             bldr->IfThenElse(&rc3True, &rc3False,
-                         bldr->EqualTo(vects[0], zero));
+                         bldr->EqualTo(vects[0], symbols["zero"]));
             
             rc3True->Store("sum", vects[1]);
             rc3False->Store("sum", vects[2]);
@@ -635,14 +655,12 @@ ImageArray::buildIL()
       
       symbols["w"] = Sub(Load("width"), one);
       symbols["h"] = Sub(Load("height"), one);
-
+      symbols["one"] = ConstDouble(1.0);
+      symbols["zero"] = ConstDouble(0.0);
+      
       TR::IlBuilder *builder  = this;
       
-      
-      
-      
       gnine::Cell &argsCell = cell_.list[0];
-      
       
       // Load arguments
       std::vector<std::string> argNames;
@@ -689,6 +707,8 @@ ImageArray::buildIL()
 //      Call("printArrayDouble", 2,ConstInt32(16),
 //           result); PrintString(this, " result \n");
 //
+      
+      
 
    Return();
 

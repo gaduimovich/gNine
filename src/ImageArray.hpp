@@ -95,6 +95,9 @@ class ImageArray : public TR::MethodBuilder
    TR::IlValue *
       function(TR::IlBuilder *bldr, std::vector<TR::IlValue*> &vects, char &function);
    
+      TR::IlValue* min(TR::IlBuilder *bldr, TR::IlValue* val1, TR::IlValue* val2);
+
+      
    TR::IlValue *
    Fib(TR::IlBuilder *bldr, TR::IlValue *n);
 
