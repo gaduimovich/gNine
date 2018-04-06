@@ -397,13 +397,10 @@ TR::IlValue* ImageArray::functionHandler(TR::IlBuilder *bldr, const std::string 
    
    char s = MUL;
    
-
    if(functionName == "if") {
       s = IF;
    } else if(functionName == "+") {
       s = ADD;
-   } else if(functionName == "and" or functionName == "&") {
-      s = AND;
    } else if(functionName == "*") {
       s = MUL;
    } else if(functionName == "/") {
@@ -441,7 +438,7 @@ TR::IlValue* ImageArray::functionHandler(TR::IlBuilder *bldr, const std::string 
    } else if(functionName == "pow2") {
       return Pow2(bldr, args[0]);
    } else if(functionName == "fib") {
-      return Fib(bldr, args[0]);
+      s = FIB;
    } else if(functionName[0] == '@') {
       std::string imageName = std::string(functionName.begin()+1, functionName.end());
       if(argNameToIndex.find(imageName) == argNameToIndex.end())
