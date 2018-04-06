@@ -411,50 +411,46 @@ TR::IlValue* ImageArray::functionHandler(TR::IlBuilder *bldr, const std::string 
    } else if(functionName == "-") {
       s = SUB;
    } else if(functionName == "min") {
-      s = MIN;
+      bldr->Store("sum", args[0]);
+      for (unsigned int l = 1; l < args.size(); l++) {
+         bldr->Store("sum", min(bldr, args[l], bldr->Load("sum")));
+      }
+      return bldr->Load("sum");
    } else if(functionName == "max") {
-      s = MAX;
+      bldr->Store("sum", args[0]);
+      for (unsigned int l = 1; l < args.size(); l++) {
+         bldr->Store("sum", max(bldr, args[l], bldr->Load("sum")));
+      }
+      return bldr->Load("sum");
    } else if(functionName == "abs") {
-      s = ABS;
+      return Abs(bldr, args[0]);
    } else if(functionName == "int") {
-      s = INT;
+      return bldr->ConvertTo(Double, bldr->ConvertTo(Int32, args[0]));
    } else if(functionName == "<") {
-      s = LT;
+      return bldr->ConvertTo(Double, bldr->LessThan(args[0], args[1]));
    } else if(functionName == ">") {
-      s = GT;
+      return bldr->ConvertTo(Double, bldr->GreaterThan(args[0], args[1]));
    } else if(functionName == "<=") {
-      s = LE;
+      return bldr->ConvertTo(Double, bldr->LessOrEqualTo(args[0], args[1]));
    } else if(functionName == ">=") {
-      s = GE;
+      return bldr->ConvertTo(Double, bldr->GreaterOrEqualTo(args[0], args[1]));
    } else if(functionName == "==") {
-      s = EQ;
+      return bldr->ConvertTo(Double, bldr->EqualTo(args[0], args[1]));
    } else if(functionName == "!=") {
-      s = NOTQ;
+      return bldr->ConvertTo(Double, bldr->NotEqualTo(args[0], args[1]));
    } else if(functionName == "pow2") {
-      s = POW2;
+      return Pow2(bldr, args[0]);
    } else if(functionName == "fib") {
-      s = FIB;
+      return Fib(bldr, args[0]);
    } else if(functionName[0] == '@') {
       std::string imageName = std::string(functionName.begin()+1, functionName.end());
-//      bldr->Call("printInt32", 1,
-//                 i); PrintString(bldr, " i \n");
-//     bldr->Call("printInt32", 1,
-//                j); PrintString(bldr, " j \n");
-//
-//      bldr->Call("printInt32", 1,
-//                 bldr->ConvertTo(Int32, args[0])); PrintString(bldr, "a0 \n");
-//      bldr->Call("printInt32", 1,
-//                 bldr->ConvertTo(Int32, args[1])); PrintString(bldr, "a1 \n");
-
       if(argNameToIndex.find(imageName) == argNameToIndex.end())
          std::runtime_error("Absolute indexing with unknown image " + imageName);
       return Load2D(bldr, argv[argNameToIndex.at(imageName)],
                        bldr->ConvertTo(Int32, args[0]),
                        bldr->ConvertTo(Int32, args[1]),
                        symbols["w"], symbols["h"]);
-      
-
-   } else {
+         } else {
 //      bldr->Call("printInt32", 1,
 //                 bldr->ConvertTo(Int32, args[1]));
 //
@@ -506,24 +502,27 @@ TR::IlValue* ImageArray::min(TR::IlBuilder *bldr, TR::IlValue* val1, TR::IlValue
    bldr->IfThen(&rc3True,
                 bldr->LessThan(val1, val2));
    
-   rc3True->Store("sum",
+   rc3True->Store("sum_min",
                   val1);
    
-   return bldr->Load("sum");
+   return bldr->Load("sum_min");
 
 }
 
+TR::IlValue* ImageArray::max(TR::IlBuilder *bldr, TR::IlValue* val1, TR::IlValue* val2) {
+   TR::IlBuilder * rc3True = NULL;
+   
+   bldr->IfThen(&rc3True,
+                bldr->GreaterThan(val1, val2));
+   
+   rc3True->Store("sum_max",
+                  val1);
+   
+   return bldr->Load("sum_max");
+   
+}
+
 TR::IlValue* ImageArray::function(TR::IlBuilder *bldr, std::vector<TR::IlValue*> &vects, char &function) {
-   
-   
-   if (function == MIN) {
-   TR::IlBuilder *rc3True = NULL;
-   bldr->Store("sum1", vects[0]);
-   for (unsigned int l = 1; l < vects.size(); l++) {
-      bldr->Store("sum1", min(bldr, vects[l], bldr->Load("sum1")));
-   }
-   return bldr->Load("sum1");
-   }
    
    TR::IlBuilder *rc3True = NULL;
    bldr->Store("sum", vects[0]);
@@ -543,71 +542,6 @@ TR::IlValue* ImageArray::function(TR::IlBuilder *bldr, std::vector<TR::IlValue*>
          case DIV:
             bldr->Store("sum", bldr->Div(bldr->Load("sum"), vects[l]));
             break;
-         case MIN:
-            rc3True = NULL;
-
-            bldr->IfThen(&rc3True,
-                         bldr->LessThan(vects[l], bldr->Load("sum")));
-
-            rc3True->Store("sum",
-                           vects[l]);
-            break;
-         case MAX:
-            rc3True = NULL;
-            bldr->IfThen(&rc3True,
-                         bldr->GreaterThan(vects[l], bldr->Load("sum")));
-            rc3True->Store("sum",
-                           vects[l]);
-            break;
-         case GT:
-            rc3True = NULL;
-            bldr->Store("sum", symbols["zero"]);
-            bldr->IfThen(&rc3True,
-                         bldr->GreaterThan(vects[0], vects[1]));
-            rc3True->Store("sum",
-                           symbols["one"]);
-            return bldr->Load("sum");
-         case LT:
-            rc3True = NULL;
-            bldr->Store("sum", symbols["zero"]);
-            bldr->IfThen(&rc3True,
-                         bldr->LessThan(vects[0], vects[1]));
-            rc3True->Store("sum",
-                           symbols["one"]);
-            return bldr->Load("sum");
-         case GE:
-            rc3True = NULL;
-            bldr->Store("sum", symbols["zero"]);
-            bldr->IfThen(&rc3True,
-                         bldr->GreaterOrEqualTo(vects[0], vects[1]));
-            rc3True->Store("sum",
-                           symbols["one"]);
-            return bldr->Load("sum");
-
-         case LE:
-            rc3True = NULL;
-            bldr->Store("sum", symbols["zero"]);
-            bldr->IfThen(&rc3True,
-                         bldr->LessOrEqualTo(vects[0], vects[1]));
-            rc3True->Store("sum",
-                           symbols["one"]);
-            return bldr->Load("sum");
-         case EQ:
-            rc3True = NULL;
-            bldr->Store("sum", symbols["zero"]);
-            bldr->IfThen(&rc3True,
-                         bldr->EqualTo(vects[0], vects[1]));
-            rc3True->Store("sum",
-                           symbols["one"]);
-            return bldr->Load("sum");
-         case NOTQ:
-            rc3True = NULL;
-            bldr->Store("sum", symbols["zero"]);
-            bldr->IfThen(&rc3True,
-                         bldr->NotEqualTo(vects[0], vects[1]));
-            rc3True->Store("sum",
-                           symbols["one"]);
-            return bldr->Load("sum");
          case ABS:
             return Abs(bldr, vects[0]);
          case INT:
