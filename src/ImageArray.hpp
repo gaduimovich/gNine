@@ -97,6 +97,7 @@ class ImageArray : public TR::MethodBuilder
    
       TR::IlValue* min(TR::IlBuilder *bldr, TR::IlValue* val1, TR::IlValue* val2);
       TR::IlValue* max(TR::IlBuilder *bldr, TR::IlValue* val1, TR::IlValue* val2);
+      TR::IlValue* cast(TR::IlBuilder *bldr, TR::IlValue* val1);
 
       
    TR::IlValue *

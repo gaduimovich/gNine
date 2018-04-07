@@ -408,21 +408,21 @@ TR::IlValue* ImageArray::functionHandler(TR::IlBuilder *bldr, const std::string 
    } else if(functionName == "-") {
       s = SUB;
    } else if(functionName == "min") {
-      bldr->Store("sum", args[0]);
+      bldr->Store("sum_max", args[0]);
       for (unsigned int l = 1; l < args.size(); l++) {
-         bldr->Store("sum", min(bldr, args[l], bldr->Load("sum")));
+         bldr->Store("sum_max", min(bldr, args[l], bldr->Load("sum_max")));
       }
-      return bldr->Load("sum");
+      return bldr->Load("sum_max");
    } else if(functionName == "max") {
-      bldr->Store("sum", args[0]);
+      bldr->Store("sum_max", args[0]);
       for (unsigned int l = 1; l < args.size(); l++) {
-         bldr->Store("sum", max(bldr, args[l], bldr->Load("sum")));
+         bldr->Store("sum_max", max(bldr, args[l], bldr->Load("sum_max")));
       }
-      return bldr->Load("sum");
+      return bldr->Load("sum_max");
    } else if(functionName == "abs") {
       return Abs(bldr, args[0]);
    } else if(functionName == "int") {
-      return bldr->ConvertTo(Double, bldr->ConvertTo(Int32, args[0]));
+      s = INT;
    } else if(functionName == "<") {
       return bldr->ConvertTo(Double, bldr->LessThan(args[0], args[1]));
    } else if(functionName == ">") {
@@ -436,7 +436,7 @@ TR::IlValue* ImageArray::functionHandler(TR::IlBuilder *bldr, const std::string 
    } else if(functionName == "!=") {
       return bldr->ConvertTo(Double, bldr->NotEqualTo(args[0], args[1]));
    } else if(functionName == "pow2") {
-      return Pow2(bldr, args[0]);
+      s = POW2;
    } else if(functionName == "fib") {
       s = FIB;
    } else if(functionName[0] == '@') {
@@ -519,9 +519,13 @@ TR::IlValue* ImageArray::max(TR::IlBuilder *bldr, TR::IlValue* val1, TR::IlValue
    
 }
 
+TR::IlValue* ImageArray::cast(TR::IlBuilder *bldr, TR::IlValue* val1) {
+   return bldr->ConvertTo(Double, bldr->ConvertTo(Int32, val1));
+}
+
+
 TR::IlValue* ImageArray::function(TR::IlBuilder *bldr, std::vector<TR::IlValue*> &vects, char &function) {
    
-   TR::IlBuilder *rc3True = NULL;
    bldr->Store("sum", vects[0]);
 //   TR::IlBuilder *orphan = OrphanBuilder();
 //   orphan->Store("sum", vects[1]);
@@ -542,16 +546,13 @@ TR::IlValue* ImageArray::function(TR::IlBuilder *bldr, std::vector<TR::IlValue*>
          case ABS:
             return Abs(bldr, vects[0]);
          case INT:
-            return bldr->ConvertTo(Double, bldr->ConvertTo(Int32, vects[0]));
+            return cast(bldr, vects[0]);
          case POW2:
             return Pow2(bldr, vects[0]);
          case FIB:
             return Fib(bldr, vects[0]);
-         case AND:
-            bldr->Call("printDouble", 1,
-                       vects[1]); PrintString(bldr, " i \n");
          case IF:
-            rc3True = NULL;
+            TR::IlBuilder *rc3True = NULL;
             TR::IlBuilder *rc3False = NULL;
 
             bldr->IfThenElse(&rc3True, &rc3False,
