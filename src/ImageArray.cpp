@@ -115,9 +115,9 @@ ImageArray::Load2D(TR::IlBuilder *bldr,
    secondAbs = bldr->Sub(bldr->Xor(second, sy), sy);
    
       bldr->Call("printInt32", 1,
-                  i); PrintString(bldr, " :i ");
+                  first); PrintString(bldr, " :i ");
       bldr->Call("printInt32", 1,
-                  j); PrintString(bldr, " :j ");
+                  second); PrintString(bldr, " :j ");
       bldr->Call("printInt32", 1,
                  bldr->Add( bldr->      Add(
                                             bldr->         Mul(
