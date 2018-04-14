@@ -99,12 +99,8 @@ class ImageArray : public TR::MethodBuilder
       TR::IlValue* max(TR::IlBuilder *bldr, TR::IlValue* val1, TR::IlValue* val2);
       TR::IlValue* cast(TR::IlBuilder *bldr, TR::IlValue* val1);
 
-      
    TR::IlValue *
    Fib(TR::IlBuilder *bldr, TR::IlValue *n);
-
-   TR::IlValue *
-      Pow2(TR::IlBuilder *bldr, TR::IlValue *first);
 
    void PrintString (TR::IlBuilder *bldr, const char *s);
    TR::IlType *pInt32;
