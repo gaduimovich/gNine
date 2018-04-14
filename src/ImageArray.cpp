@@ -375,8 +375,8 @@ TR::IlValue* ImageArray::functionHandler(TR::IlBuilder *bldr, const std::string 
                        bldr->ConvertTo(Int32, args[1]),
                        symbols["w"], symbols["h"]);
          } else {
-//      bldr->Call("printInt32", 1,
-//                 bldr->ConvertTo(Int32, args[1]));
+      bldr->Call("printInt32", 1,
+                 bldr->Add(bldr->ConvertTo(Int32, args[0]), i));
 //
    return Load2D(bldr, argv[argNameToIndex.at(functionName)],
                        bldr->Add(bldr->ConvertTo(Int32, args[0]), i),
