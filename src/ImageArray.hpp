@@ -102,6 +102,12 @@ class ImageArray : public TR::MethodBuilder
       TR::IlValue* cast(TR::IlBuilder *bldr, TR::IlValue* val1);
 
    TR::IlValue *
+   GetIndex(TR::IlBuilder *bldr,
+                        TR::IlValue *j,
+            TR::IlValue *W);
+      
+      
+   TR::IlValue *
    Fib(TR::IlBuilder *bldr, TR::IlValue *n);
 
    void PrintString (TR::IlBuilder *bldr, const char *s);

@@ -146,6 +146,23 @@ ImageArray::Store2D(TR::IlBuilder *bldr,
 //def index(i , j, width):
    //return absolute(j) + absolute(i) * (width + 1)
 
+TR::IlValue *
+ImageArray::GetIndex(TR::IlBuilder *bldr,
+                   TR::IlValue *j,
+                     TR::IlValue *W) {
+   
+   TR::IlValue *jAbs = Abs32(bldr, j);
+
+   return bldr->Add(bldr->Add(bldr->Mul(bldr->GreaterThan(jAbs, W), bldr->Sub(bldr->Add(bldr->ConstInt32(1), bldr->Add(W, W)), jAbs)),
+                              bldr->Mul(
+                                        bldr->Mul(bldr->LessThan(j, bldr->ConstInt32(0)),
+                                                  bldr->LessThan(jAbs, W)), Abs32(bldr, bldr->Add(j, bldr->ConstInt32(1))))),
+                    bldr->Mul(bldr->Mul(bldr->GreaterThan(j, bldr->ConstInt32(0)), bldr->LessOrEqualTo(i, W)), j));
+
+   
+}
+
+
 
 
 TR::IlValue *
@@ -157,26 +174,9 @@ ImageArray::Load2D(TR::IlBuilder *bldr,
 
 {
    
-   TR::IlValue *iAbs, *jAbs, *reti, *retj;
-   
-   iAbs = Abs32(bldr, i);
-   jAbs = Abs32(bldr, j);
-   
-   
-   reti = bldr->Add(bldr->Add(bldr->Mul(bldr->GreaterThan(iAbs, H), bldr->Sub(bldr->Add(bldr->ConstInt32(1), bldr->Add(H, H)), iAbs)),
-                       bldr->Mul(
-                                 bldr->Mul(bldr->LessThan(i, bldr->ConstInt32(0)),
-                                           bldr->LessThan(iAbs, H)), Abs32(bldr, bldr->Add(i, bldr->ConstInt32(1))))),
-             bldr->Mul(bldr->Mul(bldr->GreaterThan(i, bldr->ConstInt32(0)), bldr->LessOrEqualTo(i, H)), i));
+   TR::IlValue *reti = GetIndex(bldr, i, W);
+   TR::IlValue *retj = GetIndex(bldr, j, W);
 
-   
-   retj = bldr->Add(bldr->Add(bldr->Mul(bldr->GreaterThan(jAbs, W), bldr->Sub(bldr->Add(bldr->ConstInt32(1), bldr->Add(W, W)), jAbs)),
-                              bldr->Mul(
-                                        bldr->Mul(bldr->LessThan(j, bldr->ConstInt32(0)),
-                                                  bldr->LessThan(jAbs, W)), Abs32(bldr, bldr->Add(j, bldr->ConstInt32(1))))),
-                    bldr->Mul(bldr->Mul(bldr->GreaterThan(j, bldr->ConstInt32(0)), bldr->LessOrEqualTo(i, W)), j));
-
-   
    return
    bldr->LoadAt(pDouble,
                 bldr-> IndexAt(pDouble, base, bldr->Add( bldr->      Add(
