@@ -89,6 +89,8 @@ class ImageArray : public TR::MethodBuilder
    
    TR::IlValue *
       Abs(TR::IlBuilder *bldr, TR::IlValue *first);
+   TR::IlValue *
+      Abs32(TR::IlBuilder *bldr, TR::IlValue *first);
 
    TR::IlValue *
       MaxAbs(TR::IlBuilder *bldr, TR::IlValue *first, TR::IlValue *max);

@@ -155,7 +155,7 @@ int main (int argc, char *argsRaw[])
    
    
    int size = image->width() * image->height();
-   
+
    std::vector<double*> dataPtrs;
    for(Image &im : inputImages) {
       dataPtrs.push_back(im.getData());
@@ -163,7 +163,7 @@ int main (int argc, char *argsRaw[])
    for (int i = 0; i < n_times; i++) {
       test(size, image->width(), image->height(), image->stride(), dataPtrs.data(), outIm.getData());
    }
-   
+
    
    outIm.write(outputImagePath);
    shutdownJit();

@@ -90,52 +90,134 @@ ImageArray::Store2D(TR::IlBuilder *bldr,
                  value);
    
    }
+//TR::IlValue *
+//ImageArray::Load2D(TR::IlBuilder *bldr,
+//                   TR::IlValue *base,
+//                   TR::IlValue *first,
+//                   TR::IlValue *second,
+//                   TR::IlValue *W, TR::IlValue *H)
+//{
+//
+////   bldr->Call("printInt32", 1,
+////        first); PrintString(bldr, " first \n");
+////   bldr->Call("printInt32", 1,
+////              second); PrintString(bldr, " second \n");
+////   bldr->Call("printInt32", 1,
+////              bldr->      Add(
+////                              bldr->         Mul(
+////                                                 first,
+////                                                 W),
+////                              second)); PrintString(bldr, " arrayindex \n");
+//   TR::IlValue *firstAbs, *secondAbs, *fy, *sy;
+//   fy = bldr->ShiftR(first, bldr->ConstInt32(31));
+//   sy = bldr->ShiftR(second, bldr->ConstInt32(31));
+//   firstAbs = bldr->Sub(bldr->Xor(first, fy), fy);
+//   secondAbs = bldr->Sub(bldr->Xor(second, sy), sy);
+//
+//      bldr->Call("printInt32", 1,
+//                  first); PrintString(bldr, " :i ");
+//      bldr->Call("printInt32", 1,
+//                  second); PrintString(bldr, " :j ");
+//      bldr->Call("printInt32", 1,
+//                 bldr->Add( bldr->      Add(
+//                                            bldr->         Mul(
+//                                                               firstAbs,
+//                                                               W),
+//                                            secondAbs), firstAbs)); PrintString(bldr, " \n");
+
+//return
+//bldr->LoadAt(pDouble,
+//             bldr-> IndexAt(pDouble, base, bldr->Add( bldr->      Add(
+//                                                                      bldr->         Mul(
+//                                                                                         firstAbs,
+//                                                                                         W),
+//                                                                      secondAbs), firstAbs))) );
+
+
+//def absolute(i):
+//if abs(i) > 511:
+  //return 511 + 512 * int(abs(i)/512) - abs(i)
+   //elif i < 0:
+  //return abs(i+1)
+  //else:
+  //return i
+//
+//
+//def index(i , j, width):
+   //return absolute(j) + absolute(i) * (width + 1)
+
+
+
 TR::IlValue *
 ImageArray::Load2D(TR::IlBuilder *bldr,
                    TR::IlValue *base,
-                   TR::IlValue *first,
-                   TR::IlValue *second,
+                   TR::IlValue *i,
+                   TR::IlValue *j,
                    TR::IlValue *W, TR::IlValue *H)
+
 {
    
-//   bldr->Call("printInt32", 1,
-//        first); PrintString(bldr, " first \n");
-//   bldr->Call("printInt32", 1,
-//              second); PrintString(bldr, " second \n");
-//   bldr->Call("printInt32", 1,
-//              bldr->      Add(
-//                              bldr->         Mul(
-//                                                 first,
-//                                                 W),
-//                              second)); PrintString(bldr, " arrayindex \n");
-   TR::IlValue *firstAbs, *secondAbs, *fy, *sy;
-   fy = bldr->ShiftR(first, bldr->ConstInt32(31));
-   sy = bldr->ShiftR(second, bldr->ConstInt32(31));
-   firstAbs = bldr->Sub(bldr->Xor(first, fy), fy);
-   secondAbs = bldr->Sub(bldr->Xor(second, sy), sy);
+   TR::IlValue *iAbs, *jAbs, *reti, *retj;
    
-      bldr->Call("printInt32", 1,
-                  first); PrintString(bldr, " :i ");
-      bldr->Call("printInt32", 1,
-                  second); PrintString(bldr, " :j ");
-      bldr->Call("printInt32", 1,
-                 bldr->Add( bldr->      Add(
-                                            bldr->         Mul(
-                                                               firstAbs,
-                                                               W),
-                                            secondAbs), firstAbs)); PrintString(bldr, " \n");
+   iAbs = Abs32(bldr, i);
+   jAbs = Abs32(bldr, j);
    
    
+   reti = bldr->Add(bldr->Add(bldr->Mul(bldr->GreaterThan(iAbs, H), bldr->Sub(bldr->Add(bldr->ConstInt32(1), bldr->Add(H, H)), iAbs)),
+                       bldr->Mul(
+                                 bldr->Mul(bldr->LessThan(i, bldr->ConstInt32(0)),
+                                           bldr->LessThan(iAbs, H)), Abs32(bldr, bldr->Add(i, bldr->ConstInt32(1))))),
+             bldr->Mul(bldr->Mul(bldr->GreaterThan(i, bldr->ConstInt32(0)), bldr->LessOrEqualTo(i, H)), i));
 
+   
+   retj = bldr->Add(bldr->Add(bldr->Mul(bldr->GreaterThan(jAbs, W), bldr->Sub(bldr->Add(bldr->ConstInt32(1), bldr->Add(W, W)), jAbs)),
+                              bldr->Mul(
+                                        bldr->Mul(bldr->LessThan(j, bldr->ConstInt32(0)),
+                                                  bldr->LessThan(jAbs, W)), Abs32(bldr, bldr->Add(j, bldr->ConstInt32(1))))),
+                    bldr->Mul(bldr->Mul(bldr->GreaterThan(j, bldr->ConstInt32(0)), bldr->LessOrEqualTo(i, W)), j));
+
+   
    return
    bldr->LoadAt(pDouble,
-                bldr->   IndexAt(pDouble,
-                                 base,
-                                bldr->Add( bldr->      Add(
-                                                 bldr->         Mul(
-                                                                    firstAbs,
-                                                                    W),
-                                                 secondAbs), firstAbs)) );
+                bldr-> IndexAt(pDouble, base, bldr->Add( bldr->      Add(
+                                                                         bldr->         Mul(
+                                                                                            reti,
+                                                                                            W),
+                                                                         retj), reti)));
+
+   
+   
+//   int(abs(i) > 511) * (512-(abs(i)-511)) +
+//   int(i < 0) * int(abs(i) < 511) * abs(i+1) +
+//   int(i >= 0) * int(i < 512) * i
+//
+//   (abs(i) > 511): bldr->GreaterThan(iAbs, height)
+//
+//   (512-(abs(i)-511)) : bldr->Sub(bldr->Add(bldr->ConstInt32(1), bldr->Add(height, height)), iAbs)
+   
+//   bldr->Mul(bldr->GreaterThan(iAbs, H), bldr->Sub(bldr->Add(bldr->ConstInt32(1), bldr->Add(H, H)), iAbs));
+   
+   
+//   int(i < 0) : bldr->LessThan(i, bldr->ConstInt32(0)
+//   (abs(i) < 511) : bldr->LessThan(iAbs, height)
+
+   
+                               
+   
+//   int(i >= 0)   bldr->GreaterThan(i, bldr->ConstInt32(0))
+//   int(i < 512) i bldr->LessOrEqualTo(i, height)
+//
+   
+//
+//   bldr->Call("printInt32", 1,
+//              i); PrintString(bldr, " :i ");
+//   bldr->Call("printInt32", 1,
+//              j); PrintString(bldr, " :j \n");
+//
+//
+//   return
+//   bldr->LoadAt(pDouble,
+//                bldr-> IndexAt(pDouble, base, jAbs) );
 }
 
 TR::IlValue *
@@ -153,6 +235,14 @@ ImageArray::MaxAbs(TR::IlBuilder *bldr, TR::IlValue *first, TR::IlValue *max)
    
    return bldr->Load("rc3");
 
+}
+
+TR::IlValue *
+ImageArray::Abs32(TR::IlBuilder *bldr, TR::IlValue *first)
+{
+   TR::IlValue *fy;
+   fy = bldr->ShiftR(first, bldr->ConstInt32(32));
+   return bldr->Sub(bldr->Xor(first, fy), fy);
 }
 
 TR::IlValue *
@@ -503,12 +593,13 @@ ImageArray::buildIL()
       TR::IlValue *height = Load("height");
       TR::IlValue *result = Load("result");
 
+      
 //      Call("printArrayDouble", 2, ConstInt32(16),
 //                  data); PrintString(this, " data \n");
 
       
-      symbols["w"] = Sub(Load("width"), one);
-      symbols["h"] = Sub(Load("height"), one);
+      symbols["w"] = Sub(Load("width"), ConstInt32(1));
+      symbols["h"] =  Sub(Load("height"), ConstInt32(1));
       symbols["one"] = ConstDouble(1.0);
       symbols["zero"] = ConstDouble(0.0);
       
