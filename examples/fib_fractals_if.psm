@@ -1,0 +1,14 @@
+ ((A) ; Fibonacii recursive
+  (if (== 0 j)
+  (if (<= i 2)
+     1
+     
+   (+ (@output (- i 1) 0)  (@output (- i 2) 0)) 
+  
+  )
+
+
+ (@A (@output (/ i 37) 0) ( / (* i j) 2 ) )
+  )
+  )
+
