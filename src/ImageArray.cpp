@@ -157,7 +157,7 @@ ImageArray::GetIndex(TR::IlBuilder *bldr,
                               bldr->Mul(
                                         bldr->Mul(bldr->LessThan(j, bldr->ConstInt32(0)),
                                                   bldr->LessThan(jAbs, W)), Abs32(bldr, bldr->Add(j, bldr->ConstInt32(1))))),
-                    bldr->Mul(bldr->Mul(bldr->GreaterThan(j, bldr->ConstInt32(0)), bldr->LessOrEqualTo(i, W)), j));
+                    bldr->Mul(bldr->Mul(bldr->GreaterThan(j, bldr->ConstInt32(0)), bldr->LessOrEqualTo(j, W)), j));
 
    
 }
@@ -174,7 +174,7 @@ ImageArray::Load2D(TR::IlBuilder *bldr,
 
 {
    
-   TR::IlValue *reti = GetIndex(bldr, i, W);
+   TR::IlValue *reti = GetIndex(bldr, i, H);
    TR::IlValue *retj = GetIndex(bldr, j, W);
 
    return
