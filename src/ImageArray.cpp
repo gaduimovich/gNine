@@ -114,6 +114,18 @@ ImageArray::Load2D(TR::IlBuilder *bldr,
    firstAbs = bldr->Sub(bldr->Xor(first, fy), fy);
    secondAbs = bldr->Sub(bldr->Xor(second, sy), sy);
    
+      bldr->Call("printInt32", 1,
+                  i); PrintString(bldr, " :i ");
+      bldr->Call("printInt32", 1,
+                  j); PrintString(bldr, " :j ");
+      bldr->Call("printInt32", 1,
+                 bldr->Add( bldr->      Add(
+                                            bldr->         Mul(
+                                                               firstAbs,
+                                                               W),
+                                            secondAbs), firstAbs)); PrintString(bldr, " \n");
+   
+   
 
    return
    bldr->LoadAt(pDouble,
@@ -375,15 +387,13 @@ TR::IlValue* ImageArray::functionHandler(TR::IlBuilder *bldr, const std::string 
                        bldr->ConvertTo(Int32, args[1]),
                        symbols["w"], symbols["h"]);
          } else {
-      bldr->Call("printInt32", 1,
-                 bldr->Add(bldr->ConvertTo(Int32, args[0]), i));
-//
+            
    return Load2D(bldr, argv[argNameToIndex.at(functionName)],
                        bldr->Add(bldr->ConvertTo(Int32, args[0]), i),
                        bldr->Add(bldr->ConvertTo(Int32, args[1]), j),
                        symbols["w"], symbols["h"]);
       
-
+         
       
 
 
