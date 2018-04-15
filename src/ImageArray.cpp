@@ -313,38 +313,38 @@ ImageArray::Fib(TR::IlBuilder *bldr, TR::IlValue *n) {
    TR::IlBuilder *returnN = NULL;
    TR::IlBuilder *elseN = NULL;
    
-   bldr->Store("n", bldr->ConvertTo(Int32, n));
+   bldr->Store("n", n);
    
    bldr->IfThenElse(&returnN, &elseN,
-                    LessThan(
+                    bldr->LessThan(
                              bldr->Load("n"),
-                             bldr->ConstInt32(2)));
+                             bldr->ConstDouble(2)));
    
-   returnN->Store("Sum", returnN->Load("n"));
+   returnN->Store("Sum", bldr->Load("n"));
    
    
    elseN->Store("LastSum",
-                elseN->ConstInt32(0));
+                elseN->ConstDouble(0));
    
    elseN->Store("Sum",
-                elseN->ConstInt32(1));
+                elseN->ConstDouble(1));
    
-   TR::IlBuilder *iloop = NULL;
-   elseN->ForLoopUp("i", &iloop,
+   TR::IlBuilder *mloop = NULL;
+   elseN->ForLoopUp("kk", &mloop,
                     elseN->ConstInt32(1),
-                    elseN->Load("n"),
+                    elseN->ConvertTo(Int32, elseN->Load("n")),
                     elseN->ConstInt32(1));
    
-   iloop->Store("tempSum",
-                iloop->   Add(
-                              iloop->      Load("Sum"),
-                              iloop->      Load("LastSum")));
-   iloop->Store("LastSum",
-                iloop->   Load("Sum"));
-   iloop->Store("Sum",
-                iloop->   Load("tempSum"));
+   mloop->Store("tempSum",
+                mloop->   Add(
+                              mloop->      Load("Sum"),
+                              mloop->      Load("LastSum")));
+   mloop->Store("LastSum",
+                mloop->   Load("Sum"));
+   mloop->Store("Sum",
+                mloop->   Load("tempSum"));
    
-   return bldr->ConvertTo(Double, bldr->Load("Sum"));
+   return bldr->Load("Sum");
    
 }
 
@@ -537,10 +537,6 @@ TR::IlValue* ImageArray::functionHandler(TR::IlBuilder *bldr, const std::string 
                        bldr->Add(bldr->ConvertTo(Int32, args[1]), j),
                        symbols["w"], symbols["h"]);
       
-         
-      
-
-
    }
 
    return function(bldr, args, s);
@@ -705,7 +701,7 @@ ImageArray::buildIL()
 //                              j); PrintString(jloop, " :j ");
 //                  jloop->Call("printDouble", 1,
 //                              ret); PrintString(jloop, " \n");
-
+//
 
                   Store2D(jloop, result, i, j, width,ret );
                }
