@@ -80,20 +80,10 @@ class ImageArray : public TR::MethodBuilder
                        TR::IlValue *first,
                        TR::IlValue *second,
                        TR::IlValue *W, TR::IlValue *H);
-   TR::IlValue *Load2DAbs(TR::IlBuilder *bldr,
-                       TR::IlValue *base,
-                       TR::IlValue *first,
-                       TR::IlValue *second,
-                          TR::IlValue *W, TR::IlValue *H);
-      
    
-   TR::IlValue *
-      Abs(TR::IlBuilder *bldr, TR::IlValue *first);
    TR::IlValue *
       Abs32(TR::IlBuilder *bldr, TR::IlValue *first);
 
-   TR::IlValue *
-      MaxAbs(TR::IlBuilder *bldr, TR::IlValue *first, TR::IlValue *max);
    TR::IlValue *
       function(TR::IlBuilder *bldr, std::vector<TR::IlValue*> &vects, char &function);
    
@@ -107,16 +97,10 @@ class ImageArray : public TR::MethodBuilder
             TR::IlValue *W);
       
       TR::IlValue *
-      GetIndex2(TR::IlBuilder *bldr,
-               TR::IlValue *j,
-               TR::IlValue *W);
-
-   TR::IlValue *
    Fib(TR::IlBuilder *bldr, TR::IlValue *n);
 
    void PrintString (TR::IlBuilder *bldr, const char *s);
    TR::IlType *pInt32;
-   TR::IlType *pInt64;
    TR::IlType *pDouble;
    TR::IlType *ppDouble;
    TR::IlValue *i, *j, *c;
