@@ -64,7 +64,7 @@
 namespace TR { class TypeDictionary; }
 
 //size, width, height, stride, data, result
-typedef void (ImageArrayFunctionType)(int32_t, int32_t, int32_t, int32_t, double **, double *);
+typedef void (ImageArrayFunctionType)(int32_t, int32_t, int32_t, double **, double *);
 
 class ImageArray : public TR::MethodBuilder
    {
@@ -87,8 +87,8 @@ class ImageArray : public TR::MethodBuilder
    TR::IlValue *
       function(TR::IlBuilder *bldr, std::vector<TR::IlValue*> &vects, char &function);
    
-      TR::IlValue* min(TR::IlBuilder *bldr, TR::IlValue* val1, TR::IlValue* val2);
-      TR::IlValue* max(TR::IlBuilder *bldr, TR::IlValue* val1, TR::IlValue* val2);
+      void min(TR::IlBuilder *bldr, TR::IlValue* val1);
+      void max(TR::IlBuilder *bldr, TR::IlValue* val1);
       TR::IlValue* cast(TR::IlBuilder *bldr, TR::IlValue* val1);
 
    TR::IlValue *

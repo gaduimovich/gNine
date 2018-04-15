@@ -161,7 +161,7 @@ int main (int argc, char *argsRaw[])
       dataPtrs.push_back(im.getData());
    }
    for (int i = 0; i < n_times; i++) {
-      test(size, image->width(), image->height(), image->stride(), dataPtrs.data(), outIm.getData());
+      test(size, image->width(), image->height(), dataPtrs.data(), outIm.getData());
    }
 
    
