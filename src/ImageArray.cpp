@@ -151,17 +151,52 @@ ImageArray::GetIndex(TR::IlBuilder *bldr,
                    TR::IlValue *j,
                      TR::IlValue *W) {
    
-   TR::IlValue *jAbs = Abs32(bldr, j);
-
-   return bldr->Add(bldr->Add(bldr->Mul(bldr->GreaterThan(jAbs, W), bldr->Sub(bldr->Add(bldr->ConstInt32(1), bldr->Add(W, W)), jAbs)),
-                              bldr->Mul(
-                                        bldr->Mul(bldr->LessThan(j, bldr->ConstInt32(0)),
-                                                  bldr->LessThan(jAbs, W)), Abs32(bldr, bldr->Add(j, bldr->ConstInt32(1))))),
-                    bldr->Mul(bldr->Mul(bldr->GreaterThan(j, bldr->ConstInt32(0)), bldr->LessOrEqualTo(j, W)), j));
+   bldr->Store("abs", Abs32(bldr, j));
+   
+   //    return int(i > 511) * (2*511+1 - i) + int(i <= 0) * abs(i)
+   
+return   bldr->Add(
+                              bldr->Mul(bldr->GreaterThan(bldr->Load("abs"), W),
+                                        bldr->Sub(bldr->Add(bldr->ConstInt32(1), bldr->Add(W, W)), bldr->Load("abs"))),
+                   bldr->Mul(bldr->LessOrEqualTo(j, bldr->ConstInt32(0)), bldr->Load("abs")));
+                   
+                   
+                   
+                   
+                                                                                          
+   
+//
+//   return bldr->Add(bldr->Add(bldr->Mul(bldr->GreaterThan(bldr->Load("abs"), W), bldr->Sub(bldr->Add(bldr->ConstInt32(1), bldr->Add(W, W)), bldr->Load("abs"))),
+//                              bldr->Mul(
+//                                        bldr->Mul(bldr->LessThan(j, bldr->ConstInt32(0)),
+//                                                  bldr->LessThan(bldr->Load("abs"), W)), Abs32(bldr, bldr->Add(j, bldr->ConstInt32(1))))),
+//                    bldr->Mul(bldr->Mul(bldr->GreaterThan(j, bldr->ConstInt32(0)), bldr->LessOrEqualTo(j, W)), j));
 
    
 }
 
+TR::IlValue *
+ImageArray::GetIndex2(TR::IlBuilder *bldr,
+                     TR::IlValue *j,
+                     TR::IlValue *W) {
+   
+   bldr->Store("abs", Abs32(bldr, j));
+
+   TR::IlBuilder *rc1True = NULL, *rc1False = NULL;
+
+   bldr->IfThenElse(&rc1True, &rc1False, bldr->GreaterThan(bldr->Load("abs"), W));
+   
+   rc1True->Store("rc1",
+                  rc1True->Sub(rc1True->Add(rc1True->ConstInt32(1), rc1True->Add(W, W)), rc1True->Load("abs")));
+   
+   
+   rc1False->Store("rc1", rc1False->Load("abs"));
+   
+   return bldr->Load("rc1");
+
+
+
+}
 
 
 
@@ -176,14 +211,15 @@ ImageArray::Load2D(TR::IlBuilder *bldr,
    
    TR::IlValue *reti = GetIndex(bldr, i, H);
    TR::IlValue *retj = GetIndex(bldr, j, W);
-
+   
+   
    return
    bldr->LoadAt(pDouble,
-                bldr-> IndexAt(pDouble, base, bldr->Add( bldr->      Add(
-                                                                         bldr->         Mul(
-                                                                                            reti,
-                                                                                            W),
-                                                                         retj), reti)));
+                bldr-> IndexAt(pDouble, base, bldr->Add(
+                                                        bldr->         Mul(
+                                                                           reti,
+                                                                           bldr->Add(W, bldr->ConstInt32(1))),
+                                                        retj)));
 
    
    

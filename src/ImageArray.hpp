@@ -106,7 +106,11 @@ class ImageArray : public TR::MethodBuilder
                         TR::IlValue *j,
             TR::IlValue *W);
       
-      
+      TR::IlValue *
+      GetIndex2(TR::IlBuilder *bldr,
+               TR::IlValue *j,
+               TR::IlValue *W);
+
    TR::IlValue *
    Fib(TR::IlBuilder *bldr, TR::IlValue *n);
 
