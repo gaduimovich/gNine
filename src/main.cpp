@@ -100,7 +100,7 @@ int main (int argc, char *argsRaw[])
    }else{
       codeString = argv[1];
    }
-   printf("Code String: %s", codeString.c_str());
+//   printf("Code String: %s", codeString.c_str());
       // Generate code.
    Cell code = cellFromString(codeString);
    // Read in input images specified by arguments.
@@ -117,7 +117,7 @@ int main (int argc, char *argsRaw[])
       inputImages.emplace_back(im, padding, padding);
    }
    
-   printf("Step 1: initialize JIT\n");
+//   printf("Step 1: initialize JIT\n");
    bool initialized = initializeJit();
    if (!initialized)
    {
@@ -125,10 +125,10 @@ int main (int argc, char *argsRaw[])
       exit(-1);
    }
    
-   printf("Step 2: define type dictionary\n");
+//   printf("Step 2: define type dictionary\n");
    TR::TypeDictionary types;
    
-   printf("Step 3: compile method builder\n");
+//   printf("Step 3: compile method builder\n");
    ImageArray method(&types);
    method.runByteCodes(code);
    
@@ -140,7 +140,7 @@ int main (int argc, char *argsRaw[])
       exit(-2);
    }
    
-   printf("Step 4: invoke compiled code and verify results\n");
+//   printf("Step 4: invoke compiled code and verify results\n");
    ImageArrayFunctionType *test = (ImageArrayFunctionType *) entry;
    
    
@@ -155,7 +155,7 @@ int main (int argc, char *argsRaw[])
    
    
    int size = image->width() * image->height();
-   
+
    std::vector<double*> dataPtrs;
    for(Image &im : inputImages) {
       dataPtrs.push_back(im.getData());
@@ -163,7 +163,7 @@ int main (int argc, char *argsRaw[])
    for (int i = 0; i < n_times; i++) {
       test(size, image->width(), image->height(), image->stride(), dataPtrs.data(), outIm.getData());
    }
-   
+
    
    outIm.write(outputImagePath);
    shutdownJit();
