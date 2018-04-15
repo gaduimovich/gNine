@@ -49,6 +49,7 @@ ImageArray::Store2D(TR::IlBuilder *bldr,
                  TR::IlValue *N,
                  TR::IlValue *value)
 {
+
    bldr->StoreAt(
                  bldr->   IndexAt(pDouble,
                                   base,
@@ -60,6 +61,23 @@ ImageArray::Store2D(TR::IlBuilder *bldr,
                  value);
    
    }
+
+
+void
+ImageArray::Store(TR::IlBuilder *bldr,
+                    TR::IlValue *base,
+                    TR::IlValue *index,
+                    TR::IlValue *value)
+{
+   
+   return bldr->StoreAt(
+                 bldr->   IndexAt(pDouble,
+                                  base,
+                                  index),
+                 value);
+   
+}
+
 
 TR::IlValue *
 ImageArray::GetIndex(TR::IlBuilder *bldr,
@@ -435,29 +453,66 @@ ImageArray::buildIL()
       
       cell_.list.erase(cell_.list.begin());
 
+      
+      
          
       TR::IlBuilder *iloop=NULL, *jloop=NULL;
-      ForLoopUp("i", &iloop, zero, height, one);
+      ForLoopUp("c", &iloop, zero, Mul(height, width) , one);
       {
-         i = iloop->Load("i");
+         c = iloop->Load("c");
+         i = iloop->Div(c, width);
+         j = iloop->Sub(c, iloop->Mul(i, width));
          
-         iloop->ForLoopUp("j", &jloop, zero, width, one);
-         {
-            j = jloop->Load("j");
-            c = jloop->Add(jloop->Mul(i, width), j);
-            for(gnine::Cell c : cell_.list) {
-               if (c.type == gnine::Cell::List and c.list[0].val == "define") {
-                     symbols[c.list[1].val] = eval(jloop, c.list[2]);
-               } else {
-                  gnine::Cell &code = c;
-                  TR::IlValue *ret = eval(jloop, code);
+         
+         iloop->Call("printInt32", 1,
+                     i); PrintString(iloop, " :i ");
+         iloop->Call("printInt32", 1,
+                     j); PrintString(iloop, " :j ");
+         iloop->Call("printInt32", 1,
+                     c); PrintString(iloop, " \n");
 
-                  Store2D(jloop, result, i, j, width,ret );
-               }
+
+         for(gnine::Cell cel : cell_.list) {
+            if (cel.type == gnine::Cell::List and cel.list[0].val == "define") {
+               symbols[cel.list[1].val] = eval(iloop, cel.list[2]);
+            } else {
+               gnine::Cell &code = cel;
+               TR::IlValue *ret = eval(iloop, code);
+               
+               Store(iloop,
+                     result,
+                     c,
+                     ret);
+
             }
-
          }
+         
+
+         
+         
       }
+//
+//      ForLoopUp("i", &iloop, zero, height, one);
+//      {
+//         i = iloop->Load("i");
+//
+//         iloop->ForLoopUp("j", &jloop, zero, width, one);
+//         {
+//            j = jloop->Load("j");
+//            c = jloop->Add(jloop->Mul(i, width), j);
+//            for(gnine::Cell c : cell_.list) {
+//               if (c.type == gnine::Cell::List and c.list[0].val == "define") {
+//                     symbols[c.list[1].val] = eval(jloop, c.list[2]);
+//               } else {
+//                  gnine::Cell &code = c;
+//                  TR::IlValue *ret = eval(jloop, code);
+//
+//                  Store2D(jloop, result, i, j, width, ret);
+//               }
+//            }
+//
+//         }
+//      }
       
    Return();
 

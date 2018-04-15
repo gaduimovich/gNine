@@ -41,8 +41,6 @@ enable_testing()
 
 set(OMR_COMPILER   ON  CACHE INTERNAL "Enable the Compiler.")
 set(OMR_JITBUILDER ON  CACHE INTERNAL "We use OMR's jitbuilder tool for the b9 JIT")
-set(OMR_GC         ON CACHE INTERNAL "We don't use the GC in b9 (yet)")
-set(OMR_FVTEST     OFF CACHE INTERNAL "Disable OMR's internal test suite, it's incompatible with b9")
 set(OMR_JITBUILDER_ADDITIONAL ON "Turn tests on")
 set(OMR_WARNINGS_AS_ERRORS OFF CACHE INTERNAL "OMR doesn't compile cleanly on my laptop :p")
 

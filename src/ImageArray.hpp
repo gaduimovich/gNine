@@ -75,6 +75,12 @@ class ImageArray : public TR::MethodBuilder
                 TR::IlValue *second,
                 TR::IlValue *N,
                 TR::IlValue *value);
+      
+      void Store(TR::IlBuilder *bldr,
+                   TR::IlValue *base,
+                   TR::IlValue *index,
+                   TR::IlValue *value);
+
    TR::IlValue *Load2D(TR::IlBuilder *bldr,
                        TR::IlValue *base,
                        TR::IlValue *first,
