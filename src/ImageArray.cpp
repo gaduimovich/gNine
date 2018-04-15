@@ -464,12 +464,12 @@ ImageArray::buildIL()
          j = iloop->Sub(c, iloop->Mul(i, width));
          
          
-         iloop->Call("printInt32", 1,
-                     i); PrintString(iloop, " :i ");
-         iloop->Call("printInt32", 1,
-                     j); PrintString(iloop, " :j ");
-         iloop->Call("printInt32", 1,
-                     c); PrintString(iloop, " \n");
+//         iloop->Call("printInt32", 1,
+//                     i); PrintString(iloop, " :i ");
+//         iloop->Call("printInt32", 1,
+//                     j); PrintString(iloop, " :j ");
+//         iloop->Call("printInt32", 1,
+//                     c); PrintString(iloop, " \n");
 
 
          for(gnine::Cell cel : cell_.list) {
