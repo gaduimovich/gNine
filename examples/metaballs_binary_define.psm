@@ -1,5 +1,5 @@
 ((A) ; input not used, just specifies size
- (define x (* (- j 200) (- j 200)))
+ (define m (* (- j 200) (- j 200)))
  (define a (/ 5000.0 (+ (* (- i 100) (- i 100)) x )))
  (define b (/ 7000.0 (+ (* (- i 300) (- i 300)) x )))
  (define m (/ 5000.0 (+ (* (- i 400) (- i 400)) (* (- j 400) (- j 400)) )))
