@@ -93,8 +93,8 @@ ImageArray::Load2D(TR::IlBuilder *bldr,
    TR::IlValue *reti = NULL;
    TR::IlValue *retj = NULL;
    if (danger_){
-      reti = Abs32(bldr, i);
-      retj = Abs32(bldr, j);
+      reti = i;
+      retj = j;
    } else {
       reti = GetIndex(bldr, i, bldr->Load("h"));
       retj = GetIndex(bldr, j, bldr->Load("w"));
