@@ -105,11 +105,12 @@ class ImageArray : public TR::MethodBuilder
    TR::IlType *ppDouble;
    TR::IlValue *i, *j, *c;
    gnine::Cell cell_;
+      bool danger_;
    std::map<std::string, TR::IlValue*> symbols;
    std::map<std::string, size_t> argNameToIndex;
    std::vector<TR::IlValue*> argv;
    public:
-      void runByteCodes(gnine::Cell);
+      void runByteCodes(gnine::Cell, bool);
       
       TR::IlValue* eval(TR::IlBuilder *bldr, gnine::Cell &c);
       TR::IlValue* functionHandler(TR::IlBuilder *, const std::string &functionName,

@@ -78,6 +78,11 @@ ImageArray::GetIndex(TR::IlBuilder *bldr,
                    bldr->Mul(bldr->LessOrEqualTo(j, W), bldr->Load("abs")));
 }
 
+
+
+
+
+
 TR::IlValue *
 ImageArray::Load2D(TR::IlBuilder *bldr,
                    TR::IlValue *base,
@@ -87,8 +92,15 @@ ImageArray::Load2D(TR::IlBuilder *bldr,
 
 {
    
-   TR::IlValue *reti = GetIndex(bldr, i, H);
-   TR::IlValue *retj = GetIndex(bldr, j, W);
+   TR::IlValue *reti = NULL;
+   TR::IlValue *retj = NULL;
+   if (danger_){
+      reti = Abs32(bldr, i);
+      retj = Abs32(bldr, j);
+   } else {
+      reti = GetIndex(bldr, i, H);
+      retj = GetIndex(bldr, j, W);
+   }
    
    return
    bldr->LoadAt(pDouble,
@@ -204,9 +216,10 @@ ImageArray::PrintString(TR::IlBuilder *bldr, const char *s)
               bldr->   ConstInt64((int64_t)(char *)s));
 }
 void
-ImageArray::runByteCodes(gnine::Cell cell)
+ImageArray::runByteCodes(gnine::Cell cell, bool danger)
 {
    cell_ = cell;
+   danger_ = danger;
    
 }
 
