@@ -86,10 +86,12 @@ TR::IlValue *
 ImageArray::Load2D(TR::IlBuilder *bldr,
                    TR::IlValue *base,
                    TR::IlValue *i,
-                   TR::IlValue *j)
+                   TR::IlValue *j) {
 
-{
-   
+//                           j,
+//              bldr->Load("width"),
+//              bldr->Load("height"), base);
+
    TR::IlValue *reti = NULL;
    TR::IlValue *retj = NULL;
    if (danger_){
@@ -99,7 +101,7 @@ ImageArray::Load2D(TR::IlBuilder *bldr,
       reti = GetIndex(bldr, i, bldr->Load("h"));
       retj = GetIndex(bldr, j, bldr->Load("w"));
    }
-   
+
    return
    bldr->LoadAt(pDouble,
                 bldr-> IndexAt(pDouble, base, bldr->Add(
@@ -107,7 +109,7 @@ ImageArray::Load2D(TR::IlBuilder *bldr,
                                                                            reti,
                                                                            bldr->Load("width")),
                                                         retj)));
-
+//
    
 }
 
@@ -168,7 +170,7 @@ ImageArray::ImageArray(TR::TypeDictionary *d)
    {
    DefineLine(LINETOSTR(__LINE__));
    DefineFile(__FILE__);
-
+      
    DefineName("imagearray");
 
    //size, width, height, data, result
@@ -204,10 +206,20 @@ ImageArray::ImageArray(TR::TypeDictionary *d)
                   NoType,
                   1,
                   Double);
+      
+      
+  
+
+      
+
+      
    }
+
+
 void
 ImageArray::PrintString(TR::IlBuilder *bldr, const char *s)
 {
+   
    bldr->Call("printString", 1,
               bldr->   ConstInt64((int64_t)(char *)s));
 }
@@ -305,10 +317,21 @@ TR::IlValue* ImageArray::functionHandler(TR::IlBuilder *bldr, const std::string 
       return Load2D(bldr, argv[argNameToIndex.at(imageName)],
                        bldr->ConvertTo(Int32, args[0]),
                        bldr->ConvertTo(Int32, args[1]));
+//
+//      return bldr->Call("load_2d", 5, bldr->ConvertTo(Int32, args[0]),
+//                 bldr->ConvertTo(Int32, args[1]),
+//                 bldr->Load("width"),
+//                        bldr->Load("height"), argv[argNameToIndex.at(imageName)]);
    } else {
       return Load2D(bldr, argv[argNameToIndex.at(functionName)],
                     bldr->Add(bldr->ConvertTo(Int32, args[0]), i),
                     bldr->Add(bldr->ConvertTo(Int32, args[1]), j));
+//      return bldr->Call("load_2d", 5, bldr->Add(bldr->ConvertTo(Int32, args[0]), i),
+//                        bldr->Add(bldr->ConvertTo(Int32, args[1]), j),
+//                        bldr->Load("width"),
+//                        bldr->Load("height"), argv[argNameToIndex.at(functionName)]);
+
+      
    }
    
    return bldr->Load("sum");
@@ -321,18 +344,14 @@ TR::IlValue* ImageArray::numberHandler(TR::IlBuilder *bldr, const std::string &n
 
 TR::IlValue* ImageArray::symbolHandler(TR::IlBuilder *bldr, const std::string &name){
    
-   if(argNameToIndex.find(name) != argNameToIndex.end()){
-      return Load2D(bldr, argv[argNameToIndex.at(name)], i, j);
-   }else if(name == "i" || name == "j"){ // special symbols
+   if(name == "i" || name == "j"){
       return name == "i" ? bldr->ConvertTo(Double, i) : bldr->ConvertTo(Double, j);
    } else if(name == "c") {
       return bldr->ConvertTo(Double, c);
    }else if(name == "width" || name == "height"){
       return name == "width" ? bldr->ConvertTo(Double, bldr->Load("w")) : bldr->ConvertTo(Double, bldr->Load("h"));
-   } else if(symbols.find(name) != symbols.end()) {
-      return symbols[name];
    } else {
-      throw std::runtime_error("Unable to find symbol: " + name);
+      return bldr->Load(symbols_map[name]);
    }
    
 }
@@ -359,9 +378,6 @@ TR::IlValue* ImageArray::cast(TR::IlBuilder *bldr, TR::IlValue* val1) {
    return bldr->ConvertTo(Double, bldr->ConvertTo(Int32, val1));
 }
 
-
-
-
 bool
 ImageArray::buildIL()
    {
@@ -383,13 +399,18 @@ ImageArray::buildIL()
       gnine::Cell &argsCell = cell_.list[0];
       
       // Load arguments
+      int og_count = 0;
       std::vector<std::string> argNames;
       for(gnine::Cell c : argsCell.list){
-         if(c.type == gnine::Cell::Symbol)
+         if(c.type == gnine::Cell::Symbol) {
             argNames.push_back(c.val);
-         else
+         symbols_map[c.val] = argsAndTempNames[og_count];
+            og_count++;
+         } else {
             throw std::runtime_error(
                                      "Function cell must be of form ((arg1 arg2 ...) (code))");
+            
+         }
       }
       
       for(size_t i = 0; i < argNames.size(); ++i)
@@ -399,12 +420,21 @@ ImageArray::buildIL()
          argv.push_back(builder->LoadAt(ppDouble, builder->IndexAt(ppDouble, Load("data"), ConstInt32(i))));
       }
       
+      
       argNameToIndex["output"] = argNames.size();
       argv.push_back(result);
       
       cell_.list.erase(cell_.list.begin());
-
-         
+      
+      
+      int count = og_count;
+      for(gnine::Cell c : cell_.list) {
+         if (c.type == gnine::Cell::List and c.list[0].val == "define") {
+            symbols_map[c.list[1].val] = argsAndTempNames[count];
+            count++;
+         }
+      }
+      
       TR::IlBuilder *iloop=NULL, *jloop=NULL;
       ForLoopUp("i", &iloop, zero, height, one);
       {
@@ -414,9 +444,16 @@ ImageArray::buildIL()
          {
             j = jloop->Load("j");
             c = jloop->Add(jloop->Mul(i, width), j);
+            
+         
+            
+            for(size_t mm = 0; mm < argNames.size(); ++mm) {
+               jloop->Store(argsAndTempNames[mm], Load2D(jloop, argv[mm], i, j));
+            }
+            
             for(gnine::Cell c : cell_.list) {
                if (c.type == gnine::Cell::List and c.list[0].val == "define") {
-                     symbols[c.list[1].val] = eval(jloop, c.list[2]);
+                  jloop->Store(symbols_map[c.list[1].val], eval(jloop, c.list[2]));
                } else {
                   gnine::Cell &code = c;
                   TR::IlValue *ret = eval(jloop, code);
