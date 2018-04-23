@@ -1,7 +1,7 @@
 # G9 - Just In Time Image Processing With Eclipse OMR
 
-An implementation of Luke Dodds Pixslam https://github.com/lukedodd/Pixslam using Eclipse OMR Jitbuilder.
-See (README_ORIG.MD)
+An implementation of Luke Dodds Pixslam https://github.com/lukedodd/Pixslam using Eclipse OMR JitBuilder.
+See [Original README](../README_ORIG.md) for the Original README.md
 
 #### Carleton Univeristy Honours Project Winter 2019. Under the supervision of David Mould. ####
 
@@ -34,12 +34,16 @@ Run Jited Function 20 times
 ./gnine ../examples/box_3x3.psm ../example_data/lena.png out.png --times=20
 ```
 
+## Source Code that Geoffrey Duimovich Implemented or modified
+
+../src/ImageArray.cpp
+../src/ImageArray.hpp
+../src/main.cpp
+
 ## Built With
 
-* [Dropwizard](http://www.dropwizard.io/1.0.2/docs/) - The web framework used
-* [Maven](https://maven.apache.org/) - Dependency Management
-* [ROME](https://rometools.github.io/rome/) - Used to generate RSS Feeds
-
+* [stb_image](http://nothings.org/stb_image.c) - image reading/writing.
+* [OMR](https://github.com/eclipse/omr) - High Performance Runtime Technology
 
 ## Authors
 
