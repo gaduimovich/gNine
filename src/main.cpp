@@ -1,3 +1,9 @@
+/*******************************************************************************
+ * This originates from Pixslam
+ * Original Author is Luke Dodd
+ * Geoffrey Duimovich added the OMR implementation
+ ********************************************************************************/
+
 #include <iostream>
 #include <sstream>
 #include <fstream>
@@ -67,7 +73,6 @@ int main (int argc, char *argsRaw[])
    bool danger = false;
    int n_times = 1;
    for(auto s : options){
-      
       if(s == "--logAsm")
          logAsm = true;
       if(s == "--danger")

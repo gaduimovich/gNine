@@ -1,23 +1,8 @@
 /*******************************************************************************
- * Copyright (c) 2016, 2016 IBM Corp. and others
- *
- * This program and the accompanying materials are made available under
- * the terms of the Eclipse Public License 2.0 which accompanies this
- * distribution and is available at https://www.eclipse.org/legal/epl-2.0/
- * or the Apache License, Version 2.0 which accompanies this distribution and
- * is available at https://www.apache.org/licenses/LICENSE-2.0.
- *
- * This Source Code may also be made available under the following
- * Secondary Licenses when the conditions for such availability set
- * forth in the Eclipse Public License, v. 2.0 are satisfied: GNU
- * General Public License, version 2 with the GNU Classpath
- * Exception [1] and GNU General Public License, version 2 with the
- * OpenJDK Assembly Exception [2].
- *
- * [1] https://www.gnu.org/software/classpath/license.html
- * [2] http://openjdk.java.net/legal/assembly-exception.html
- *
- * SPDX-License-Identifier: EPL-2.0 OR Apache-2.0 OR GPL-2.0 WITH Classpath-exception-2.0 OR LicenseRef-GPL-2.0 WITH Assembly-exception
+ * Eclipse OMR JitBuilder implementation of Luke Dodd's Pixslam
+ * Author Geoffrey Duimovich
+ * G9: Just in Time Image Processing with Eclipse OMR
+ * COMP4905 – Honours Project
  *******************************************************************************/
 
 #include "ImageArray.hpp"
@@ -88,10 +73,6 @@ ImageArray::Load2D(TR::IlBuilder *bldr,
                    TR::IlValue *i,
                    TR::IlValue *j) {
 
-//                           j,
-//              bldr->Load("width"),
-//              bldr->Load("height"), base);
-
    TR::IlValue *reti = NULL;
    TR::IlValue *retj = NULL;
    if (danger_){
@@ -109,7 +90,6 @@ ImageArray::Load2D(TR::IlBuilder *bldr,
                                                                            reti,
                                                                            bldr->Load("width")),
                                                         retj)));
-//
    
 }
 
@@ -207,12 +187,6 @@ ImageArray::ImageArray(TR::TypeDictionary *d)
                   1,
                   Double);
       
-      
-  
-
-      
-
-      
    }
 
 
@@ -257,7 +231,7 @@ TR::IlValue* ImageArray::functionHandler(TR::IlBuilder *bldr, const std::string 
                                        std::vector<TR::IlValue*> &args) {
    
    bldr->Store("sum", args[0]);
-
+   
    if(functionName == "if") {
       TR::IlBuilder *rc3True = OrphanBuilder();
       TR::IlBuilder *rc3False = OrphanBuilder();
@@ -265,13 +239,14 @@ TR::IlValue* ImageArray::functionHandler(TR::IlBuilder *bldr, const std::string 
       bldr->IfThenElse(&rc3True, &rc3False,
                        bldr->EqualTo(args[0], bldr->ConstDouble(1)));
       
+      
       rc3True->Store("sum", args[1]);
       rc3False->Store("sum", args[2]);
       
 
    } else if(functionName == "+") {
       for (unsigned int l = 1; l < args.size(); l++) {
-               bldr->Store("sum", bldr->Add(args[l], bldr->Load("sum")));
+            bldr->Store("sum", bldr->Add(args[l], bldr->Load("sum")));
       }
    } else if(functionName == "*") {
       for (unsigned int l = 1; l < args.size(); l++) {
@@ -317,23 +292,11 @@ TR::IlValue* ImageArray::functionHandler(TR::IlBuilder *bldr, const std::string 
       return Load2D(bldr, argv[argNameToIndex.at(imageName)],
                        bldr->ConvertTo(Int32, args[0]),
                        bldr->ConvertTo(Int32, args[1]));
-//
-//      return bldr->Call("load_2d", 5, bldr->ConvertTo(Int32, args[0]),
-//                 bldr->ConvertTo(Int32, args[1]),
-//                 bldr->Load("width"),
-//                        bldr->Load("height"), argv[argNameToIndex.at(imageName)]);
    } else {
       return Load2D(bldr, argv[argNameToIndex.at(functionName)],
                     bldr->Add(bldr->ConvertTo(Int32, args[0]), i),
                     bldr->Add(bldr->ConvertTo(Int32, args[1]), j));
-//      return bldr->Call("load_2d", 5, bldr->Add(bldr->ConvertTo(Int32, args[0]), i),
-//                        bldr->Add(bldr->ConvertTo(Int32, args[1]), j),
-//                        bldr->Load("width"),
-//                        bldr->Load("height"), argv[argNameToIndex.at(functionName)]);
-
-      
    }
-   
    return bldr->Load("sum");
 }
 
@@ -445,12 +408,9 @@ ImageArray::buildIL()
             j = jloop->Load("j");
             c = jloop->Add(jloop->Mul(i, width), j);
             
-         
-            
             for(size_t mm = 0; mm < argNames.size(); ++mm) {
                jloop->Store(argsAndTempNames[mm], Load2D(jloop, argv[mm], i, j));
             }
-            
             for(gnine::Cell c : cell_.list) {
                if (c.type == gnine::Cell::List and c.list[0].val == "define") {
                   jloop->Store(symbols_map[c.list[1].val], eval(jloop, c.list[2]));
