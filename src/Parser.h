@@ -1,3 +1,8 @@
+/*******************************************************************************
+ * This originates from Pixslam
+ * Original Author is Luke Dodd
+ ********************************************************************************/
+
 #pragma once
 #ifndef PARSER_INCL
 #define PARSER_INCL

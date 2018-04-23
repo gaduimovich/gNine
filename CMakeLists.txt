@@ -31,7 +31,7 @@ include(OmrPlatform)
 
 omr_platform_global_setup()
 
-set(CMAKE_CXX_STANDARD 14)
+set(CMAKE_CXX_STANDARD 11)
 
 set(CMAKE_EXPORT_COMPILE_COMMANDS true)
 

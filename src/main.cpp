@@ -1,3 +1,9 @@
+/*******************************************************************************
+ * This originates from Pixslam
+ * Original Author is Luke Dodd
+ * Geoffrey Duimovich added the OMR implementation
+ ********************************************************************************/
+
 #include <iostream>
 #include <sstream>
 #include <fstream>
@@ -43,8 +49,9 @@ int main (int argc, char *argsRaw[])
       std::cout << "Blend two images together equally and output to blend.png.\n";
       std::cout << "    pixslam ((A B) (* 0.5 (+ A B))) image1.png image2.png blend.png\n\n";
       std::cout << "Arguments:\n\n";
-      std::cout << "--logAsm     Dumps the generated assembly code to standard output.\n";
+      std::cout << "--danger indexing will calcualte it only if you give it indexs in ranger increase performance\n";
       std::cout << "TIMES=N Executes the jited function more then once.\n";
+
       return 1;
    }
    
@@ -63,11 +70,13 @@ int main (int argc, char *argsRaw[])
    // parse command line arguments
    bool logAsm = false;
    bool logCommand = false;
+   bool danger = false;
    int n_times = 1;
    for(auto s : options){
-      
       if(s == "--logAsm")
          logAsm = true;
+      if(s == "--danger")
+         danger = true;
       else if(s == "--logCommand")
          logCommand = true;
       else if (s.length() > 8 and s.substr(0, 8)== "--times=") {
@@ -130,7 +139,7 @@ int main (int argc, char *argsRaw[])
    
 //   printf("Step 3: compile method builder\n");
    ImageArray method(&types);
-   method.runByteCodes(code);
+   method.runByteCodes(code, danger);
    
    uint8_t *entry;
    int32_t rc = compileMethodBuilder(&method, &entry);
@@ -161,7 +170,7 @@ int main (int argc, char *argsRaw[])
       dataPtrs.push_back(im.getData());
    }
    for (int i = 0; i < n_times; i++) {
-      test(size, image->width(), image->height(), image->stride(), dataPtrs.data(), outIm.getData());
+      test(image->width(), image->height(), dataPtrs.data(), outIm.getData());
    }
 
    
