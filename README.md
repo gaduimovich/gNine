@@ -36,14 +36,14 @@ Run Jited Function 20 times
 
 ## Source Code that Geoffrey Duimovich Implemented or modified
 
-../src/ImageArray.cpp
-../src/ImageArray.hpp
-../src/main.cpp
+* ../src/ImageArray.cpp
+* ../src/ImageArray.hpp
+* ../src/main.cpp
 
 ## Built With
 
 * [stb_image](http://nothings.org/stb_image.c) - image reading/writing.
-* [OMR](https://github.com/eclipse/omr) - High Performance Runtime Technology
+* [Eclipse OMR](https://github.com/eclipse/omr) - High Performance Runtime Technology
 
 ## Authors
 
