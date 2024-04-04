@@ -27,11 +27,11 @@ static void printDouble(double val)
 }
 
 void
-ImageArray::Store2D(TR::IlBuilder *bldr,
-                 TR::IlValue *base,
-                 TR::IlValue *first,
-                 TR::IlValue *second,
-                 TR::IlValue *value)
+ImageArray::Store2D(OMR::JitBuilder::IlBuilder *bldr,
+                 OMR::JitBuilder::IlValue *base,
+                 OMR::JitBuilder::IlValue *first,
+                 OMR::JitBuilder::IlValue *second,
+                 OMR::JitBuilder::IlValue *value)
 {
    bldr->StoreAt(
                  bldr->   IndexAt(pDouble,
@@ -45,10 +45,10 @@ ImageArray::Store2D(TR::IlBuilder *bldr,
    
    }
 
-TR::IlValue *
-ImageArray::GetIndex(TR::IlBuilder *bldr,
-                   TR::IlValue *j,
-                     TR::IlValue *W) {
+OMR::JitBuilder::IlValue *
+ImageArray::GetIndex(OMR::JitBuilder::IlBuilder *bldr,
+                   OMR::JitBuilder::IlValue *j,
+                     OMR::JitBuilder::IlValue *W) {
    
    bldr->Store("abs", Abs32(bldr, j));
    
@@ -67,14 +67,14 @@ ImageArray::GetIndex(TR::IlBuilder *bldr,
 
 
 
-TR::IlValue *
-ImageArray::Load2D(TR::IlBuilder *bldr,
-                   TR::IlValue *base,
-                   TR::IlValue *i,
-                   TR::IlValue *j) {
+OMR::JitBuilder::IlValue *
+ImageArray::Load2D(OMR::JitBuilder::IlBuilder *bldr,
+                   OMR::JitBuilder::IlValue *base,
+                   OMR::JitBuilder::IlValue *i,
+                   OMR::JitBuilder::IlValue *j) {
 
-   TR::IlValue *reti = NULL;
-   TR::IlValue *retj = NULL;
+   OMR::JitBuilder::IlValue *reti = NULL;
+   OMR::JitBuilder::IlValue *retj = NULL;
    if (danger_){
       reti = i;
       retj = j;
@@ -93,8 +93,8 @@ ImageArray::Load2D(TR::IlBuilder *bldr,
    
 }
 
-TR::IlValue *
-ImageArray::Abs32(TR::IlBuilder *bldr, TR::IlValue *first)
+OMR::JitBuilder::IlValue *
+ImageArray::Abs32(OMR::JitBuilder::IlBuilder *bldr, OMR::JitBuilder::IlValue *first)
 {
    
    return bldr->Mul(bldr->Sub(bldr->ShiftL(bldr->GreaterThan(first, bldr->ConstInt32(0)), bldr->ConstInt32(1)), bldr->ConstInt32(1)),
@@ -102,11 +102,11 @@ ImageArray::Abs32(TR::IlBuilder *bldr, TR::IlValue *first)
    
 }
 
-TR::IlValue *
-ImageArray::Fib(TR::IlBuilder *bldr, TR::IlValue *n) {
+OMR::JitBuilder::IlValue *
+ImageArray::Fib(OMR::JitBuilder::IlBuilder *bldr, OMR::JitBuilder::IlValue *n) {
    
-   TR::IlBuilder *returnN = NULL;
-   TR::IlBuilder *elseN = NULL;
+   OMR::JitBuilder::IlBuilder *returnN = NULL;
+   OMR::JitBuilder::IlBuilder *elseN = NULL;
    
    bldr->Store("n", n);
    
@@ -124,7 +124,7 @@ ImageArray::Fib(TR::IlBuilder *bldr, TR::IlValue *n) {
    elseN->Store("Sum",
                 elseN->ConstDouble(1));
    
-   TR::IlBuilder *mloop = NULL;
+   OMR::JitBuilder::IlBuilder *mloop = NULL;
    elseN->ForLoopUp("kk", &mloop,
                     elseN->ConstInt32(1),
                     elseN->ConvertTo(Int32, elseN->Load("n")),
@@ -145,7 +145,7 @@ ImageArray::Fib(TR::IlBuilder *bldr, TR::IlValue *n) {
 
 
 
-ImageArray::ImageArray(TR::TypeDictionary *d)
+ImageArray::ImageArray(OMR::JitBuilder::TypeDictionary *d)
    : MethodBuilder(d)
    {
    DefineLine(LINETOSTR(__LINE__));
@@ -191,7 +191,7 @@ ImageArray::ImageArray(TR::TypeDictionary *d)
 
 
 void
-ImageArray::PrintString(TR::IlBuilder *bldr, const char *s)
+ImageArray::PrintString(OMR::JitBuilder::IlBuilder *bldr, const char *s)
 {
    
    bldr->Call("printString", 1,
@@ -205,15 +205,15 @@ ImageArray::runByteCodes(gnine::Cell cell, bool danger)
    
 }
 
-TR::IlValue* ImageArray::eval(TR::IlBuilder *bldr, gnine::Cell &c){
+OMR::JitBuilder::IlValue* ImageArray::eval(OMR::JitBuilder::IlBuilder *bldr, gnine::Cell &c){
    switch(c.type){
       case gnine::Cell::Number:{
          return numberHandler(bldr, c.val.c_str());
       }case gnine::Cell::List:{
-         std::vector<TR::IlValue*> evalArgs(c.list.size() - 1);
+         std::vector<OMR::JitBuilder::IlValue*> evalArgs(c.list.size() - 1);
          
          std::transform(c.list.begin()+1, c.list.end(), evalArgs.begin(),
-                        [this, &bldr](gnine::Cell &k) -> TR::IlValue * {
+                        [this, &bldr](gnine::Cell &k) -> OMR::JitBuilder::IlValue * {
                            return eval(bldr, k);
                         });
          return functionHandler(bldr, c.list[0].val, evalArgs);
@@ -227,14 +227,14 @@ TR::IlValue* ImageArray::eval(TR::IlBuilder *bldr, gnine::Cell &c){
 
 
 
-TR::IlValue* ImageArray::functionHandler(TR::IlBuilder *bldr, const std::string &functionName,
-                                       std::vector<TR::IlValue*> &args) {
+OMR::JitBuilder::IlValue* ImageArray::functionHandler(OMR::JitBuilder::IlBuilder *bldr, const std::string &functionName,
+                                       std::vector<OMR::JitBuilder::IlValue*> &args) {
    
    bldr->Store("sum", args[0]);
    
    if(functionName == "if") {
-      TR::IlBuilder *rc3True = OrphanBuilder();
-      TR::IlBuilder *rc3False = OrphanBuilder();
+      OMR::JitBuilder::IlBuilder *rc3True = OrphanBuilder();
+      OMR::JitBuilder::IlBuilder *rc3False = OrphanBuilder();
       
       bldr->IfThenElse(&rc3True, &rc3False,
                        bldr->EqualTo(args[0], bldr->ConstDouble(1)));
@@ -300,12 +300,12 @@ TR::IlValue* ImageArray::functionHandler(TR::IlBuilder *bldr, const std::string 
    return bldr->Load("sum");
 }
 
-TR::IlValue* ImageArray::numberHandler(TR::IlBuilder *bldr, const std::string &number) {
+OMR::JitBuilder::IlValue* ImageArray::numberHandler(OMR::JitBuilder::IlBuilder *bldr, const std::string &number) {
    double x = std::atof(number.c_str());
    return bldr->ConstDouble(x);
 }
 
-TR::IlValue* ImageArray::symbolHandler(TR::IlBuilder *bldr, const std::string &name){
+OMR::JitBuilder::IlValue* ImageArray::symbolHandler(OMR::JitBuilder::IlBuilder *bldr, const std::string &name){
    
    if(name == "i" || name == "j"){
       return name == "i" ? bldr->ConvertTo(Double, i) : bldr->ConvertTo(Double, j);
@@ -318,8 +318,8 @@ TR::IlValue* ImageArray::symbolHandler(TR::IlBuilder *bldr, const std::string &n
    }
    
 }
-void ImageArray::min(TR::IlBuilder *bldr, TR::IlValue* val1) {
-   TR::IlBuilder * rc3True = OrphanBuilder();
+void ImageArray::min(OMR::JitBuilder::IlBuilder *bldr, OMR::JitBuilder::IlValue* val1) {
+   OMR::JitBuilder::IlBuilder * rc3True = OrphanBuilder();
    
    bldr->IfThen(&rc3True,
                 bldr->LessThan(val1, bldr->Load("sum")));
@@ -327,8 +327,8 @@ void ImageArray::min(TR::IlBuilder *bldr, TR::IlValue* val1) {
                   val1);
 }
 
-void ImageArray::max(TR::IlBuilder *bldr, TR::IlValue* val1) {
-   TR::IlBuilder * rc3True = OrphanBuilder();
+void ImageArray::max(OMR::JitBuilder::IlBuilder *bldr, OMR::JitBuilder::IlValue* val1) {
+   OMR::JitBuilder::IlBuilder * rc3True = OrphanBuilder();
    
    bldr->IfThen(&rc3True,
                 bldr->GreaterThan(val1, bldr->Load("sum")));
@@ -337,27 +337,28 @@ void ImageArray::max(TR::IlBuilder *bldr, TR::IlValue* val1) {
                   val1);
 }
 
-TR::IlValue* ImageArray::cast(TR::IlBuilder *bldr, TR::IlValue* val1) {
+OMR::JitBuilder::IlValue* ImageArray::cast(OMR::JitBuilder::IlBuilder *bldr, OMR::JitBuilder::IlValue* val1) {
    return bldr->ConvertTo(Double, bldr->ConvertTo(Int32, val1));
 }
 
 bool
 ImageArray::buildIL()
    {
+
       //Constants
-      TR::IlValue *one = ConstInt32(1);
-      TR::IlValue *zero = ConstInt32(0);
+      OMR::JitBuilder::IlValue *one = ConstInt32(1);
+      OMR::JitBuilder::IlValue *zero = ConstInt32(0);
       
       //size, width, height, data, result
-      TR::IlValue *width = Load("width");
-      TR::IlValue *height = Load("height");
-      TR::IlValue *result = Load("result");
+      OMR::JitBuilder::IlValue *width = Load("width");
+      OMR::JitBuilder::IlValue *height = Load("height");
+      OMR::JitBuilder::IlValue *result = Load("result");
       
       Store("w", Sub(Load("width"), ConstInt32(1)));
       Store("h", Sub(Load("height"), ConstInt32(1)));
       
       
-      TR::IlBuilder *builder  = this;
+      OMR::JitBuilder::IlBuilder *builder  = this;
       
       gnine::Cell &argsCell = cell_.list[0];
       
@@ -398,7 +399,7 @@ ImageArray::buildIL()
          }
       }
       
-      TR::IlBuilder *iloop=NULL, *jloop=NULL;
+      OMR::JitBuilder::IlBuilder *iloop=NULL, *jloop=NULL;
       ForLoopUp("i", &iloop, zero, height, one);
       {
          i = iloop->Load("i");
@@ -416,7 +417,7 @@ ImageArray::buildIL()
                   jloop->Store(symbols_map[c.list[1].val], eval(jloop, c.list[2]));
                } else {
                   gnine::Cell &code = c;
-                  TR::IlValue *ret = eval(jloop, code);
+                  OMR::JitBuilder::IlValue *ret = eval(jloop, code);
                   Store2D(jloop, result, i, j, ret);
                }
             }

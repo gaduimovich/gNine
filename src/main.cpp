@@ -10,9 +10,8 @@
 
 #include "Image.h"
 #include "Parser.h"
-#include "Jit.hpp"
 #include "ImageArray.hpp"
-#include "ilgen/TypeDictionary.hpp"
+#include "JitBuilder.hpp"
 
 using namespace gnine;
 
@@ -135,13 +134,13 @@ int main (int argc, char *argsRaw[])
    }
    
 //   printf("Step 2: define type dictionary\n");
-   TR::TypeDictionary types;
+   OMR::JitBuilder::TypeDictionary types;
    
 //   printf("Step 3: compile method builder\n");
    ImageArray method(&types);
    method.runByteCodes(code, danger);
    
-   uint8_t *entry;
+   void *entry = 0;
    int32_t rc = compileMethodBuilder(&method, &entry);
    if (rc != 0)
    {
