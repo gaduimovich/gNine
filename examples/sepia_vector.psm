@@ -1,0 +1,6 @@
+; Sepia tone using a full vector color transform.
+((A)
+  (vec
+    (clamp (+ (* 0.393 (r (color A))) (* 0.769 (g (color A))) (* 0.189 (b (color A)))) 0 1)
+    (clamp (+ (* 0.349 (r (color A))) (* 0.686 (g (color A))) (* 0.168 (b (color A)))) 0 1)
+    (clamp (+ (* 0.272 (r (color A))) (* 0.534 (g (color A))) (* 0.131 (b (color A)))) 0 1)))

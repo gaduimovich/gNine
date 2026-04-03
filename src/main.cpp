@@ -15,6 +15,7 @@
 #include "Image.h"
 #include "Parser.h"
 #include "ImageArray.hpp"
+#include "VectorProgram.hpp"
 #include "JitBuilder.hpp"
 
 using namespace gnine;
@@ -50,6 +51,57 @@ namespace
          return basePath + "_" + std::to_string(iteration);
 
       return basePath.substr(0, dotPos) + "_" + std::to_string(iteration) + basePath.substr(dotPos);
+   }
+
+   int effectiveChannelCount(const std::vector<Image> &images)
+   {
+      int channels = 1;
+      for (const Image &image : images)
+         channels = std::max(channels, image.channelCount());
+      return channels;
+   }
+
+   bool imagesHaveSameExtent(const std::vector<Image> &images)
+   {
+      if (images.empty())
+         return true;
+
+      const int width = images[0].width();
+      const int height = images[0].height();
+      for (const Image &image : images)
+      {
+         if (image.width() != width || image.height() != height)
+            return false;
+      }
+      return true;
+   }
+
+   void fillChannelPointers(const std::vector<Image> &images,
+                            int channel,
+                            std::vector<double *> &channelPtrs)
+   {
+      channelPtrs.clear();
+      channelPtrs.reserve(images.size());
+      for (const Image &image : images)
+      {
+         int sourceChannel = image.channelCount() == 1 ? 0 : channel;
+         channelPtrs.push_back(const_cast<double *>(image.getChannelData(sourceChannel)));
+      }
+   }
+
+   void fillVectorArgPointers(const std::vector<Image> &images,
+                              const std::vector<VectorArgBinding> &bindings,
+                              std::vector<double *> &dataPtrs)
+   {
+      dataPtrs.clear();
+      dataPtrs.reserve(bindings.size());
+      for (size_t idx = 0; idx < bindings.size(); ++idx)
+      {
+         const VectorArgBinding &binding = bindings[idx];
+         const Image &image = images[binding.inputIndex];
+         int sourceChannel = image.channelCount() == 1 ? 0 : binding.channel;
+         dataPtrs.push_back(const_cast<double *>(image.getChannelData(sourceChannel)));
+      }
    }
 }
 
@@ -91,6 +143,7 @@ int main(int argc, char *argsRaw[])
       std::cout << "CHAIN-TIMES=N Executes the jited function as a chained simulation.\n";
       std::cout << "--benchmark prints compile and execution timings.\n";
       std::cout << "--emit-frames=PATH writes chained iterations as PATH with _N suffixes.\n";
+      std::cout << "Color images are processed channel-wise and preserve RGB output.\n";
       std::cout << "Top-level form (iterate N ((A) ...)) runs the full transform N times.\n";
       std::cout << "Inside a transform, iter is the 1-based chained iteration counter.\n";
 
@@ -188,6 +241,8 @@ int main(int argc, char *argsRaw[])
          n_times = chain_times;
       }
    }
+
+   LoweredProgram loweredProgram = lowerProgram(effectiveCode);
    // Read in input images specified by arguments.
    int padding = 0;
    std::vector<Image> inputImages;
@@ -202,6 +257,12 @@ int main(int argc, char *argsRaw[])
       }
 
       inputImages.emplace_back(im, padding, padding);
+   }
+
+   if (!imagesHaveSameExtent(inputImages))
+   {
+      std::cerr << "All input images must have the same width and height." << std::endl;
+      return 1;
    }
 
    //   printf("Step 1: initialize JIT\n");
@@ -223,21 +284,24 @@ int main(int argc, char *argsRaw[])
    OMR::JitBuilder::TypeDictionary types;
 
    //   printf("Step 3: compile method builder\n");
-   ImageArray method(&types);
-   method.runByteCodes(effectiveCode, danger);
-
-   void *entry = 0;
    auto compileStart = std::chrono::steady_clock::now();
-   int32_t rc = compileMethodBuilder(&method, &entry);
-   auto compileEnd = std::chrono::steady_clock::now();
-   if (rc != 0)
+   std::vector<ImageArrayFunctionType *> compiledFunctions;
+   compiledFunctions.reserve(loweredProgram.channelPrograms.size());
+   for (size_t programIdx = 0; programIdx < loweredProgram.channelPrograms.size(); ++programIdx)
    {
-      fprintf(stderr, "FAIL: compilation error %d\n", rc);
-      exit(-2);
-   }
+      ImageArray method(&types);
+      method.runByteCodes(loweredProgram.channelPrograms[programIdx], danger);
 
-   //   printf("Step 4: invoke compiled code and verify results\n");
-   ImageArrayFunctionType *test = (ImageArrayFunctionType *)entry;
+      void *entry = 0;
+      int32_t rc = compileMethodBuilder(&method, &entry);
+      if (rc != 0)
+      {
+         fprintf(stderr, "FAIL: compilation error %d\n", rc);
+         exit(-2);
+      }
+      compiledFunctions.push_back(reinterpret_cast<ImageArrayFunctionType *>(entry));
+   }
+   auto compileEnd = std::chrono::steady_clock::now();
 
    std::string outputImagePath = "out.png";
 
@@ -245,14 +309,13 @@ int main(int argc, char *argsRaw[])
       outputImagePath = argv[3 + effectiveCode.list[0].list.size() - 1];
 
    Image *image = &inputImages[0];
+   int outputChannels = loweredProgram.usesVectorFeatures
+                            ? (loweredProgram.outputIsVector ? 3 : 1)
+                            : effectiveChannelCount(inputImages);
 
-   Image outIm(image->width(), image->height(), image->stride());
+   Image outIm(image->width(), image->height(), image->stride(), outputChannels);
 
    std::vector<double *> dataPtrs;
-   for (Image &im : inputImages)
-   {
-      dataPtrs.push_back(im.getData());
-   }
    auto executionStart = std::chrono::steady_clock::now();
    if (chain_times > 0)
    {
@@ -263,29 +326,52 @@ int main(int argc, char *argsRaw[])
          return 1;
       }
 
-      Image chainInput(image->width(), image->height(), image->stride());
-      Image chainOutput(image->width(), image->height(), image->stride());
-      std::copy(image->getData(),
-                image->getData() + image->height() * image->stride(),
-                chainInput.getData());
-
-      std::vector<double *> chainPtrs(1);
-      chainPtrs[0] = chainInput.getData();
+      Image chainInput(image->width(), image->height(), image->stride(), outputChannels);
+      Image chainOutput(image->width(), image->height(), image->stride(), outputChannels);
+      for (int channel = 0; channel < outputChannels; ++channel)
+      {
+         int sourceChannel = image->channelCount() == 1 ? 0 : channel;
+         std::copy(image->getChannelData(sourceChannel),
+                   image->getChannelData(sourceChannel) + image->planeSize(),
+                   chainInput.getChannelData(channel));
+      }
 
       for (int i = 0; i < chain_times; i++)
       {
-         test(image->width(), image->height(), i + 1, chainPtrs.data(), chainOutput.getData());
+         std::vector<Image> chainImages;
+         chainImages.push_back(Image(chainInput.getData(),
+                                     image->width(),
+                                     image->height(),
+                                     image->stride(),
+                                     outputChannels));
+
+         for (int channel = 0; channel < outputChannels; ++channel)
+         {
+            if (loweredProgram.usesVectorFeatures)
+               fillVectorArgPointers(chainImages, loweredProgram.argBindings, dataPtrs);
+            else
+            {
+               dataPtrs.resize(1);
+               dataPtrs[0] = chainInput.getChannelData(channel);
+            }
+
+            size_t functionIndex = loweredProgram.usesVectorFeatures ? static_cast<size_t>(channel) : 0;
+            compiledFunctions[functionIndex](image->width(),
+                                             image->height(),
+                                             i + 1,
+                                             dataPtrs.data(),
+                                             chainOutput.getChannelData(channel));
+         }
          std::swap(chainInput.data, chainOutput.data);
-         chainPtrs[0] = chainInput.getData();
          if (!emitFramesPath.empty())
          {
-            Image frame(chainInput.getData(), image->width(), image->height(), image->stride());
+            Image frame(chainInput.getData(), image->width(), image->height(), image->stride(), outputChannels);
             frame.write(makeChainedFramePath(emitFramesPath, i + 1));
          }
       }
 
       std::copy(chainInput.getData(),
-                chainInput.getData() + image->height() * image->stride(),
+                chainInput.getData() + outputChannels * image->planeSize(),
                 outIm.getData());
    }
    else
@@ -298,7 +384,20 @@ int main(int argc, char *argsRaw[])
       }
       for (int i = 0; i < n_times; i++)
       {
-         test(image->width(), image->height(), 1, dataPtrs.data(), outIm.getData());
+         for (int channel = 0; channel < outputChannels; ++channel)
+         {
+            if (loweredProgram.usesVectorFeatures)
+               fillVectorArgPointers(inputImages, loweredProgram.argBindings, dataPtrs);
+            else
+               fillChannelPointers(inputImages, channel, dataPtrs);
+
+            size_t functionIndex = loweredProgram.usesVectorFeatures ? static_cast<size_t>(channel) : 0;
+            compiledFunctions[functionIndex](image->width(),
+                                             image->height(),
+                                             1,
+                                             dataPtrs.data(),
+                                             outIm.getChannelData(channel));
+         }
       }
    }
    auto executionEnd = std::chrono::steady_clock::now();
@@ -311,7 +410,7 @@ int main(int argc, char *argsRaw[])
       double compileMillis = compileMicros / 1000.0;
       double executionMillis = executionMicros / 1000.0;
       double averageMillis = (n_times > 0) ? executionMillis / n_times : 0.0;
-      double totalPixels = static_cast<double>(image->width()) * image->height() * n_times;
+      double totalPixels = static_cast<double>(image->width()) * image->height() * outputChannels * n_times;
       double pixelsPerSecond = (executionMicros > 0) ? (totalPixels * 1000000.0) / executionMicros : 0.0;
 
       std::cout << "benchmark.compile_ms=" << compileMillis << std::endl;

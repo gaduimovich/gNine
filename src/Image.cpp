@@ -11,18 +11,30 @@
 namespace gnine
 {
 
-   Image::Image(const std::string &path) : data(nullptr), w(0), h(0), ownsData(true)
+   Image::Image(const std::string &path) : data(nullptr), w(0), h(0), s(0), channels(1), ownsData(true)
    {
       int n;
-      // load image as greyscale
-      unsigned char *datauc = stbi_load(path.c_str(), &w, &h, &n, 1);
+      unsigned char *datauc = stbi_load(path.c_str(), &w, &h, &n, 0);
       s = w;
+      channels = (n >= 3) ? 3 : 1;
 
       if (w * h > 0)
       {
-         data = new PixType[w * h];
-         for (int i = 0; i < w * h; ++i)
-            data[i] = datauc[i] / 255.0;
+         data = new PixType[w * h * channels];
+         if (channels == 1)
+         {
+            int sourceChannels = (n > 0) ? n : 1;
+            for (int idx = 0; idx < w * h; ++idx)
+               data[idx] = datauc[idx * sourceChannels] / 255.0;
+         }
+         else
+         {
+            for (int idx = 0; idx < w * h; ++idx)
+            {
+               for (int channel = 0; channel < channels; ++channel)
+                  data[channel * w * h + idx] = datauc[idx * n + channel] / 255.0;
+            }
+         }
       }
 
       stbi_image_free(datauc);
@@ -30,14 +42,30 @@ namespace gnine
 
    void Image::write(const std::string &dest) const
    {
-      std::vector<unsigned char> datauc(w * h);
+      std::vector<unsigned char> datauc(w * h * channels);
 
-      for (int i = 0; i < w; ++i)
-         for (int j = 0; j < h; ++j)
-            datauc[i * w + j] = (unsigned char)(std::max(
-                std::min((*this)(i, j) * 255.0, 255.0), 0.0));
+      for (int row = 0; row < h; ++row)
+      {
+         for (int col = 0; col < w; ++col)
+         {
+            int pixelIndex = row * w + col;
+            if (channels == 1)
+            {
+               datauc[pixelIndex] = (unsigned char)(std::max(
+                   std::min((*this)(row, col) * 255.0, 255.0), 0.0));
+            }
+            else
+            {
+               for (int channel = 0; channel < channels; ++channel)
+               {
+                  datauc[pixelIndex * channels + channel] = (unsigned char)(std::max(
+                      std::min((*this)(row, col, channel) * 255.0, 255.0), 0.0));
+               }
+            }
+         }
+      }
 
-      stbi_write_png(dest.c_str(), w, h, 1, &datauc[0], w);
+      stbi_write_png(dest.c_str(), w, h, channels, &datauc[0], w * channels);
    }
 
 }
