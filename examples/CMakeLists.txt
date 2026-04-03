@@ -120,6 +120,18 @@ add_custom_command(
    DEPENDS gnine detail_boost.psm box_5x5_out_1.png
 )
 
-add_custom_target(examples ALL DEPENDS copy_examples copy_example_data compose_out.png erode_3x3_out.png dilate_3x3_out.png erode_5x5_out.png dilate_5x5_out.png min_out.png metaballs_out.png metaballs_binary_out.png metaballs_fancy_out.png box_3x3_out_1.png box_3x3_out_2.png box_5x5_out_1.png box_5x5_out_2.png metaball_edges.png lena_edge.png flipped_duck.png threshold.png abs_edges.png midtones_notch.png detail_boost.png)
+add_custom_command(
+   OUTPUT detail_boost_extreme.png
+   COMMAND gnine --logCommand detail_boost_extreme.psm ../example_data/lena.png box_5x5_out_1.png detail_boost_extreme.png
+   DEPENDS gnine detail_boost_extreme.psm box_5x5_out_1.png
+)
+
+add_custom_command(
+   OUTPUT posterize_4.png
+   COMMAND gnine --logCommand posterize_4.psm ../example_data/lena.png posterize_4.png
+   DEPENDS gnine posterize_4.psm
+)
+
+add_custom_target(examples ALL DEPENDS copy_examples copy_example_data compose_out.png erode_3x3_out.png dilate_3x3_out.png erode_5x5_out.png dilate_5x5_out.png min_out.png metaballs_out.png metaballs_binary_out.png metaballs_fancy_out.png box_3x3_out_1.png box_3x3_out_2.png box_5x5_out_1.png box_5x5_out_2.png metaball_edges.png lena_edge.png flipped_duck.png threshold.png abs_edges.png midtones_notch.png detail_boost.png detail_boost_extreme.png posterize_4.png)
 
 add_subdirectory(game_of_life)

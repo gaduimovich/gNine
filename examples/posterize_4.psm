@@ -1,0 +1,6 @@
+; Posterize into four grayscale bands.
+((A)
+  (if (< A 0.25) 0.125
+    (if (< A 0.5) 0.375
+      (if (< A 0.75) 0.625
+        0.875))))
