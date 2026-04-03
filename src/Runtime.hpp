@@ -6,8 +6,10 @@
 #include <cstddef>
 #include <map>
 #include <string>
+#include <utility>
 #include <vector>
 
+#include "Image.h"
 #include "Parser.h"
 
 namespace gnine
@@ -17,6 +19,7 @@ namespace gnine
       struct Object;
       struct EnvironmentObject;
       struct ClosureObject;
+      struct ImageObject;
 
       struct Value
       {
@@ -50,13 +53,14 @@ namespace gnine
          bool isObject() const;
       };
 
-      struct Object
-      {
-         enum Type
+         struct Object
          {
-            Environment,
-            Closure
-         };
+            enum Type
+            {
+               Environment,
+               Closure,
+               Image
+            };
 
          Type type;
          bool marked;
@@ -88,6 +92,15 @@ namespace gnine
          void trace(class Heap &heap) override;
       };
 
+      struct ImageObject : public Object
+      {
+         gnine::Image *image;
+
+         explicit ImageObject(const gnine::Image &source);
+         ~ImageObject() override;
+         void trace(class Heap &heap) override;
+      };
+
       class Heap
       {
       public:
@@ -112,6 +125,7 @@ namespace gnine
          ClosureObject *allocateClosure(const std::vector<std::string> &params,
                                         const Cell &body,
                                         EnvironmentObject *env);
+         ImageObject *allocateImage(const gnine::Image &image);
 
          void addRoot(Value *slot);
          void removeRoot(Value *slot);
@@ -125,7 +139,7 @@ namespace gnine
 
       private:
          template <typename T, typename... Args>
-         T *allocateObject(Args... args);
+         T *allocateObject(Args&&... args);
 
          void sweep();
 
@@ -145,9 +159,12 @@ namespace gnine
          Evaluator();
 
          Value evaluateProgram(const Cell &program);
+         Value evaluateProgram(const Cell &program, const std::map<std::string, Value> &bindings);
          Value evaluateExpr(const Cell &expr);
+         Value evaluateExpr(const Cell &expr, const std::map<std::string, Value> &bindings);
          Cell normalizeProgram(const Cell &program);
          Cell requireExpr(const Value &value, const std::string &context) const;
+         Value imageValue(const gnine::Image &image);
 
          Heap &heap();
 
@@ -158,6 +175,9 @@ namespace gnine
          Value applyCallable(const Value &callable,
                              const std::vector<Value> &args,
                              const std::string &context);
+         Value applyImageSample(ImageObject *image,
+                                const std::vector<Value> &args,
+                                const std::string &context);
          Value applyClosure(ClosureObject *closure,
                             const std::vector<Value> &args);
          bool lookup(EnvironmentObject *env,
@@ -165,13 +185,33 @@ namespace gnine
                      Value *outValue) const;
          bool isBuiltin(const std::string &name) const;
          bool allNumbers(const std::vector<Value> &args) const;
+         bool allConcreteBuiltinArgs(const std::vector<Value> &args) const;
          double requireNumber(const Value &value,
                               const std::string &context) const;
+         ImageObject *requireImageObject(const Value &value,
+                                         const std::string &context) const;
+         bool tryCompiledMapImage(ClosureObject *closure,
+                                  const gnine::Image &source,
+                                  Value *outResult);
+         bool tryCompiledZipImage(ClosureObject *closure,
+                                  const gnine::Image &lhs,
+                                  const gnine::Image &rhs,
+                                  Value *outResult);
+         Value applyMapImage(const Value &callable,
+                             const std::vector<Value> &args,
+                             const std::string &context);
+         Value applyZipImage(const Value &callable,
+                             const std::vector<Value> &args,
+                             const std::string &context);
          Cell numberToCell(double value) const;
          std::vector<Cell> requireExprArgs(const std::vector<Value> &args,
                                            const std::string &context) const;
 
          Heap _heap;
+         bool _hasPixelContext;
+         int _currentRow;
+         int _currentCol;
+         int _currentChannel;
       };
    }
 }

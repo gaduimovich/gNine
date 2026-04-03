@@ -1,8 +1,14 @@
 #include "Runtime.hpp"
 
+#include "ImageArray.hpp"
+#include "VectorProgram.hpp"
+#include "JitBuilder.hpp"
+
 #include <algorithm>
 #include <cmath>
 #include <iomanip>
+#include <limits>
+#include <set>
 #include <sstream>
 #include <stdexcept>
 
@@ -21,6 +27,96 @@ namespace gnine
             if (!ss || (ss >> trailing))
                throw std::runtime_error("Invalid numeric literal: " + literal);
             return value;
+         }
+
+         int reflectIndex(int index, int limit)
+         {
+            if (limit <= 0)
+               throw std::runtime_error("Cannot sample from an empty image");
+
+            int maxIndex = limit - 1;
+            while (index < 0 || index > maxIndex)
+            {
+               if (index < 0)
+                  index = -index;
+               if (index > maxIndex)
+                  index = 2 * maxIndex + 1 - index;
+            }
+            return index;
+         }
+
+         struct PixelContextScope
+         {
+            PixelContextScope(bool &hasPixelContext,
+                              int &currentRow,
+                              int &currentCol,
+                              int &currentChannel,
+                              int row,
+                              int col,
+                              int channel)
+               : hasContext(hasPixelContext),
+                 rowRef(currentRow),
+                 colRef(currentCol),
+                 channelRef(currentChannel),
+                 previousHasContext(hasPixelContext),
+                 previousRow(currentRow),
+                 previousCol(currentCol),
+                 previousChannel(currentChannel)
+            {
+               hasContext = true;
+               rowRef = row;
+               colRef = col;
+               channelRef = channel;
+            }
+
+            ~PixelContextScope()
+            {
+               hasContext = previousHasContext;
+               rowRef = previousRow;
+               colRef = previousCol;
+               channelRef = previousChannel;
+            }
+
+            bool &hasContext;
+            int &rowRef;
+            int &colRef;
+            int &channelRef;
+            bool previousHasContext;
+            int previousRow;
+            int previousCol;
+            int previousChannel;
+         };
+
+         Cell makeSymbolCell(const std::string &value)
+         {
+            return Cell(Cell::Symbol, value);
+         }
+
+         Cell makeDefineCell(const std::string &name, const Cell &value)
+         {
+            Cell defineExpr(Cell::List);
+            defineExpr.list.push_back(makeSymbolCell("define"));
+            defineExpr.list.push_back(makeSymbolCell(name));
+            defineExpr.list.push_back(value);
+            return defineExpr;
+         }
+
+         Cell doubleToCell(double value)
+         {
+            std::ostringstream out;
+            out << std::setprecision(17) << value;
+            return Cell(Cell::Number, out.str());
+         }
+
+         bool ensureRuntimeJitInitialized()
+         {
+            static bool initialized = false;
+            if (initialized)
+               return true;
+
+            static char jitOptions[] = "-Xjit:acceptHugeMethods,enableBasicBlockHoisting,omitFramePointer,useILValidator";
+            initialized = initializeJitWithOptions(jitOptions);
+            return initialized;
          }
       }
 
@@ -126,6 +222,23 @@ namespace gnine
          heap.markObject(env);
       }
 
+      ImageObject::ImageObject(const gnine::Image &source)
+         : Object(Image), image(new gnine::Image(source.width(), source.height(), source.stride(), source.channelCount()))
+      {
+         std::copy(source.getData(),
+                   source.getData() + source.channelCount() * source.planeSize(),
+                   image->getData());
+      }
+
+      ImageObject::~ImageObject()
+      {
+         delete image;
+      }
+
+      void ImageObject::trace(Heap &)
+      {
+      }
+
       Heap::Root::Root(Heap &heap, Value &slot)
          : _heap(&heap), _slot(&slot)
       {
@@ -166,6 +279,11 @@ namespace gnine
                                            EnvironmentObject *env)
       {
          return allocateObject<ClosureObject>(params, body, env);
+      }
+
+      ImageObject *Heap::allocateImage(const gnine::Image &image)
+      {
+         return allocateObject<ImageObject>(image);
       }
 
       void Heap::addRoot(Value *slot)
@@ -215,12 +333,12 @@ namespace gnine
       }
 
       template <typename T, typename... Args>
-      T *Heap::allocateObject(Args... args)
+      T *Heap::allocateObject(Args&&... args)
       {
          if (_liveObjects >= _nextCollectionThreshold)
             collect();
 
-         T *object = new T(args...);
+         T *object = new T(std::forward<Args>(args)...);
          object->next = _objects;
          _objects = object;
          ++_liveObjects;
@@ -248,58 +366,130 @@ namespace gnine
       }
 
       Evaluator::Evaluator()
+         : _hasPixelContext(false),
+           _currentRow(0),
+           _currentCol(0),
+           _currentChannel(0)
       {
       }
 
       Value Evaluator::evaluateProgram(const Cell &program)
       {
+         std::map<std::string, Value> bindings;
+         return evaluateProgram(program, bindings);
+      }
+
+      Value Evaluator::evaluateProgram(const Cell &program, const std::map<std::string, Value> &bindings)
+      {
          if (program.type != Cell::List || program.list.empty() || program.list[0].type != Cell::List)
             throw std::runtime_error("Runtime program must be of form (() expr)");
-         if (!program.list[0].list.empty())
-            throw std::runtime_error("Runtime evaluator currently supports zero-argument programs only");
+
+         const Cell &argsCell = program.list[0];
+         for (size_t idx = 0; idx < argsCell.list.size(); ++idx)
+         {
+            if (argsCell.list[idx].type != Cell::Symbol)
+               throw std::runtime_error("Runtime program arguments must be symbols");
+         }
+
+         std::vector<Value> rootedBindings;
+         rootedBindings.reserve(bindings.size());
+         for (std::map<std::string, Value>::const_iterator it = bindings.begin(); it != bindings.end(); ++it)
+            rootedBindings.push_back(it->second);
+         for (size_t idx = 0; idx < rootedBindings.size(); ++idx)
+            _heap.addRoot(&rootedBindings[idx]);
 
          Value globalEnvValue = Value::objectValue(_heap.allocateEnvironment(NULL));
          Heap::Root globalRoot(_heap, globalEnvValue);
          EnvironmentObject *globalEnv = static_cast<EnvironmentObject *>(globalEnvValue.object);
 
-         Value result = Value::nil();
-         Heap::Root resultRoot(_heap, result);
-         bool sawResult = false;
-
-         for (size_t idx = 1; idx < program.list.size(); ++idx)
+         try
          {
-            const Cell &expr = program.list[idx];
-            bool isDefine = expr.type == Cell::List &&
-                            expr.list.size() == 3 &&
-                            expr.list[0].type == Cell::Symbol &&
-                            expr.list[0].val == "define" &&
-                            expr.list[1].type == Cell::Symbol;
+            for (std::map<std::string, Value>::const_iterator it = bindings.begin(); it != bindings.end(); ++it)
+               globalEnv->bindings[it->first] = it->second;
 
-            if (isDefine)
+            for (size_t idx = 0; idx < argsCell.list.size(); ++idx)
             {
-               Value defineValue = eval(expr.list[2], globalEnv);
-               globalEnv->bindings[expr.list[1].val] = defineValue;
-               continue;
+               const std::string &name = argsCell.list[idx].val;
+               std::map<std::string, Value>::const_iterator it = bindings.find(name);
+               if (it == bindings.end())
+                  throw std::runtime_error("Missing runtime binding for program argument: " + name);
             }
 
-            if (sawResult)
-               throw std::runtime_error("Runtime evaluator expects a single result expression plus defines");
+            Value result = Value::nil();
+            Heap::Root resultRoot(_heap, result);
+            bool sawResult = false;
 
-            result = eval(expr, globalEnv);
-            sawResult = true;
+            for (size_t idx = 1; idx < program.list.size(); ++idx)
+            {
+               const Cell &expr = program.list[idx];
+               bool isDefine = expr.type == Cell::List &&
+                               expr.list.size() == 3 &&
+                               expr.list[0].type == Cell::Symbol &&
+                               expr.list[0].val == "define" &&
+                               expr.list[1].type == Cell::Symbol;
+
+               if (isDefine)
+               {
+                  Value defineValue = eval(expr.list[2], globalEnv);
+                  globalEnv->bindings[expr.list[1].val] = defineValue;
+                  continue;
+               }
+
+               if (sawResult)
+                  throw std::runtime_error("Runtime evaluator expects a single result expression plus defines");
+
+               result = eval(expr, globalEnv);
+               sawResult = true;
+            }
+
+            if (!sawResult)
+               throw std::runtime_error("Runtime program must contain a result expression");
+
+            for (size_t idx = 0; idx < rootedBindings.size(); ++idx)
+               _heap.removeRoot(&rootedBindings[idx]);
+            return result;
          }
-
-         if (!sawResult)
-            throw std::runtime_error("Runtime program must contain a result expression");
-
-         return result;
+         catch (...)
+         {
+            for (size_t idx = 0; idx < rootedBindings.size(); ++idx)
+               _heap.removeRoot(&rootedBindings[idx]);
+            throw;
+         }
       }
 
       Value Evaluator::evaluateExpr(const Cell &expr)
       {
+         std::map<std::string, Value> bindings;
+         return evaluateExpr(expr, bindings);
+      }
+
+      Value Evaluator::evaluateExpr(const Cell &expr, const std::map<std::string, Value> &bindings)
+      {
+         std::vector<Value> rootedBindings;
+         rootedBindings.reserve(bindings.size());
+         for (std::map<std::string, Value>::const_iterator it = bindings.begin(); it != bindings.end(); ++it)
+            rootedBindings.push_back(it->second);
+         for (size_t idx = 0; idx < rootedBindings.size(); ++idx)
+            _heap.addRoot(&rootedBindings[idx]);
+
          Value globalEnvValue = Value::objectValue(_heap.allocateEnvironment(NULL));
          Heap::Root globalRoot(_heap, globalEnvValue);
-         return eval(expr, static_cast<EnvironmentObject *>(globalEnvValue.object));
+         EnvironmentObject *globalEnv = static_cast<EnvironmentObject *>(globalEnvValue.object);
+         try
+         {
+            for (std::map<std::string, Value>::const_iterator it = bindings.begin(); it != bindings.end(); ++it)
+               globalEnv->bindings[it->first] = it->second;
+            Value result = eval(expr, globalEnv);
+            for (size_t idx = 0; idx < rootedBindings.size(); ++idx)
+               _heap.removeRoot(&rootedBindings[idx]);
+            return result;
+         }
+         catch (...)
+         {
+            for (size_t idx = 0; idx < rootedBindings.size(); ++idx)
+               _heap.removeRoot(&rootedBindings[idx]);
+            throw;
+         }
       }
 
       Cell Evaluator::normalizeProgram(const Cell &program)
@@ -372,6 +562,11 @@ namespace gnine
          throw std::runtime_error(context + " cannot use a closure as a scalar/image expression");
       }
 
+      Value Evaluator::imageValue(const gnine::Image &image)
+      {
+         return Value::objectValue(_heap.allocateImage(image));
+      }
+
       Heap &Evaluator::heap()
       {
          return _heap;
@@ -432,7 +627,20 @@ namespace gnine
                Heap::Root calleeRoot(_heap, callee);
                for (size_t idx = 0; idx < args.size(); ++idx)
                   args[idx] = eval(expr.list[idx + 2], env);
-               result = applyCallable(callee, args, name);
+               bool allImages = true;
+               for (size_t idx = 0; idx < args.size(); ++idx)
+               {
+                  if (!args[idx].isObject() || args[idx].object->type != Object::Image)
+                  {
+                     allImages = false;
+                     break;
+                  }
+               }
+
+               if (allImages)
+                  result = name == "map-image" ? applyMapImage(callee, args, name) : applyZipImage(callee, args, name);
+               else
+                  result = applyCallable(callee, args, name);
             }
             catch (...)
             {
@@ -545,6 +753,137 @@ namespace gnine
             return Value::numberValue(std::fabs(requireNumber(args[0], "abs")));
          }
 
+         if (builtinName == "min")
+         {
+            if (args.empty())
+               throw std::runtime_error("min expects at least one argument");
+            double value = requireNumber(args[0], "min");
+            for (size_t idx = 1; idx < args.size(); ++idx)
+               value = std::min(value, requireNumber(args[idx], "min"));
+            return Value::numberValue(value);
+         }
+
+         if (builtinName == "max")
+         {
+            if (args.empty())
+               throw std::runtime_error("max expects at least one argument");
+            double value = requireNumber(args[0], "max");
+            for (size_t idx = 1; idx < args.size(); ++idx)
+               value = std::max(value, requireNumber(args[idx], "max"));
+            return Value::numberValue(value);
+         }
+
+         if (builtinName == "clamp")
+         {
+            if (args.size() != 3)
+               throw std::runtime_error("clamp expects exactly three arguments");
+            double value = requireNumber(args[0], "clamp");
+            double low = requireNumber(args[1], "clamp");
+            double high = requireNumber(args[2], "clamp");
+            return Value::numberValue(std::min(std::max(value, low), high));
+         }
+
+         if (builtinName == "int")
+         {
+            if (args.size() != 1)
+               throw std::runtime_error("int expects exactly one argument");
+            return Value::numberValue(static_cast<long long>(requireNumber(args[0], "int")));
+         }
+
+         if (builtinName == "<")
+         {
+            if (args.size() != 2)
+               throw std::runtime_error("< expects exactly two arguments");
+            return Value::numberValue(requireNumber(args[0], "<") < requireNumber(args[1], "<") ? 1.0 : 0.0);
+         }
+
+         if (builtinName == "<=")
+         {
+            if (args.size() != 2)
+               throw std::runtime_error("<= expects exactly two arguments");
+            return Value::numberValue(requireNumber(args[0], "<=") <= requireNumber(args[1], "<=") ? 1.0 : 0.0);
+         }
+
+         if (builtinName == ">")
+         {
+            if (args.size() != 2)
+               throw std::runtime_error("> expects exactly two arguments");
+            return Value::numberValue(requireNumber(args[0], ">") > requireNumber(args[1], ">") ? 1.0 : 0.0);
+         }
+
+         if (builtinName == ">=")
+         {
+            if (args.size() != 2)
+               throw std::runtime_error(">= expects exactly two arguments");
+            return Value::numberValue(requireNumber(args[0], ">=") >= requireNumber(args[1], ">=") ? 1.0 : 0.0);
+         }
+
+         if (builtinName == "==")
+         {
+            if (args.size() != 2)
+               throw std::runtime_error("== expects exactly two arguments");
+            return Value::numberValue(requireNumber(args[0], "==") == requireNumber(args[1], "==") ? 1.0 : 0.0);
+         }
+
+         if (builtinName == "!=")
+         {
+            if (args.size() != 2)
+               throw std::runtime_error("!= expects exactly two arguments");
+            return Value::numberValue(requireNumber(args[0], "!=") != requireNumber(args[1], "!=") ? 1.0 : 0.0);
+         }
+
+         if (builtinName == "and")
+         {
+            if (args.empty())
+               throw std::runtime_error("and expects at least one argument");
+            for (size_t idx = 0; idx < args.size(); ++idx)
+            {
+               if (requireNumber(args[idx], "and") == 0.0)
+                  return Value::numberValue(0.0);
+            }
+            return Value::numberValue(1.0);
+         }
+
+         if (builtinName == "or")
+         {
+            if (args.empty())
+               throw std::runtime_error("or expects at least one argument");
+            for (size_t idx = 0; idx < args.size(); ++idx)
+            {
+               if (requireNumber(args[idx], "or") != 0.0)
+                  return Value::numberValue(1.0);
+            }
+            return Value::numberValue(0.0);
+         }
+
+         if (builtinName == "not")
+         {
+            if (args.size() != 1)
+               throw std::runtime_error("not expects exactly one argument");
+            return Value::numberValue(requireNumber(args[0], "not") == 0.0 ? 1.0 : 0.0);
+         }
+
+         if (builtinName == "width")
+         {
+            if (args.size() != 1)
+               throw std::runtime_error("width expects exactly one argument");
+            return Value::numberValue(requireImageObject(args[0], "width")->image->width());
+         }
+
+         if (builtinName == "height")
+         {
+            if (args.size() != 1)
+               throw std::runtime_error("height expects exactly one argument");
+            return Value::numberValue(requireImageObject(args[0], "height")->image->height());
+         }
+
+         if (builtinName == "channels")
+         {
+            if (args.size() != 1)
+               throw std::runtime_error("channels expects exactly one argument");
+            return Value::numberValue(requireImageObject(args[0], "channels")->image->channelCount());
+         }
+
          throw std::runtime_error("Unsupported runtime builtin: " + builtinName);
       }
 
@@ -554,14 +893,16 @@ namespace gnine
       {
          if (callable.isObject())
          {
-            if (callable.object->type != Object::Closure)
-               throw std::runtime_error(context + " cannot call this runtime object");
-            return applyClosure(static_cast<ClosureObject *>(callable.object), args);
+            if (callable.object->type == Object::Closure)
+               return applyClosure(static_cast<ClosureObject *>(callable.object), args);
+            if (callable.object->type == Object::Image)
+               return applyImageSample(static_cast<ImageObject *>(callable.object), args, context);
+            throw std::runtime_error(context + " cannot call this runtime object");
          }
 
          if (callable.isBuiltin())
-         {
-            if (allNumbers(args))
+        {
+            if (allConcreteBuiltinArgs(args))
                return applyBuiltin(callable.builtinName, args);
 
             Value result = Value::nil();
@@ -609,8 +950,31 @@ namespace gnine
 
          for (size_t idx = 0; idx < args.size(); ++idx)
             callEnv->bindings[closure->params[idx]] = args[idx];
+         if (_hasPixelContext)
+         {
+            callEnv->bindings["i"] = Value::numberValue(_currentRow);
+            callEnv->bindings["j"] = Value::numberValue(_currentCol);
+            callEnv->bindings["c"] = Value::numberValue(_currentChannel);
+         }
 
          return eval(closure->body, callEnv);
+      }
+
+      Value Evaluator::applyImageSample(ImageObject *image,
+                                        const std::vector<Value> &args,
+                                        const std::string &context)
+      {
+         if (!_hasPixelContext)
+            throw std::runtime_error(context + " image sampling requires map-image or zip-image pixel context");
+         if (args.size() != 2)
+            throw std::runtime_error(context + " image sampling expects exactly two offset arguments");
+
+         int row = _currentRow + static_cast<int>(requireNumber(args[0], context));
+         int col = _currentCol + static_cast<int>(requireNumber(args[1], context));
+         row = reflectIndex(row, image->image->height());
+         col = reflectIndex(col, image->image->width());
+         int channel = image->image->channelCount() == 1 ? 0 : _currentChannel;
+         return Value::numberValue(image->image->operator()(row, col, channel));
       }
 
       bool Evaluator::lookup(EnvironmentObject *env,
@@ -631,7 +995,12 @@ namespace gnine
 
       bool Evaluator::isBuiltin(const std::string &name) const
       {
-         return name == "+" || name == "-" || name == "*" || name == "/" || name == "abs";
+         return name == "+" || name == "-" || name == "*" || name == "/" ||
+                name == "<" || name == "<=" || name == ">" || name == ">=" ||
+                name == "==" || name == "!=" || name == "and" || name == "or" ||
+                name == "not" || name == "min" || name == "max" || name == "abs" ||
+                name == "clamp" || name == "int" ||
+                name == "width" || name == "height" || name == "channels";
       }
 
       bool Evaluator::allNumbers(const std::vector<Value> &args) const
@@ -644,12 +1013,317 @@ namespace gnine
          return true;
       }
 
+      bool Evaluator::allConcreteBuiltinArgs(const std::vector<Value> &args) const
+      {
+         for (size_t idx = 0; idx < args.size(); ++idx)
+         {
+            if (args[idx].isExpr())
+               return false;
+            if (args[idx].isObject() && args[idx].object->type == Object::Closure)
+               return false;
+         }
+         return true;
+      }
+
       double Evaluator::requireNumber(const Value &value,
                                       const std::string &context) const
       {
          if (!value.isNumber())
             throw std::runtime_error(context + " expects numeric arguments");
          return value.number;
+      }
+
+      ImageObject *Evaluator::requireImageObject(const Value &value,
+                                                 const std::string &context) const
+      {
+         if (!value.isObject() || value.object->type != Object::Image)
+            throw std::runtime_error(context + " expects image arguments");
+         return static_cast<ImageObject *>(value.object);
+      }
+
+      bool Evaluator::tryCompiledMapImage(ClosureObject *closure,
+                                          const gnine::Image &source,
+                                          Value *outResult)
+      {
+         if (closure->params.size() != 1)
+            return false;
+
+         const std::string sourceArgName = "__runtime_source__";
+         Cell argsCell(Cell::List);
+         argsCell.list.push_back(makeSymbolCell(sourceArgName));
+
+         Cell program(Cell::List);
+         program.list.push_back(argsCell);
+         if (closure->params[0] != sourceArgName)
+            program.list.push_back(makeDefineCell(closure->params[0], makeSymbolCell(sourceArgName)));
+
+         std::set<std::string> seenBindings;
+         std::vector<const gnine::Image *> inputImages;
+         inputImages.push_back(&source);
+         for (EnvironmentObject *current = closure->env; current != NULL; current = current->parent)
+         {
+            for (std::map<std::string, Value>::const_iterator it = current->bindings.begin();
+                 it != current->bindings.end();
+                 ++it)
+            {
+               if (!seenBindings.insert(it->first).second || it->first == closure->params[0])
+                  continue;
+
+               const Value &value = it->second;
+               if (value.isNumber())
+               {
+                  program.list.push_back(makeDefineCell(it->first, doubleToCell(value.number)));
+                  continue;
+               }
+
+               if (value.isExpr())
+               {
+                  program.list.push_back(makeDefineCell(it->first, value.expr));
+                  continue;
+               }
+
+               if (value.isBuiltin())
+                  continue;
+
+               if (value.isObject() && value.object->type == Object::Image)
+               {
+                  argsCell.list.push_back(makeSymbolCell(it->first));
+                  inputImages.push_back(static_cast<ImageObject *>(value.object)->image);
+                  continue;
+               }
+
+               return false;
+            }
+         }
+
+         program.list[0] = argsCell;
+         program.list.push_back(closure->body);
+
+         if (!ensureRuntimeJitInitialized())
+            throw std::runtime_error("Failed to initialize JIT for compiled runtime map-image");
+
+         try
+         {
+            LoweredProgram lowered = lowerProgram(program);
+            if (lowered.usesVectorFeatures || lowered.channelPrograms.size() != 1)
+               return false;
+
+            OMR::JitBuilder::TypeDictionary types;
+            ImageArray method(&types);
+            method.runByteCodes(lowered.channelPrograms[0], false);
+
+            void *entry = NULL;
+            int32_t rc = compileMethodBuilder(&method, &entry);
+            if (rc != 0)
+               return false;
+
+            ImageArrayFunctionType *fn = reinterpret_cast<ImageArrayFunctionType *>(entry);
+            gnine::Image resultImage(source.width(), source.height(), source.stride(), source.channelCount());
+            std::vector<double *> dataPtrs;
+            dataPtrs.reserve(inputImages.size());
+            for (int channel = 0; channel < source.channelCount(); ++channel)
+            {
+               dataPtrs.clear();
+               for (size_t idx = 0; idx < inputImages.size(); ++idx)
+               {
+                  const gnine::Image *image = inputImages[idx];
+                  int sourceChannel = image->channelCount() == 1 ? 0 : channel;
+                  dataPtrs.push_back(const_cast<double *>(image->getChannelData(sourceChannel)));
+               }
+               fn(source.width(), source.height(), 1, dataPtrs.data(), resultImage.getChannelData(channel));
+            }
+
+            *outResult = imageValue(resultImage);
+            return true;
+         }
+         catch (...)
+         {
+            return false;
+         }
+      }
+
+      bool Evaluator::tryCompiledZipImage(ClosureObject *closure,
+                                          const gnine::Image &lhs,
+                                          const gnine::Image &rhs,
+                                          Value *outResult)
+      {
+         if (closure->params.size() != 2)
+            return false;
+
+         const std::string lhsArgName = "__runtime_lhs__";
+         const std::string rhsArgName = "__runtime_rhs__";
+         Cell argsCell(Cell::List);
+         argsCell.list.push_back(makeSymbolCell(lhsArgName));
+         argsCell.list.push_back(makeSymbolCell(rhsArgName));
+
+         Cell program(Cell::List);
+         program.list.push_back(argsCell);
+         if (closure->params[0] != lhsArgName)
+            program.list.push_back(makeDefineCell(closure->params[0], makeSymbolCell(lhsArgName)));
+         if (closure->params[1] != rhsArgName)
+            program.list.push_back(makeDefineCell(closure->params[1], makeSymbolCell(rhsArgName)));
+
+         std::set<std::string> seenBindings;
+         std::vector<const gnine::Image *> inputImages;
+         inputImages.push_back(&lhs);
+         inputImages.push_back(&rhs);
+         for (EnvironmentObject *current = closure->env; current != NULL; current = current->parent)
+         {
+            for (std::map<std::string, Value>::const_iterator it = current->bindings.begin();
+                 it != current->bindings.end();
+                 ++it)
+            {
+               if (!seenBindings.insert(it->first).second ||
+                   it->first == closure->params[0] ||
+                   it->first == closure->params[1])
+                  continue;
+
+               const Value &value = it->second;
+               if (value.isNumber())
+               {
+                  program.list.push_back(makeDefineCell(it->first, doubleToCell(value.number)));
+                  continue;
+               }
+
+               if (value.isExpr())
+               {
+                  program.list.push_back(makeDefineCell(it->first, value.expr));
+                  continue;
+               }
+
+               if (value.isBuiltin())
+                  continue;
+
+               if (value.isObject() && value.object->type == Object::Image)
+               {
+                  argsCell.list.push_back(makeSymbolCell(it->first));
+                  inputImages.push_back(static_cast<ImageObject *>(value.object)->image);
+                  continue;
+               }
+
+               return false;
+            }
+         }
+
+         program.list[0] = argsCell;
+         program.list.push_back(closure->body);
+
+         if (!ensureRuntimeJitInitialized())
+            throw std::runtime_error("Failed to initialize JIT for compiled runtime zip-image");
+
+         try
+         {
+            LoweredProgram lowered = lowerProgram(program);
+            if (lowered.usesVectorFeatures || lowered.channelPrograms.size() != 1)
+               return false;
+
+            OMR::JitBuilder::TypeDictionary types;
+            ImageArray method(&types);
+            method.runByteCodes(lowered.channelPrograms[0], false);
+
+            void *entry = NULL;
+            int32_t rc = compileMethodBuilder(&method, &entry);
+            if (rc != 0)
+               return false;
+
+            ImageArrayFunctionType *fn = reinterpret_cast<ImageArrayFunctionType *>(entry);
+            gnine::Image resultImage(lhs.width(), lhs.height(), lhs.stride(), lhs.channelCount());
+            std::vector<double *> dataPtrs;
+            dataPtrs.reserve(inputImages.size());
+            for (int channel = 0; channel < lhs.channelCount(); ++channel)
+            {
+               dataPtrs.clear();
+               for (size_t idx = 0; idx < inputImages.size(); ++idx)
+               {
+                  const gnine::Image *image = inputImages[idx];
+                  int sourceChannel = image->channelCount() == 1 ? 0 : channel;
+                  dataPtrs.push_back(const_cast<double *>(image->getChannelData(sourceChannel)));
+               }
+               fn(lhs.width(), lhs.height(), 1, dataPtrs.data(), resultImage.getChannelData(channel));
+            }
+
+            *outResult = imageValue(resultImage);
+            return true;
+         }
+         catch (...)
+         {
+            return false;
+         }
+      }
+
+      Value Evaluator::applyMapImage(const Value &callable,
+                                     const std::vector<Value> &args,
+                                     const std::string &context)
+      {
+         if (args.size() != 1)
+            throw std::runtime_error(context + " expects exactly one image");
+
+         const gnine::Image &source = *requireImageObject(args[0], context)->image;
+         if (callable.isObject() && callable.object->type == Object::Closure)
+         {
+            Value compiledResult = Value::nil();
+            if (tryCompiledMapImage(static_cast<ClosureObject *>(callable.object), source, &compiledResult))
+               return compiledResult;
+         }
+
+         gnine::Image resultImage(source.width(), source.height(), source.stride(), source.channelCount());
+
+         for (int channel = 0; channel < source.channelCount(); ++channel)
+         {
+            for (int row = 0; row < source.height(); ++row)
+            {
+               for (int col = 0; col < source.width(); ++col)
+               {
+                  PixelContextScope pixelScope(_hasPixelContext, _currentRow, _currentCol, _currentChannel,
+                                               row, col, channel);
+                  std::vector<Value> pixelArgs(1, Value::numberValue(source(row, col, channel)));
+                  Value pixelValue = applyCallable(callable, pixelArgs, context);
+                  resultImage(row, col, channel) = requireNumber(pixelValue, context);
+               }
+            }
+         }
+
+         return imageValue(resultImage);
+      }
+
+      Value Evaluator::applyZipImage(const Value &callable,
+                                     const std::vector<Value> &args,
+                                     const std::string &context)
+      {
+         if (args.size() != 2)
+            throw std::runtime_error(context + " expects exactly two images");
+
+         const gnine::Image &lhs = *requireImageObject(args[0], context)->image;
+         const gnine::Image &rhs = *requireImageObject(args[1], context)->image;
+         if (lhs.width() != rhs.width() || lhs.height() != rhs.height() || lhs.channelCount() != rhs.channelCount())
+            throw std::runtime_error(context + " requires matching image extents and channel counts");
+
+         if (callable.isObject() && callable.object->type == Object::Closure)
+         {
+            Value compiledResult = Value::nil();
+            if (tryCompiledZipImage(static_cast<ClosureObject *>(callable.object), lhs, rhs, &compiledResult))
+               return compiledResult;
+         }
+
+         gnine::Image resultImage(lhs.width(), lhs.height(), lhs.stride(), lhs.channelCount());
+         for (int channel = 0; channel < lhs.channelCount(); ++channel)
+         {
+            for (int row = 0; row < lhs.height(); ++row)
+            {
+               for (int col = 0; col < lhs.width(); ++col)
+               {
+                  PixelContextScope pixelScope(_hasPixelContext, _currentRow, _currentCol, _currentChannel,
+                                               row, col, channel);
+                  std::vector<Value> pixelArgs;
+                  pixelArgs.push_back(Value::numberValue(lhs(row, col, channel)));
+                  pixelArgs.push_back(Value::numberValue(rhs(row, col, channel)));
+                  Value pixelValue = applyCallable(callable, pixelArgs, context);
+                  resultImage(row, col, channel) = requireNumber(pixelValue, context);
+               }
+            }
+         }
+
+         return imageValue(resultImage);
       }
 
       Cell Evaluator::numberToCell(double value) const
