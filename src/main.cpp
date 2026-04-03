@@ -7,6 +7,8 @@
 #include <iostream>
 #include <sstream>
 #include <fstream>
+#include <chrono>
+#include <algorithm>
 
 #include "Image.h"
 #include "Parser.h"
@@ -50,6 +52,8 @@ int main(int argc, char *argsRaw[])
       std::cout << "Arguments:\n\n";
       std::cout << "--danger indexing will calcualte it only if you give it indexs in ranger increase performance\n";
       std::cout << "TIMES=N Executes the jited function more then once.\n";
+      std::cout << "CHAIN-TIMES=N Executes the jited function as a chained simulation.\n";
+      std::cout << "--benchmark prints compile and execution timings.\n";
 
       return 1;
    }
@@ -71,15 +75,25 @@ int main(int argc, char *argsRaw[])
    bool logAsm = false;
    bool logCommand = false;
    bool danger = false;
+   bool benchmark = false;
    int n_times = 1;
+    int chain_times = 0;
    for (auto s : options)
    {
       if (s == "--logAsm")
          logAsm = true;
       if (s == "--danger")
          danger = true;
+      else if (s == "--benchmark")
+         benchmark = true;
       else if (s == "--logCommand")
          logCommand = true;
+      else if (s.length() > 14 and s.substr(0, 14) == "--chain-times=")
+      {
+         std::cout << s.substr(14) << " = chain_s\n";
+         std::stringstream ss(s.substr(14));
+         ss >> chain_times;
+      }
       else if (s.length() > 8 and s.substr(0, 8) == "--times=")
       {
          std::cout << s.substr(8) << " = s\n";
@@ -92,6 +106,9 @@ int main(int argc, char *argsRaw[])
          return 1;
       }
    }
+
+   if (chain_times > 0)
+      n_times = chain_times;
 
    std::cout << n_times << " = ntimes\n";
 
@@ -153,7 +170,9 @@ int main(int argc, char *argsRaw[])
    method.runByteCodes(code, danger);
 
    void *entry = 0;
+   auto compileStart = std::chrono::steady_clock::now();
    int32_t rc = compileMethodBuilder(&method, &entry);
+   auto compileEnd = std::chrono::steady_clock::now();
    if (rc != 0)
    {
       fprintf(stderr, "FAIL: compilation error %d\n", rc);
@@ -172,19 +191,68 @@ int main(int argc, char *argsRaw[])
 
    Image outIm(image->width(), image->height(), image->stride());
 
-   int size = image->width() * image->height();
-
    std::vector<double *> dataPtrs;
    for (Image &im : inputImages)
    {
       dataPtrs.push_back(im.getData());
    }
-   for (int i = 0; i < n_times; i++)
+   auto executionStart = std::chrono::steady_clock::now();
+   if (chain_times > 0)
    {
-      test(image->width(), image->height(), dataPtrs.data(), outIm.getData());
+      if (inputImages.size() != 1)
+      {
+         std::cerr << "--chain-times only supports single-input programs." << std::endl;
+         shutdownJit();
+         return 1;
+      }
+
+      Image chainInput(image->width(), image->height(), image->stride());
+      Image chainOutput(image->width(), image->height(), image->stride());
+      std::copy(image->getData(),
+                image->getData() + image->height() * image->stride(),
+                chainInput.getData());
+
+      std::vector<double *> chainPtrs(1);
+      chainPtrs[0] = chainInput.getData();
+
+      for (int i = 0; i < chain_times; i++)
+      {
+         test(image->width(), image->height(), chainPtrs.data(), chainOutput.getData());
+         std::swap(chainInput.data, chainOutput.data);
+         chainPtrs[0] = chainInput.getData();
+      }
+
+      std::copy(chainInput.getData(),
+                chainInput.getData() + image->height() * image->stride(),
+                outIm.getData());
    }
+   else
+   {
+      for (int i = 0; i < n_times; i++)
+      {
+         test(image->width(), image->height(), dataPtrs.data(), outIm.getData());
+      }
+   }
+   auto executionEnd = std::chrono::steady_clock::now();
 
    outIm.write(outputImagePath);
+   if (benchmark)
+   {
+      auto compileMicros = std::chrono::duration_cast<std::chrono::microseconds>(compileEnd - compileStart).count();
+      auto executionMicros = std::chrono::duration_cast<std::chrono::microseconds>(executionEnd - executionStart).count();
+      double compileMillis = compileMicros / 1000.0;
+      double executionMillis = executionMicros / 1000.0;
+      double averageMillis = (n_times > 0) ? executionMillis / n_times : 0.0;
+      double totalPixels = static_cast<double>(image->width()) * image->height() * n_times;
+      double pixelsPerSecond = (executionMicros > 0) ? (totalPixels * 1000000.0) / executionMicros : 0.0;
+
+      std::cout << "benchmark.compile_ms=" << compileMillis << std::endl;
+      std::cout << "benchmark.execute_ms=" << executionMillis << std::endl;
+      std::cout << "benchmark.iterations=" << n_times << std::endl;
+      std::cout << "benchmark.mode=" << (chain_times > 0 ? "chain" : "repeat") << std::endl;
+      std::cout << "benchmark.avg_iter_ms=" << averageMillis << std::endl;
+      std::cout << "benchmark.pixels_per_second=" << pixelsPerSecond << std::endl;
+   }
    shutdownJit();
 
    inputImages.clear();

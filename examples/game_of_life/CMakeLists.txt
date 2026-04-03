@@ -30,4 +30,4 @@ while( number LESS 1200 )
     )
 endwhile( number LESS 1200 )
 
-add_custom_target(example_game_of_life ALL DEPENDS game_of_life_${prev}.png)
+add_custom_target(example_game_of_life ALL DEPENDS copy_game_of_life_example game_of_life_${prev}.png)

@@ -7,6 +7,23 @@
 
 #include "ImageArray.hpp"
 
+static bool usesSymbolValue(const gnine::Cell &cell, const std::string &name)
+{
+   if (cell.type == gnine::Cell::Symbol)
+      return cell.val == name;
+
+   if (cell.type != gnine::Cell::List)
+      return false;
+
+   for (const gnine::Cell &child : cell.list)
+   {
+      if (usesSymbolValue(child, name))
+         return true;
+   }
+
+   return false;
+}
+
 static void printString(int64_t ptr)
 {
 #define PRINTSTRING_LINE LINETOSTR(__LINE__)
@@ -80,6 +97,13 @@ ImageArray::Load2D(OMR::JitBuilder::IlBuilder *bldr,
       retj = GetIndex(bldr, j, bldr->Load("w"));
    }
 
+//         bldr->Call("printInt32   ", 1,
+//        reti); PrintString(bldr, " first \n");
+//   bldr->Call("printInt32", 1,
+//              retj); PrintString(bldr, " second \n");
+
+
+
    return bldr->LoadAt(pDouble,
                        bldr->IndexAt(pDouble, base, bldr->Add(bldr->Mul(reti, bldr->Load("width")), retj)));
 }
@@ -135,8 +159,8 @@ ImageArray::Fib(OMR::JitBuilder::IlBuilder *bldr, OMR::JitBuilder::IlValue *n)
 ImageArray::ImageArray(OMR::JitBuilder::TypeDictionary *d)
     : MethodBuilder(d)
 {
-   DefineLine(LINETOSTR(__LINE__));
-   DefineFile(__FILE__);
+   // DefineLine(LINETOSTR(__LINE__));
+   // DefineFile(__FILE__);
 
    DefineName("imagearray");
 
@@ -317,6 +341,7 @@ OMR::JitBuilder::IlValue *ImageArray::functionHandler(OMR::JitBuilder::IlBuilder
    }
    else
    {
+
       return Load2D(bldr, argv[argNameToIndex.at(functionName)],
                     bldr->Add(bldr->ConvertTo(Int32, args[0]), i),
                     bldr->Add(bldr->ConvertTo(Int32, args[1]), j));
@@ -436,6 +461,19 @@ bool ImageArray::buildIL()
       }
    }
 
+   std::vector<bool> argNeedsScalarLoad(argNames.size(), false);
+   for (size_t argIndex = 0; argIndex < argNames.size(); ++argIndex)
+   {
+      for (const gnine::Cell &expr : cell_.list)
+      {
+         if (usesSymbolValue(expr, argNames[argIndex]))
+         {
+            argNeedsScalarLoad[argIndex] = true;
+            break;
+         }
+      }
+   }
+
    OMR::JitBuilder::IlBuilder *iloop = NULL, *jloop = NULL;
    ForLoopUp("i", &iloop, zero, height, one);
    {
@@ -448,7 +486,8 @@ bool ImageArray::buildIL()
 
          for (size_t mm = 0; mm < argNames.size(); ++mm)
          {
-            jloop->Store(argsAndTempNames[mm], Load2D(jloop, argv[mm], i, j));
+            if (argNeedsScalarLoad[mm])
+               jloop->Store(argsAndTempNames[mm], Load2D(jloop, argv[mm], i, j));
          }
          for (gnine::Cell c : cell_.list)
          {
