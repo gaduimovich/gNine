@@ -118,6 +118,96 @@ namespace gnine
             initialized = initializeJitWithOptions(jitOptions);
             return initialized;
          }
+
+         Cell makeLambdaCell(const ClosureObject *closure)
+         {
+            Cell params(Cell::List);
+            for (size_t idx = 0; idx < closure->params.size(); ++idx)
+               params.list.push_back(makeSymbolCell(closure->params[idx]));
+
+            Cell lambdaExpr(Cell::List);
+            lambdaExpr.list.push_back(makeSymbolCell("lambda"));
+            lambdaExpr.list.push_back(params);
+            lambdaExpr.list.push_back(closure->body);
+            return lambdaExpr;
+         }
+
+         bool appendCompiledBinding(const std::string &name,
+                                    const Value &value,
+                                    const std::set<std::string> &excludedNames,
+                                    std::set<std::string> *emittedNames,
+                                    std::vector<const gnine::Image *> *inputImages,
+                                    Cell *argsCell,
+                                    Cell *program);
+
+         bool appendCompiledEnvironment(EnvironmentObject *env,
+                                        const std::set<std::string> &excludedNames,
+                                        std::set<std::string> *emittedNames,
+                                        std::vector<const gnine::Image *> *inputImages,
+                                        Cell *argsCell,
+                                        Cell *program)
+         {
+            for (EnvironmentObject *current = env; current != NULL; current = current->parent)
+            {
+               for (std::map<std::string, Value>::const_iterator it = current->bindings.begin();
+                    it != current->bindings.end();
+                    ++it)
+               {
+                  if (!appendCompiledBinding(it->first, it->second, excludedNames,
+                                             emittedNames, inputImages, argsCell, program))
+                     return false;
+               }
+            }
+            return true;
+         }
+
+         bool appendCompiledBinding(const std::string &name,
+                                    const Value &value,
+                                    const std::set<std::string> &excludedNames,
+                                    std::set<std::string> *emittedNames,
+                                    std::vector<const gnine::Image *> *inputImages,
+                                    Cell *argsCell,
+                                    Cell *program)
+         {
+            if (excludedNames.count(name) > 0 || !emittedNames->insert(name).second)
+               return true;
+
+            if (value.isNumber())
+            {
+               program->list.push_back(makeDefineCell(name, doubleToCell(value.number)));
+               return true;
+            }
+
+            if (value.isExpr())
+            {
+               program->list.push_back(makeDefineCell(name, value.expr));
+               return true;
+            }
+
+            if (value.isBuiltin())
+               return true;
+
+            if (value.isObject() && value.object->type == Object::Image)
+            {
+               argsCell->list.push_back(makeSymbolCell(name));
+               inputImages->push_back(static_cast<ImageObject *>(value.object)->image);
+               return true;
+            }
+
+            if (value.isObject() && value.object->type == Object::Closure)
+            {
+               const ClosureObject *closure = static_cast<ClosureObject *>(value.object);
+               std::set<std::string> nestedExcluded = excludedNames;
+               nestedExcluded.insert(closure->params.begin(), closure->params.end());
+               if (!appendCompiledEnvironment(closure->env, nestedExcluded, emittedNames,
+                                             inputImages, argsCell, program))
+                  return false;
+               program->list.push_back(makeDefineCell(name, makeLambdaCell(closure)));
+               return true;
+            }
+
+            return false;
+         }
       }
 
       Value::Value()
@@ -1058,43 +1148,13 @@ namespace gnine
             program.list.push_back(makeDefineCell(closure->params[0], makeSymbolCell(sourceArgName)));
 
          std::set<std::string> seenBindings;
+         std::set<std::string> excludedNames;
+         excludedNames.insert(closure->params[0]);
          std::vector<const gnine::Image *> inputImages;
          inputImages.push_back(&source);
-         for (EnvironmentObject *current = closure->env; current != NULL; current = current->parent)
-         {
-            for (std::map<std::string, Value>::const_iterator it = current->bindings.begin();
-                 it != current->bindings.end();
-                 ++it)
-            {
-               if (!seenBindings.insert(it->first).second || it->first == closure->params[0])
-                  continue;
-
-               const Value &value = it->second;
-               if (value.isNumber())
-               {
-                  program.list.push_back(makeDefineCell(it->first, doubleToCell(value.number)));
-                  continue;
-               }
-
-               if (value.isExpr())
-               {
-                  program.list.push_back(makeDefineCell(it->first, value.expr));
-                  continue;
-               }
-
-               if (value.isBuiltin())
-                  continue;
-
-               if (value.isObject() && value.object->type == Object::Image)
-               {
-                  argsCell.list.push_back(makeSymbolCell(it->first));
-                  inputImages.push_back(static_cast<ImageObject *>(value.object)->image);
-                  continue;
-               }
-
-               return false;
-            }
-         }
+         if (!appendCompiledEnvironment(closure->env, excludedNames, &seenBindings,
+                                        &inputImages, &argsCell, &program))
+            return false;
 
          program.list[0] = argsCell;
          program.list.push_back(closure->body);
@@ -1164,46 +1224,15 @@ namespace gnine
             program.list.push_back(makeDefineCell(closure->params[1], makeSymbolCell(rhsArgName)));
 
          std::set<std::string> seenBindings;
+         std::set<std::string> excludedNames;
+         excludedNames.insert(closure->params[0]);
+         excludedNames.insert(closure->params[1]);
          std::vector<const gnine::Image *> inputImages;
          inputImages.push_back(&lhs);
          inputImages.push_back(&rhs);
-         for (EnvironmentObject *current = closure->env; current != NULL; current = current->parent)
-         {
-            for (std::map<std::string, Value>::const_iterator it = current->bindings.begin();
-                 it != current->bindings.end();
-                 ++it)
-            {
-               if (!seenBindings.insert(it->first).second ||
-                   it->first == closure->params[0] ||
-                   it->first == closure->params[1])
-                  continue;
-
-               const Value &value = it->second;
-               if (value.isNumber())
-               {
-                  program.list.push_back(makeDefineCell(it->first, doubleToCell(value.number)));
-                  continue;
-               }
-
-               if (value.isExpr())
-               {
-                  program.list.push_back(makeDefineCell(it->first, value.expr));
-                  continue;
-               }
-
-               if (value.isBuiltin())
-                  continue;
-
-               if (value.isObject() && value.object->type == Object::Image)
-               {
-                  argsCell.list.push_back(makeSymbolCell(it->first));
-                  inputImages.push_back(static_cast<ImageObject *>(value.object)->image);
-                  continue;
-               }
-
-               return false;
-            }
-         }
+         if (!appendCompiledEnvironment(closure->env, excludedNames, &seenBindings,
+                                        &inputImages, &argsCell, &program))
+            return false;
 
          program.list[0] = argsCell;
          program.list.push_back(closure->body);
