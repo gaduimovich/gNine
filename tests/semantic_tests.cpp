@@ -14,6 +14,7 @@
 #include "ImageArray.hpp"
 #include "JitBuilder.hpp"
 #include "Parser.h"
+#include "VectorProgram.hpp"
 
 namespace
 {
@@ -91,9 +92,13 @@ namespace
          effectiveCode = code.list[2];
       }
 
+      gnine::LoweredProgram lowered = gnine::lowerProgram(effectiveCode);
+      if (lowered.usesVectorFeatures || lowered.channelPrograms.size() != 1)
+         throw std::runtime_error("Semantic tests expect a single scalar lowered program");
+
       OMR::JitBuilder::TypeDictionary types;
       ImageArray method(&types);
-      method.runByteCodes(effectiveCode, program.danger);
+      method.runByteCodes(lowered.channelPrograms[0], program.danger);
 
       void *entry = nullptr;
       int32_t rc = compileMethodBuilder(&method, &entry);
@@ -167,6 +172,11 @@ namespace
               "parser_iterate_form",
               "(iterate 3 ((A) (+ A 1)))",
               "(iterate 3 ((A) (+ A 1)))",
+          },
+          {
+              "parser_pipeline_form",
+              "(pipeline ((A) (+ A 1)) ((A) (* A 2)))",
+              "(pipeline ((A) (+ A 1)) ((A) (* A 2)))",
           },
       };
    }
@@ -376,6 +386,57 @@ namespace
               2,
               {{0.0, 1.0, 2.0, 3.0}},
               {1.0, 2.0, 3.0, 4.0},
+              0,
+              false,
+          },
+          {
+              "pipeline_two_stage_pointwise",
+              "(pipeline ((A) (+ A 1)) ((A) (* A 2)))",
+              2,
+              2,
+              {{0.0, 1.0, 2.0, 3.0}},
+              {2.0, 4.0, 6.0, 8.0},
+              0,
+              false,
+          },
+          {
+              "pipeline_fused_neighbor_access",
+              "(pipeline ((A) (+ A 1)) ((A) (+ A (A -1 0))))",
+              2,
+              2,
+              {{0.0, 1.0, 2.0, 3.0}},
+              {4.0, 6.0, 4.0, 6.0},
+              0,
+              false,
+          },
+          {
+              "pipeline_preserves_external_inputs",
+              "(pipeline ((A B) (+ A B)) ((A B) (* A B)))",
+              2,
+              2,
+              {{1.0, 2.0, 3.0, 4.0},
+               {0.5, 1.0, 1.5, 2.0}},
+              {0.75, 3.0, 6.75, 12.0},
+              0,
+              false,
+          },
+          {
+              "pipeline_previous_and_external_same_stage",
+              "(pipeline ((A) (+ A 1)) ((P A) (+ P (@A i j))))",
+              2,
+              2,
+              {{1.0, 2.0, 3.0, 4.0}},
+              {3.0, 5.0, 7.0, 9.0},
+              0,
+              false,
+          },
+          {
+              "pipeline_stage_defines",
+              "(pipeline ((A) (define x (+ A 1)) (* x x)) ((A) (- A 1)))",
+              2,
+              2,
+              {{0.0, 1.0, 2.0, 3.0}},
+              {0.0, 3.0, 8.0, 15.0},
               0,
               false,
           },

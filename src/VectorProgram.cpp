@@ -1,5 +1,6 @@
 #include "VectorProgram.hpp"
 
+#include <algorithm>
 #include <array>
 #include <map>
 #include <set>
@@ -10,6 +11,19 @@ namespace gnine
 {
    namespace
    {
+      struct StageProgram
+      {
+         std::vector<std::string> argNames;
+         std::map<std::string, Cell> defines;
+         Cell resultExpr;
+      };
+
+      struct PipelineBinding
+      {
+         bool isPreviousOutput;
+         std::string externalName;
+      };
+
       enum class LoweredKind
       {
          Scalar,
@@ -54,6 +68,289 @@ namespace gnine
          items.push_back(makeSymbol(head));
          items.insert(items.end(), args.begin(), args.end());
          return makeList(items);
+      }
+
+      bool isPipelineForm(const Cell &cell)
+      {
+         return cell.type == Cell::List &&
+                cell.list.size() >= 2 &&
+                cell.list[0].type == Cell::Symbol &&
+                cell.list[0].val == "pipeline";
+      }
+
+      bool containsPipelineVectorForms(const Cell &cell)
+      {
+         if (cell.type != Cell::List)
+            return false;
+
+         if (!cell.list.empty() && cell.list[0].type == Cell::Symbol)
+         {
+            const std::string &head = cell.list[0].val;
+            if (head == "vec" || head == "rgb" || head == "color" || head == "r" ||
+                head == "g" || head == "b" || head == "dot")
+               return true;
+         }
+
+         for (size_t idx = 0; idx < cell.list.size(); ++idx)
+         {
+            if (containsPipelineVectorForms(cell.list[idx]))
+               return true;
+         }
+
+         return false;
+      }
+
+      StageProgram parseStageProgram(const Cell &program, const std::string &errorPrefix)
+      {
+         if (program.type != Cell::List || program.list.empty() || program.list[0].type != Cell::List)
+            throw std::runtime_error(errorPrefix + " must be of form ((A ...) expr)");
+
+         StageProgram stage;
+         const Cell &argsCell = program.list[0];
+         for (size_t idx = 0; idx < argsCell.list.size(); ++idx)
+         {
+            if (argsCell.list[idx].type != Cell::Symbol)
+               throw std::runtime_error(errorPrefix + " arguments must be symbols");
+            stage.argNames.push_back(argsCell.list[idx].val);
+         }
+
+         bool sawResult = false;
+         for (size_t idx = 1; idx < program.list.size(); ++idx)
+         {
+            const Cell &expr = program.list[idx];
+            bool isDefine = expr.type == Cell::List &&
+                            expr.list.size() == 3 &&
+                            expr.list[0].type == Cell::Symbol &&
+                            expr.list[0].val == "define" &&
+                            expr.list[1].type == Cell::Symbol;
+            if (isDefine)
+            {
+               stage.defines[expr.list[1].val] = expr.list[2];
+            }
+            else
+            {
+               if (sawResult)
+                  throw std::runtime_error(errorPrefix + " supports a single result expression plus defines");
+               stage.resultExpr = expr;
+               sawResult = true;
+            }
+         }
+
+         if (!sawResult)
+            throw std::runtime_error(errorPrefix + " must contain a result expression");
+
+         return stage;
+      }
+
+      Cell combineCoordinate(const Cell &base, const Cell &offset)
+      {
+         if (offset.type == Cell::Number && offset.val == "0")
+            return base;
+         return makeCall("+", {base, offset});
+      }
+
+      Cell rebaseComposedExpr(const Cell &expr,
+                              const std::set<std::string> &externalArgs,
+                              const Cell &rowCoord,
+                              const Cell &colCoord);
+
+      Cell substitutePipelineExpr(const Cell &expr,
+                                  const StageProgram &stage,
+                                  const std::map<std::string, PipelineBinding> &bindings,
+                                  const std::set<std::string> &externalArgs,
+                                  const Cell *previousExpr,
+                                  const Cell &rowCoord,
+                                  const Cell &colCoord)
+      {
+         if (expr.type == Cell::Number)
+            return expr;
+
+         if (expr.type == Cell::Symbol)
+         {
+            std::map<std::string, Cell>::const_iterator defineIt = stage.defines.find(expr.val);
+            if (defineIt != stage.defines.end())
+               return substitutePipelineExpr(defineIt->second, stage, bindings, externalArgs, previousExpr, rowCoord, colCoord);
+
+            if (expr.val == "i")
+               return rowCoord;
+            if (expr.val == "j")
+               return colCoord;
+
+            std::map<std::string, PipelineBinding>::const_iterator bindingIt = bindings.find(expr.val);
+            if (bindingIt != bindings.end())
+            {
+               if (bindingIt->second.isPreviousOutput)
+               {
+                  if (previousExpr == NULL)
+                     throw std::runtime_error("internal pipeline previous-expression error");
+                  return rebaseComposedExpr(*previousExpr, externalArgs, rowCoord, colCoord);
+               }
+
+               return makeCall("@" + bindingIt->second.externalName, {rowCoord, colCoord});
+            }
+
+            return expr;
+         }
+
+         if (expr.type != Cell::List || expr.list.empty() || expr.list[0].type != Cell::Symbol)
+            return expr;
+
+         const std::string &head = expr.list[0].val;
+         bool isAbsoluteSample = !head.empty() && head[0] == '@';
+         std::string bindingName = isAbsoluteSample ? head.substr(1) : head;
+         std::map<std::string, PipelineBinding>::const_iterator bindingIt = bindings.find(bindingName);
+         if (bindingIt != bindings.end() && expr.list.size() == 3)
+         {
+            Cell sampleRow = substitutePipelineExpr(expr.list[1], stage, bindings, externalArgs, previousExpr, rowCoord, colCoord);
+            Cell sampleCol = substitutePipelineExpr(expr.list[2], stage, bindings, externalArgs, previousExpr, rowCoord, colCoord);
+            if (!isAbsoluteSample)
+            {
+               sampleRow = combineCoordinate(rowCoord, sampleRow);
+               sampleCol = combineCoordinate(colCoord, sampleCol);
+            }
+
+            if (bindingIt->second.isPreviousOutput)
+            {
+               if (previousExpr == NULL)
+                  throw std::runtime_error("internal pipeline previous-expression error");
+               return rebaseComposedExpr(*previousExpr, externalArgs, sampleRow, sampleCol);
+            }
+
+            return makeCall("@" + bindingIt->second.externalName, {sampleRow, sampleCol});
+         }
+
+         std::vector<Cell> items;
+         items.reserve(expr.list.size());
+         items.push_back(expr.list[0]);
+         for (size_t idx = 1; idx < expr.list.size(); ++idx)
+            items.push_back(substitutePipelineExpr(expr.list[idx], stage, bindings, externalArgs, previousExpr, rowCoord, colCoord));
+         return makeList(items);
+      }
+
+      Cell rebaseComposedExpr(const Cell &expr,
+                              const std::set<std::string> &externalArgs,
+                              const Cell &rowCoord,
+                              const Cell &colCoord)
+      {
+         if (expr.type == Cell::Number)
+            return expr;
+
+         if (expr.type == Cell::Symbol)
+         {
+            if (expr.val == "i")
+               return rowCoord;
+            if (expr.val == "j")
+               return colCoord;
+            if (expr.val == "__pipeline_previous__")
+               throw std::runtime_error("internal pipeline rebasing error");
+            if (externalArgs.count(expr.val) > 0)
+               return makeCall("@" + expr.val, {rowCoord, colCoord});
+            return expr;
+         }
+
+         if (expr.type != Cell::List || expr.list.empty() || expr.list[0].type != Cell::Symbol)
+            return expr;
+
+         const std::string &head = expr.list[0].val;
+         bool isAbsoluteSample = !head.empty() && head[0] == '@';
+         std::string imageName = isAbsoluteSample ? head.substr(1) : head;
+         if (externalArgs.count(imageName) > 0 && expr.list.size() == 3)
+         {
+            Cell sampleRow = rebaseComposedExpr(expr.list[1], externalArgs, rowCoord, colCoord);
+            Cell sampleCol = rebaseComposedExpr(expr.list[2], externalArgs, rowCoord, colCoord);
+            if (!isAbsoluteSample)
+            {
+               sampleRow = combineCoordinate(rowCoord, sampleRow);
+               sampleCol = combineCoordinate(colCoord, sampleCol);
+            }
+            return makeCall("@" + imageName, {sampleRow, sampleCol});
+         }
+
+         std::vector<Cell> items;
+         items.reserve(expr.list.size());
+         items.push_back(expr.list[0]);
+         for (size_t idx = 1; idx < expr.list.size(); ++idx)
+            items.push_back(rebaseComposedExpr(expr.list[idx], externalArgs, rowCoord, colCoord));
+         return makeList(items);
+      }
+
+      Cell expandPipelineProgram(const Cell &program)
+      {
+         if (!isPipelineForm(program))
+            return program;
+
+         std::vector<StageProgram> stages;
+         for (size_t idx = 1; idx < program.list.size(); ++idx)
+         {
+            if (containsPipelineVectorForms(program.list[idx]))
+               throw std::runtime_error("pipeline currently supports scalar stages only");
+            stages.push_back(parseStageProgram(program.list[idx], "Pipeline stage"));
+         }
+
+         if (stages.empty())
+            throw std::runtime_error("pipeline requires at least one stage");
+
+         const std::vector<std::string> &externalArgList = stages[0].argNames;
+         std::set<std::string> externalArgs(externalArgList.begin(), externalArgList.end());
+
+         std::map<std::string, PipelineBinding> firstStageBindings;
+         for (size_t idx = 0; idx < externalArgList.size(); ++idx)
+         {
+            PipelineBinding binding;
+            binding.isPreviousOutput = false;
+            binding.externalName = externalArgList[idx];
+            firstStageBindings[externalArgList[idx]] = binding;
+         }
+
+         Cell currentExpr = substitutePipelineExpr(stages[0].resultExpr,
+                                                   stages[0],
+                                                   firstStageBindings,
+                                                   externalArgs,
+                                                   NULL,
+                                                   makeSymbol("i"),
+                                                   makeSymbol("j"));
+
+         for (size_t stageIdx = 1; stageIdx < stages.size(); ++stageIdx)
+         {
+            const StageProgram &stage = stages[stageIdx];
+            if (stage.argNames.empty())
+               throw std::runtime_error("Pipeline stages after the first must accept the previous output as their first argument");
+
+            std::map<std::string, PipelineBinding> stageBindings;
+            PipelineBinding previous;
+            previous.isPreviousOutput = true;
+            stageBindings[stage.argNames[0]] = previous;
+
+            for (size_t argIdx = 1; argIdx < stage.argNames.size(); ++argIdx)
+            {
+               const std::string &argName = stage.argNames[argIdx];
+               if (externalArgs.count(argName) == 0)
+                  throw std::runtime_error("Pipeline stage argument " + argName + " does not match an external input");
+
+               PipelineBinding binding;
+               binding.isPreviousOutput = false;
+               binding.externalName = argName;
+               stageBindings[argName] = binding;
+            }
+
+            Cell stageExpr = substitutePipelineExpr(stage.resultExpr,
+                                                    stage,
+                                                    stageBindings,
+                                                    externalArgs,
+                                                    &currentExpr,
+                                                    makeSymbol("i"),
+                                                    makeSymbol("j"));
+            currentExpr = rebaseComposedExpr(stageExpr, externalArgs, makeSymbol("i"), makeSymbol("j"));
+         }
+
+         Cell argsCell(Cell::List);
+         for (size_t idx = 0; idx < externalArgList.size(); ++idx)
+            argsCell.list.push_back(makeSymbol(externalArgList[idx]));
+
+         Cell fusedProgram(Cell::List);
+         fusedProgram.list.push_back(argsCell);
+         fusedProgram.list.push_back(currentExpr);
+         return fusedProgram;
       }
 
       std::string channelName(const std::string &base, int channel)
@@ -275,14 +572,16 @@ namespace gnine
 
    LoweredProgram lowerProgram(const Cell &program)
    {
-      if (program.type != Cell::List || program.list.empty() || program.list[0].type != Cell::List)
+      Cell effectiveProgram = expandPipelineProgram(program);
+
+      if (effectiveProgram.type != Cell::List || effectiveProgram.list.empty() || effectiveProgram.list[0].type != Cell::List)
          throw std::runtime_error("Program must be of form ((A ...) expr)");
 
       LowerContext ctx;
       ctx.usedVectorFeatures = false;
       ctx.usedScalarImageSyntax = false;
 
-      const Cell &argsCell = program.list[0];
+      const Cell &argsCell = effectiveProgram.list[0];
       std::vector<std::string> inputNames;
       for (size_t idx = 0; idx < argsCell.list.size(); ++idx)
       {
@@ -295,9 +594,9 @@ namespace gnine
       std::vector<Cell> defineStatements;
       bool sawResult = false;
       LoweredExpr finalExpr;
-      for (size_t idx = 1; idx < program.list.size(); ++idx)
+      for (size_t idx = 1; idx < effectiveProgram.list.size(); ++idx)
       {
-         const Cell &expr = program.list[idx];
+         const Cell &expr = effectiveProgram.list[idx];
          bool isDefine = expr.type == Cell::List &&
                          expr.list.size() == 3 &&
                          expr.list[0].type == Cell::Symbol &&
@@ -328,7 +627,7 @@ namespace gnine
 
       if (!loweredProgram.usesVectorFeatures)
       {
-         loweredProgram.channelPrograms.push_back(program);
+         loweredProgram.channelPrograms.push_back(effectiveProgram);
          for (size_t idx = 0; idx < inputNames.size(); ++idx)
          {
             VectorArgBinding binding;

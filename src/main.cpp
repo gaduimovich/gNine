@@ -22,6 +22,18 @@ using namespace gnine;
 
 namespace
 {
+   size_t programInputCount(const LoweredProgram &program)
+   {
+      if (program.channelPrograms.empty())
+         throw std::runtime_error("Lowered program did not produce any channel programs");
+
+      const Cell &channelProgram = program.channelPrograms[0];
+      if (channelProgram.type != Cell::List || channelProgram.list.empty() || channelProgram.list[0].type != Cell::List)
+         throw std::runtime_error("Lowered channel program must start with an argument list");
+
+      return channelProgram.list[0].list.size();
+   }
+
    bool isTopLevelIterate(const Cell &cell)
    {
       return cell.type == Cell::List &&
@@ -146,6 +158,8 @@ int main(int argc, char *argsRaw[])
       std::cout << "Color images are processed channel-wise and preserve RGB output.\n";
       std::cout << "Top-level form (iterate N ((A) ...)) runs the full transform N times.\n";
       std::cout << "Inside a transform, iter is the 1-based chained iteration counter.\n";
+      std::cout << "Top-level form (pipeline ((A ...) ...) ((A ...) ...)) fuses scalar stages into one kernel.\n";
+      std::cout << "In later pipeline stages, the first argument names the previous stage output.\n";
 
       return 1;
    }
@@ -243,10 +257,11 @@ int main(int argc, char *argsRaw[])
    }
 
    LoweredProgram loweredProgram = lowerProgram(effectiveCode);
+   size_t inputCount = programInputCount(loweredProgram);
    // Read in input images specified by arguments.
    int padding = 0;
    std::vector<Image> inputImages;
-   for (size_t i = 0; i < effectiveCode.list[0].list.size(); ++i)
+   for (size_t i = 0; i < inputCount; ++i)
    {
       Image im(argv[2 + i]);
 
@@ -305,8 +320,8 @@ int main(int argc, char *argsRaw[])
 
    std::string outputImagePath = "out.png";
 
-   if (argv.size() >= 3 + effectiveCode.list[0].list.size())
-      outputImagePath = argv[3 + effectiveCode.list[0].list.size() - 1];
+   if (argv.size() >= 3 + inputCount)
+      outputImagePath = argv[3 + inputCount - 1];
 
    Image *image = &inputImages[0];
    int outputChannels = loweredProgram.usesVectorFeatures
