@@ -54,6 +54,10 @@ add_subdirectory(example_data)
 include_directories(${GNINE_SOURCE_DIR}/src ${GNINE_SOURCE_DIR}/libs/stb_image)
 
 # aux_source_directory(src ${SOURCES})
-add_executable(gnine src/main.cpp src/Image.cpp src/Parser.cpp src/ImageArray.cpp)
+add_library(gnine_core src/Image.cpp src/Parser.cpp src/ImageArray.cpp)
+target_link_libraries(gnine_core PUBLIC stb_image jitbuilder)
 
-target_link_libraries(gnine PUBLIC stb_image jitbuilder)
+add_executable(gnine src/main.cpp)
+target_link_libraries(gnine PUBLIC gnine_core)
+
+add_subdirectory(tests)
