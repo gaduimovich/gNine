@@ -6,6 +6,32 @@
  *******************************************************************************/
 
 #include "ImageArray.hpp"
+#include <set>
+
+enum class FoldOp
+{
+   Add,
+   Mul
+};
+
+static OMR::JitBuilder::IlValue *foldBalanced(OMR::JitBuilder::IlBuilder *bldr,
+                                              const std::vector<OMR::JitBuilder::IlValue *> &args,
+                                              size_t begin,
+                                              size_t end,
+                                              FoldOp op)
+{
+   if (end - begin == 1)
+      return args[begin];
+
+   size_t mid = begin + (end - begin) / 2;
+   OMR::JitBuilder::IlValue *left = foldBalanced(bldr, args, begin, mid, op);
+   OMR::JitBuilder::IlValue *right = foldBalanced(bldr, args, mid, end, op);
+
+   if (op == FoldOp::Add)
+      return bldr->Add(left, right);
+
+   return bldr->Mul(left, right);
+}
 
 static bool usesSymbolValue(const gnine::Cell &cell, const std::string &name)
 {
@@ -22,6 +48,41 @@ static bool usesSymbolValue(const gnine::Cell &cell, const std::string &name)
    }
 
    return false;
+}
+
+static bool isRowInvariantExpr(const gnine::Cell &cell,
+                               const std::set<std::string> &rowInvariantSymbols,
+                               const std::set<std::string> &argSymbols)
+{
+   if (cell.type == gnine::Cell::Number)
+      return true;
+
+   if (cell.type == gnine::Cell::Symbol)
+   {
+      if (cell.val == "j" || cell.val == "c")
+         return false;
+      if (argSymbols.count(cell.val) > 0 || cell.val == "output")
+         return false;
+      return rowInvariantSymbols.count(cell.val) > 0 ||
+             cell.val == "i" || cell.val == "width" || cell.val == "height";
+   }
+
+   if (cell.type != gnine::Cell::List || cell.list.empty())
+      return false;
+
+   const std::string &head = cell.list[0].val;
+   if (argSymbols.count(head) > 0 || head == "output")
+      return false;
+   if (!head.empty() && head[0] == '@')
+      return false;
+
+   for (size_t idx = 1; idx < cell.list.size(); ++idx)
+   {
+      if (!isRowInvariantExpr(cell.list[idx], rowInvariantSymbols, argSymbols))
+         return false;
+   }
+
+   return true;
 }
 
 static void printString(int64_t ptr)
@@ -65,16 +126,32 @@ ImageArray::GetIndex(OMR::JitBuilder::IlBuilder *bldr,
                      OMR::JitBuilder::IlValue *j,
                      OMR::JitBuilder::IlValue *W)
 {
+   bldr->Store("idx", j);
+   bldr->Store("idxNeedsNormalize",
+               bldr->Or(bldr->LessThan(bldr->Load("idx"), bldr->ConstInt32(0)),
+                        bldr->GreaterThan(bldr->Load("idx"), W)));
 
-   bldr->Store("abs", Abs32(bldr, j));
+   OMR::JitBuilder::IlBuilder *normalize = NULL;
+   bldr->WhileDoLoop("idxNeedsNormalize", &normalize);
 
-   return bldr->Add(
+   OMR::JitBuilder::IlBuilder *negative = NULL;
+   normalize->IfThen(&negative,
+                     normalize->LessThan(normalize->Load("idx"), normalize->ConstInt32(0)));
+   negative->Store("idx", negative->Mul(negative->ConstInt32(-1), negative->Load("idx")));
 
-       bldr->Mul(bldr->GreaterThan(j, W),
+   OMR::JitBuilder::IlBuilder *tooLarge = NULL;
+   normalize->IfThen(&tooLarge,
+                     normalize->GreaterThan(normalize->Load("idx"), W));
+   tooLarge->Store("idx",
+                   tooLarge->Sub(
+                       tooLarge->Add(tooLarge->ConstInt32(1), tooLarge->Add(W, W)),
+                       tooLarge->Load("idx")));
 
-                 bldr->Sub(bldr->Add(bldr->ConstInt32(1), bldr->Add(W, W)), bldr->Load("abs"))),
+   normalize->Store("idxNeedsNormalize",
+                    normalize->Or(normalize->LessThan(normalize->Load("idx"), normalize->ConstInt32(0)),
+                                  normalize->GreaterThan(normalize->Load("idx"), W)));
 
-       bldr->Mul(bldr->LessOrEqualTo(j, W), bldr->Load("abs")));
+   return bldr->Load("idx");
 }
 
 OMR::JitBuilder::IlValue *
@@ -241,13 +318,11 @@ OMR::JitBuilder::IlValue *ImageArray::eval(OMR::JitBuilder::IlBuilder *bldr, gni
 OMR::JitBuilder::IlValue *ImageArray::functionHandler(OMR::JitBuilder::IlBuilder *bldr, const std::string &functionName,
                                                       std::vector<OMR::JitBuilder::IlValue *> &args)
 {
-
-   bldr->Store("sum", args[0]);
-
    if (functionName == "if")
    {
       OMR::JitBuilder::IlBuilder *rc3True = OrphanBuilder();
       OMR::JitBuilder::IlBuilder *rc3False = OrphanBuilder();
+      bldr->Store("sum", args[0]);
 
       bldr->IfThenElse(&rc3True, &rc3False,
                        bldr->EqualTo(args[0], bldr->ConstDouble(1)));
@@ -257,46 +332,43 @@ OMR::JitBuilder::IlValue *ImageArray::functionHandler(OMR::JitBuilder::IlBuilder
    }
    else if (functionName == "+")
    {
-      for (unsigned int l = 1; l < args.size(); l++)
-      {
-         bldr->Store("sum", bldr->Add(args[l], bldr->Load("sum")));
-      }
+      return foldBalanced(bldr, args, 0, args.size(), FoldOp::Add);
    }
    else if (functionName == "*")
    {
-      for (unsigned int l = 1; l < args.size(); l++)
-      {
-         bldr->Store("sum", bldr->Mul(args[l], bldr->Load("sum")));
-      }
-      return bldr->Load("sum");
+      return foldBalanced(bldr, args, 0, args.size(), FoldOp::Mul);
    }
    else if (functionName == "/")
    {
+      OMR::JitBuilder::IlValue *result = args[0];
       for (unsigned int l = 1; l < args.size(); l++)
-      {
-         bldr->Store("sum", bldr->Div(bldr->Load("sum"), args[l]));
-      }
+         result = bldr->Div(result, args[l]);
+      return result;
    }
    else if (functionName == "-")
    {
+      OMR::JitBuilder::IlValue *result = args[0];
       for (unsigned int l = 1; l < args.size(); l++)
-      {
-         bldr->Store("sum", bldr->Sub(bldr->Load("sum"), args[l]));
-      }
+         result = bldr->Sub(result, args[l]);
+      return result;
    }
    else if (functionName == "min")
    {
+      bldr->Store("sum", args[0]);
       for (unsigned int l = 1; l < args.size(); l++)
       {
          min(bldr, args[l]);
       }
+      return bldr->Load("sum");
    }
    else if (functionName == "max")
    {
+      bldr->Store("sum", args[0]);
       for (unsigned int l = 1; l < args.size(); l++)
       {
          max(bldr, args[l]);
       }
+      return bldr->Load("sum");
    }
    else if (functionName == "int")
    {
@@ -461,6 +533,22 @@ bool ImageArray::buildIL()
       }
    }
 
+   std::set<std::string> argSymbolSet(argNames.begin(), argNames.end());
+   std::vector<bool> defineIsRowInvariant(cell_.list.size(), false);
+   std::set<std::string> rowInvariantSymbols = {"i", "width", "height"};
+
+   for (size_t exprIndex = 0; exprIndex < cell_.list.size(); ++exprIndex)
+   {
+      const gnine::Cell &expr = cell_.list[exprIndex];
+      if (expr.type == gnine::Cell::List && expr.list[0].val == "define")
+      {
+         bool rowInvariant = isRowInvariantExpr(expr.list[2], rowInvariantSymbols, argSymbolSet);
+         defineIsRowInvariant[exprIndex] = rowInvariant;
+         if (rowInvariant)
+            rowInvariantSymbols.insert(expr.list[1].val);
+      }
+   }
+
    std::vector<bool> argNeedsScalarLoad(argNames.size(), false);
    for (size_t argIndex = 0; argIndex < argNames.size(); ++argIndex)
    {
@@ -479,6 +567,13 @@ bool ImageArray::buildIL()
    {
       i = iloop->Load("i");
 
+      for (size_t exprIndex = 0; exprIndex < cell_.list.size(); ++exprIndex)
+      {
+         gnine::Cell &expr = cell_.list[exprIndex];
+         if (defineIsRowInvariant[exprIndex])
+            iloop->Store(symbols_map[expr.list[1].val], eval(iloop, expr.list[2]));
+      }
+
       iloop->ForLoopUp("j", &jloop, zero, width, one);
       {
          j = jloop->Load("j");
@@ -489,9 +584,14 @@ bool ImageArray::buildIL()
             if (argNeedsScalarLoad[mm])
                jloop->Store(argsAndTempNames[mm], Load2D(jloop, argv[mm], i, j));
          }
-         for (gnine::Cell c : cell_.list)
+         for (size_t exprIndex = 0; exprIndex < cell_.list.size(); ++exprIndex)
          {
-            if (c.type == gnine::Cell::List and c.list[0].val == "define")
+            gnine::Cell &c = cell_.list[exprIndex];
+            if (defineIsRowInvariant[exprIndex])
+            {
+               continue;
+            }
+            else if (c.type == gnine::Cell::List and c.list[0].val == "define")
             {
                jloop->Store(symbols_map[c.list[1].val], eval(jloop, c.list[2]));
             }

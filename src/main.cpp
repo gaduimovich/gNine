@@ -9,6 +9,7 @@
 #include <fstream>
 #include <chrono>
 #include <algorithm>
+#include <string>
 
 #include "Image.h"
 #include "Parser.h"
@@ -77,12 +78,12 @@ int main(int argc, char *argsRaw[])
    bool danger = false;
    bool benchmark = false;
    int n_times = 1;
-    int chain_times = 0;
+   int chain_times = 0;
    for (auto s : options)
    {
       if (s == "--logAsm")
          logAsm = true;
-      if (s == "--danger")
+      else if (s == "--danger")
          danger = true;
       else if (s == "--benchmark")
          benchmark = true;
@@ -90,13 +91,11 @@ int main(int argc, char *argsRaw[])
          logCommand = true;
       else if (s.length() > 14 and s.substr(0, 14) == "--chain-times=")
       {
-         std::cout << s.substr(14) << " = chain_s\n";
          std::stringstream ss(s.substr(14));
          ss >> chain_times;
       }
       else if (s.length() > 8 and s.substr(0, 8) == "--times=")
       {
-         std::cout << s.substr(8) << " = s\n";
          std::stringstream ss(s.substr(8));
          ss >> n_times;
       }
@@ -109,8 +108,6 @@ int main(int argc, char *argsRaw[])
 
    if (chain_times > 0)
       n_times = chain_times;
-
-   std::cout << n_times << " = ntimes\n";
 
    // See if first arg is a file and read code from it.
    // We infer file by checking that first char is not a '(' (cheeky but it works!)
@@ -155,7 +152,14 @@ int main(int argc, char *argsRaw[])
    }
 
    //   printf("Step 1: initialize JIT\n");
-   bool initialized = initializeJit();
+   if (logCommand)
+      logCommandLine(argc, argsRaw, "gnine-command");
+
+   std::string jitOptions = "-Xjit:acceptHugeMethods,enableBasicBlockHoisting,omitFramePointer,useILValidator";
+   if (logAsm)
+      jitOptions += ",traceCG,log=gnine-jit.log";
+
+   bool initialized = initializeJitWithOptions(const_cast<char *>(jitOptions.c_str()));
    if (!initialized)
    {
       fprintf(stderr, "FAIL: could not initialize JIT\n");
