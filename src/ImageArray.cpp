@@ -330,6 +330,23 @@ OMR::JitBuilder::IlValue *ImageArray::functionHandler(OMR::JitBuilder::IlBuilder
       rc3True->Store("sum", args[1]);
       rc3False->Store("sum", args[2]);
    }
+   else if (functionName == "abs")
+   {
+      OMR::JitBuilder::IlBuilder *negative = OrphanBuilder();
+      OMR::JitBuilder::IlBuilder *nonNegative = OrphanBuilder();
+      bldr->IfThenElse(&negative, &nonNegative,
+                       bldr->LessThan(args[0], bldr->ConstDouble(0.0)));
+      negative->Store("sum", negative->Mul(negative->ConstDouble(-1.0), args[0]));
+      nonNegative->Store("sum", args[0]);
+      return bldr->Load("sum");
+   }
+   else if (functionName == "clamp")
+   {
+      bldr->Store("sum", args[0]);
+      min(bldr, args[2]);
+      max(bldr, args[1]);
+      return bldr->Load("sum");
+   }
    else if (functionName == "+")
    {
       return foldBalanced(bldr, args, 0, args.size(), FoldOp::Add);
@@ -397,6 +414,24 @@ OMR::JitBuilder::IlValue *ImageArray::functionHandler(OMR::JitBuilder::IlBuilder
    else if (functionName == "!=")
    {
       return bldr->ConvertTo(Double, bldr->NotEqualTo(args[0], args[1]));
+   }
+   else if (functionName == "and")
+   {
+      OMR::JitBuilder::IlValue *result = bldr->NotEqualTo(args[0], bldr->ConstDouble(0.0));
+      for (unsigned int l = 1; l < args.size(); l++)
+         result = bldr->And(result, bldr->NotEqualTo(args[l], bldr->ConstDouble(0.0)));
+      return bldr->ConvertTo(Double, result);
+   }
+   else if (functionName == "or")
+   {
+      OMR::JitBuilder::IlValue *result = bldr->NotEqualTo(args[0], bldr->ConstDouble(0.0));
+      for (unsigned int l = 1; l < args.size(); l++)
+         result = bldr->Or(result, bldr->NotEqualTo(args[l], bldr->ConstDouble(0.0)));
+      return bldr->ConvertTo(Double, result);
+   }
+   else if (functionName == "not")
+   {
+      return bldr->ConvertTo(Double, bldr->EqualTo(args[0], bldr->ConstDouble(0.0)));
    }
    else if (functionName == "fib")
    {
