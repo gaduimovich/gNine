@@ -1,0 +1,104 @@
+; Runtime Pong demo.
+; This is an offline animation rendered by the runtime interpreter.
+; The game objects are analytic, while the glow trail feeds back through the
+; previous frame using runtime image sampling.
+;
+; Render with:
+;   ./gnine --runtime --emit-frames=runtime_pong.png \
+;     runtime_pong.psm ../example_data/lena.png \
+;     runtime_pong_final.png
+
+(iterate 180
+  ((A)
+    (define W (width A))
+    (define H (height A))
+    (define mid-x (/ W 2))
+    (define paddle-half-h (int (/ H 9)))
+    (define paddle-half-w (int (/ W 90)))
+    (define paddle-left-x (int (/ W 14)))
+    (define paddle-right-x (- W paddle-left-x))
+    (define ball-half (max 2 (int (/ W 110))))
+    (define border (max 2 (int (/ H 120))))
+
+    (define segment
+      (lambda (t start end)
+        (and (>= t start) (< t end))))
+
+    (define ball-x
+      (if (segment iter 1 31)
+        (+ 56 (* 8 (- iter 1)))
+        (if (segment iter 31 61)
+          (+ 296 (* 6 (- iter 31)))
+          (if (segment iter 61 91)
+            (- 476 (* 8 (- iter 61)))
+            (if (segment iter 91 121)
+              (- 236 (* 6 (- iter 91)))
+              (if (segment iter 121 151)
+                (+ 56 (* 8 (- iter 121)))
+                (+ 296 (* 5 (- iter 151)))))))))
+
+    (define ball-y
+      (if (segment iter 1 31)
+        (+ 72 (* 4 (- iter 1)))
+        (if (segment iter 31 61)
+          (+ 192 (* 2 (- iter 31)))
+          (if (segment iter 61 91)
+            (+ 252 (* 5 (- iter 61)))
+            (if (segment iter 91 121)
+              (- 397 (* 4 (- iter 91)))
+              (if (segment iter 121 151)
+                (- 277 (* 3 (- iter 121)))
+                (+ 187 (* 2 (- iter 151)))))))))
+
+    (define left-paddle-y
+      (if (segment iter 1 46)
+        126
+        (if (segment iter 46 91)
+          338
+          (if (segment iter 91 136)
+            238
+            154))))
+
+    (define right-paddle-y
+      (if (segment iter 1 31)
+        146
+        (if (segment iter 31 76)
+          238
+          (if (segment iter 76 121)
+            372
+            210))))
+
+    (map-image
+      (lambda (x)
+        (clamp
+          (max
+            (if (< iter 2)
+              0
+              (clamp
+                (+ (* 0.70 x)
+                   (* 0.10 (A -1 0))
+                   (* 0.10 (A 1 0))
+                   (* 0.05 (A 0 -1))
+                   (* 0.05 (A 0 1)))
+                0 1))
+            (if (or (< i border) (>= i (- H border)))
+              (if (== c 0) 0.10 (if (== c 1) 0.85 0.18))
+              0)
+            (if (and (< (abs (- j mid-x)) border)
+                     (< (abs (- i (/ H 2))) (* 0.42 H)))
+              (if (== c 0) 0.05 (if (== c 1) 0.24 0.07))
+              0)
+            (if (and (<= (abs (- i left-paddle-y)) paddle-half-h)
+                     (<= (abs (- j paddle-left-x)) paddle-half-w))
+              (if (== c 0) 0.18 (if (== c 1) 0.92 1.00))
+              0)
+            (if (and (<= (abs (- i right-paddle-y)) paddle-half-h)
+                     (<= (abs (- j paddle-right-x)) paddle-half-w))
+              (if (== c 0) 1.00 (if (== c 1) 0.28 0.88))
+              0)
+            (if (and (<= (abs (- i ball-y)) ball-half)
+                     (<= (abs (- j ball-x)) ball-half))
+              (if (== c 0) 1.00 (if (== c 1) 0.82 0.18))
+              0))
+          0 1))
+      A)))
