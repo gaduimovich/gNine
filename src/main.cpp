@@ -10,6 +10,7 @@
 #include <chrono>
 #include <algorithm>
 #include <string>
+#include <stdexcept>
 
 #include "Image.h"
 #include "Parser.h"
@@ -17,6 +18,40 @@
 #include "JitBuilder.hpp"
 
 using namespace gnine;
+
+namespace
+{
+   bool isTopLevelIterate(const Cell &cell)
+   {
+      return cell.type == Cell::List &&
+             cell.list.size() == 3 &&
+             cell.list[0].type == Cell::Symbol &&
+             cell.list[0].val == "iterate" &&
+             cell.list[1].type == Cell::Number &&
+             cell.list[2].type == Cell::List;
+   }
+
+   int parseIterateCount(const Cell &cell)
+   {
+      std::stringstream ss(cell.list[1].val);
+      int value = 0;
+      ss >> value;
+      char trailing = '\0';
+      if (!ss || (ss >> trailing) || value <= 0)
+         throw std::runtime_error("iterate count must be a positive integer");
+      return value;
+   }
+
+   std::string makeChainedFramePath(const std::string &basePath, int iteration)
+   {
+      size_t slashPos = basePath.find_last_of("/\\");
+      size_t dotPos = basePath.find_last_of('.');
+      if (dotPos == std::string::npos || (slashPos != std::string::npos && dotPos < slashPos))
+         return basePath + "_" + std::to_string(iteration);
+
+      return basePath.substr(0, dotPos) + "_" + std::to_string(iteration) + basePath.substr(dotPos);
+   }
+}
 
 void logCommandLine(int argc, char *argv[], const std::string &filePrefix)
 {
@@ -55,6 +90,9 @@ int main(int argc, char *argsRaw[])
       std::cout << "TIMES=N Executes the jited function more then once.\n";
       std::cout << "CHAIN-TIMES=N Executes the jited function as a chained simulation.\n";
       std::cout << "--benchmark prints compile and execution timings.\n";
+      std::cout << "--emit-frames=PATH writes chained iterations as PATH with _N suffixes.\n";
+      std::cout << "Top-level form (iterate N ((A) ...)) runs the full transform N times.\n";
+      std::cout << "Inside a transform, iter is the 1-based chained iteration counter.\n";
 
       return 1;
    }
@@ -77,6 +115,7 @@ int main(int argc, char *argsRaw[])
    bool logCommand = false;
    bool danger = false;
    bool benchmark = false;
+   std::string emitFramesPath;
    int n_times = 1;
    int chain_times = 0;
    for (auto s : options)
@@ -87,6 +126,8 @@ int main(int argc, char *argsRaw[])
          danger = true;
       else if (s == "--benchmark")
          benchmark = true;
+      else if (s.length() > 14 && s.substr(0, 14) == "--emit-frames=")
+         emitFramesPath = s.substr(14);
       else if (s == "--logCommand")
          logCommand = true;
       else if (s.length() > 14 and s.substr(0, 14) == "--chain-times=")
@@ -135,10 +176,22 @@ int main(int argc, char *argsRaw[])
    //   printf("Code String: %s", codeString.c_str());
    // Generate code.
    Cell code = cellFromString(codeString);
+   Cell effectiveCode = code;
+   int iterateCount = 0;
+   if (isTopLevelIterate(code))
+   {
+      iterateCount = parseIterateCount(code);
+      effectiveCode = code.list[2];
+      if (chain_times == 0)
+      {
+         chain_times = iterateCount;
+         n_times = chain_times;
+      }
+   }
    // Read in input images specified by arguments.
    int padding = 0;
    std::vector<Image> inputImages;
-   for (size_t i = 0; i < code.list[0].list.size(); ++i)
+   for (size_t i = 0; i < effectiveCode.list[0].list.size(); ++i)
    {
       Image im(argv[2 + i]);
 
@@ -171,7 +224,7 @@ int main(int argc, char *argsRaw[])
 
    //   printf("Step 3: compile method builder\n");
    ImageArray method(&types);
-   method.runByteCodes(code, danger);
+   method.runByteCodes(effectiveCode, danger);
 
    void *entry = 0;
    auto compileStart = std::chrono::steady_clock::now();
@@ -188,8 +241,8 @@ int main(int argc, char *argsRaw[])
 
    std::string outputImagePath = "out.png";
 
-   if (argv.size() >= 3 + code.list[0].list.size())
-      outputImagePath = argv[3 + code.list[0].list.size() - 1];
+   if (argv.size() >= 3 + effectiveCode.list[0].list.size())
+      outputImagePath = argv[3 + effectiveCode.list[0].list.size() - 1];
 
    Image *image = &inputImages[0];
 
@@ -221,9 +274,14 @@ int main(int argc, char *argsRaw[])
 
       for (int i = 0; i < chain_times; i++)
       {
-         test(image->width(), image->height(), chainPtrs.data(), chainOutput.getData());
+         test(image->width(), image->height(), i + 1, chainPtrs.data(), chainOutput.getData());
          std::swap(chainInput.data, chainOutput.data);
          chainPtrs[0] = chainInput.getData();
+         if (!emitFramesPath.empty())
+         {
+            Image frame(chainInput.getData(), image->width(), image->height(), image->stride());
+            frame.write(makeChainedFramePath(emitFramesPath, i + 1));
+         }
       }
 
       std::copy(chainInput.getData(),
@@ -232,9 +290,15 @@ int main(int argc, char *argsRaw[])
    }
    else
    {
+      if (!emitFramesPath.empty())
+      {
+         std::cerr << "--emit-frames requires chained execution via --chain-times or iterate." << std::endl;
+         shutdownJit();
+         return 1;
+      }
       for (int i = 0; i < n_times; i++)
       {
-         test(image->width(), image->height(), dataPtrs.data(), outIm.getData());
+         test(image->width(), image->height(), 1, dataPtrs.data(), outIm.getData());
       }
    }
    auto executionEnd = std::chrono::steady_clock::now();

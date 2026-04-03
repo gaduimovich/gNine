@@ -24,8 +24,8 @@
 #include <iostream>
 #include "JitBuilder.hpp"
 
-// size, width, height, stride, data, result
-typedef void(ImageArrayFunctionType)(int32_t, int32_t, double **, double *);
+// width, height, iteration, data, result
+typedef void(ImageArrayFunctionType)(int32_t, int32_t, int32_t, double **, double *);
 
 static const char *argsAndTempNames[] = {
     "arg00", "arg01", "arg02", "arg03", "arg04", "arg05", "arg06",

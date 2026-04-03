@@ -41,6 +41,27 @@ namespace
       return std::fabs(lhs - rhs) <= eps;
    }
 
+   bool isTopLevelIterate(const gnine::Cell &cell)
+   {
+      return cell.type == gnine::Cell::List &&
+             cell.list.size() == 3 &&
+             cell.list[0].type == gnine::Cell::Symbol &&
+             cell.list[0].val == "iterate" &&
+             cell.list[1].type == gnine::Cell::Number &&
+             cell.list[2].type == gnine::Cell::List;
+   }
+
+   int parseIterateCount(const gnine::Cell &cell)
+   {
+      std::stringstream ss(cell.list[1].val);
+      int value = 0;
+      ss >> value;
+      char trailing = '\0';
+      if (!ss || (ss >> trailing) || value <= 0)
+         throw std::runtime_error("iterate count must be a positive integer");
+      return value;
+   }
+
    std::string formatVector(const std::vector<double> &values, int width)
    {
       std::ostringstream out;
@@ -62,10 +83,17 @@ namespace
    std::vector<double> runProgram(const ProgramCase &program)
    {
       gnine::Cell code = gnine::cellFromString(program.code);
+      gnine::Cell effectiveCode = code;
+      int iterateCount = 0;
+      if (isTopLevelIterate(code))
+      {
+         iterateCount = parseIterateCount(code);
+         effectiveCode = code.list[2];
+      }
 
       OMR::JitBuilder::TypeDictionary types;
       ImageArray method(&types);
-      method.runByteCodes(code, program.danger);
+      method.runByteCodes(effectiveCode, program.danger);
 
       void *entry = nullptr;
       int32_t rc = compileMethodBuilder(&method, &entry);
@@ -84,7 +112,9 @@ namespace
 
       std::vector<double> output(program.width * program.height, 0.0);
 
-      if (program.chainTimes > 0)
+      int effectiveChainTimes = program.chainTimes > 0 ? program.chainTimes : iterateCount;
+
+      if (effectiveChainTimes > 0)
       {
          if (mutableInputs.size() != 1)
             throw std::runtime_error("Chained tests require exactly one input image");
@@ -93,9 +123,9 @@ namespace
          std::vector<double> chainOutput(program.width * program.height, 0.0);
          std::vector<double *> chainPtrs(1, chainInput.data());
 
-         for (int iter = 0; iter < program.chainTimes; ++iter)
+         for (int iter = 0; iter < effectiveChainTimes; ++iter)
          {
-            fn(program.width, program.height, chainPtrs.data(), chainOutput.data());
+            fn(program.width, program.height, iter + 1, chainPtrs.data(), chainOutput.data());
             std::swap(chainInput, chainOutput);
             chainPtrs[0] = chainInput.data();
          }
@@ -104,7 +134,7 @@ namespace
       }
       else
       {
-         fn(program.width, program.height, dataPtrs.data(), output.data());
+         fn(program.width, program.height, 1, dataPtrs.data(), output.data());
       }
 
       return output;
@@ -132,6 +162,11 @@ namespace
               "parser_absolute_index_symbol",
               "((A) (@A 12 -3))",
               "((A) (@A 12 -3))",
+          },
+          {
+              "parser_iterate_form",
+              "(iterate 3 ((A) (+ A 1)))",
+              "(iterate 3 ((A) (+ A 1)))",
           },
       };
    }
@@ -312,6 +347,36 @@ namespace
               {{0.0, 0.0, 0.0, 0.0}},
               {3.0, 3.0, 3.0, 3.0},
               3,
+              false,
+          },
+          {
+              "iterate_top_level",
+              "(iterate 3 ((A) (+ A 1)))",
+              2,
+              2,
+              {{0.0, 0.0, 0.0, 0.0}},
+              {3.0, 3.0, 3.0, 3.0},
+              0,
+              false,
+          },
+          {
+              "iterate_uses_iter_symbol",
+              "(iterate 3 ((A) (+ A iter)))",
+              2,
+              2,
+              {{0.0, 0.0, 0.0, 0.0}},
+              {6.0, 6.0, 6.0, 6.0},
+              0,
+              false,
+          },
+          {
+              "iter_symbol_non_chained_defaults_to_one",
+              "((A) (+ A iter))",
+              2,
+              2,
+              {{0.0, 1.0, 2.0, 3.0}},
+              {1.0, 2.0, 3.0, 4.0},
+              0,
               false,
           },
       };

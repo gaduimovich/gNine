@@ -64,7 +64,7 @@ static bool isRowInvariantExpr(const gnine::Cell &cell,
       if (argSymbols.count(cell.val) > 0 || cell.val == "output")
          return false;
       return rowInvariantSymbols.count(cell.val) > 0 ||
-             cell.val == "i" || cell.val == "width" || cell.val == "height";
+             cell.val == "i" || cell.val == "iter" || cell.val == "width" || cell.val == "height";
    }
 
    if (cell.type != gnine::Cell::List || cell.list.empty())
@@ -241,7 +241,7 @@ ImageArray::ImageArray(OMR::JitBuilder::TypeDictionary *d)
 
    DefineName("imagearray");
 
-   // size, width, height, data, result
+   // width, height, iteration, data, result
 
    pInt32 = d->PointerTo(Int32);
    pDouble = d->PointerTo(Double);
@@ -249,6 +249,7 @@ ImageArray::ImageArray(OMR::JitBuilder::TypeDictionary *d)
 
    DefineParameter("width", Int32);
    DefineParameter("height", Int32);
+   DefineParameter("iter", Int32);
    DefineParameter("data", ppDouble);
    DefineParameter("result", pDouble);
    DefineReturnType(NoType);
@@ -469,6 +470,10 @@ OMR::JitBuilder::IlValue *ImageArray::symbolHandler(OMR::JitBuilder::IlBuilder *
    {
       return name == "i" ? bldr->ConvertTo(Double, i) : bldr->ConvertTo(Double, j);
    }
+   else if (name == "iter")
+   {
+      return bldr->ConvertTo(Double, bldr->Load("iter"));
+   }
    else if (name == "c")
    {
       return bldr->ConvertTo(Double, c);
@@ -515,7 +520,7 @@ bool ImageArray::buildIL()
    OMR::JitBuilder::IlValue *one = ConstInt32(1);
    OMR::JitBuilder::IlValue *zero = ConstInt32(0);
 
-   // size, width, height, data, result
+   // width, height, iteration, data, result
    OMR::JitBuilder::IlValue *width = Load("width");
    OMR::JitBuilder::IlValue *height = Load("height");
    OMR::JitBuilder::IlValue *result = Load("result");
@@ -570,7 +575,7 @@ bool ImageArray::buildIL()
 
    std::set<std::string> argSymbolSet(argNames.begin(), argNames.end());
    std::vector<bool> defineIsRowInvariant(cell_.list.size(), false);
-   std::set<std::string> rowInvariantSymbols = {"i", "width", "height"};
+   std::set<std::string> rowInvariantSymbols = {"i", "iter", "width", "height"};
 
    for (size_t exprIndex = 0; exprIndex < cell_.list.size(); ++exprIndex)
    {
