@@ -342,6 +342,7 @@ int main(int argc, char *argsRaw[])
       std::cout << "Top-level form (iterate-state N ((A ...) init) ((state) ...)) seeds runtime chaining from an explicit initial state.\n";
       std::cout << "Top-level form (iterate-until N ((A ...) init) ((state) step) ((state) done)) runs until done is nonzero or N steps are reached.\n";
       std::cout << "Inside a transform, iter is the 1-based chained iteration counter.\n";
+      std::cout << "Runtime form (canvas W H [C] expr) builds a new image by evaluating expr for each output pixel under i/j/c.\n";
       std::cout << "Top-level form (pipeline ((A ...) ...) ((A ...) ...)) fuses scalar stages into one kernel.\n";
       std::cout << "In later pipeline stages, the first argument names the previous stage output.\n";
 

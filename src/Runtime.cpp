@@ -176,7 +176,8 @@ namespace gnine
                    name == "not" || name == "min" || name == "max" || name == "abs" ||
                    name == "clamp" || name == "int" ||
                    name == "width" || name == "height" || name == "channels" ||
-                   name == "if" || name == "lambda" || name == "map-image" || name == "zip-image";
+                   name == "if" || name == "lambda" || name == "map-image" ||
+                   name == "zip-image" || name == "canvas";
          }
 
          struct ScalarInputBinding
@@ -363,7 +364,8 @@ namespace gnine
                return false;
 
             const std::string &head = expr.list[0].val;
-            if (head == "get" || head == "tuple" || head == "lambda" || head == "map-image" || head == "zip-image")
+            if (head == "get" || head == "tuple" || head == "lambda" ||
+                head == "map-image" || head == "zip-image" || head == "canvas")
                return false;
 
             for (size_t idx = 1; idx < expr.list.size(); ++idx)
@@ -1121,6 +1123,18 @@ namespace gnine
 
       namespace
       {
+         int requirePositiveCanvasInt(const Value &value, const std::string &context)
+         {
+            if (!value.isNumber())
+               throw std::runtime_error(context + " expects numeric dimensions");
+
+            double rounded = std::floor(value.number + 0.5);
+            if (std::fabs(value.number - rounded) > 1e-9 || rounded <= 0.0)
+               throw std::runtime_error(context + " expects positive integer dimensions");
+
+            return static_cast<int>(rounded);
+         }
+
          std::string describeValue(const Value &value)
          {
             if (value.isNumber())
@@ -1185,6 +1199,15 @@ namespace gnine
             Value value;
             if (lookup(env, expr.val, &value))
                return value;
+            if (_hasPixelContext)
+            {
+               if (expr.val == "i")
+                  return Value::numberValue(_currentRow);
+               if (expr.val == "j")
+                  return Value::numberValue(_currentCol);
+               if (expr.val == "c")
+                  return Value::numberValue(_currentChannel);
+            }
             if (isBuiltin(expr.val))
                return Value::builtinValue(expr.val);
             return Value::exprValue(expr);
@@ -1260,6 +1283,32 @@ namespace gnine
             for (size_t idx = 0; idx < args.size(); ++idx)
                _heap.removeRoot(&args[idx]);
             return result;
+         }
+
+         if (expr.list[0].type == Cell::Symbol && expr.list[0].val == "canvas")
+         {
+            if (expr.list.size() != 4 && expr.list.size() != 5)
+               throw std::runtime_error("canvas expects (canvas width height body) or (canvas width height channels body)");
+
+            Value widthValue = eval(expr.list[1], env);
+            Heap::Root widthRoot(_heap, widthValue);
+            Value heightValue = eval(expr.list[2], env);
+            Heap::Root heightRoot(_heap, heightValue);
+
+            int width = requirePositiveCanvasInt(widthValue, "canvas");
+            int height = requirePositiveCanvasInt(heightValue, "canvas");
+            int channels = 1;
+            const Cell *body = &expr.list[3];
+
+            if (expr.list.size() == 5)
+            {
+               Value channelValue = eval(expr.list[3], env);
+               Heap::Root channelRoot(_heap, channelValue);
+               channels = requirePositiveCanvasInt(channelValue, "canvas");
+               body = &expr.list[4];
+            }
+
+            return applyCanvas(width, height, channels, *body, env, "canvas");
          }
 
          if (expr.list[0].type == Cell::Symbol && expr.list[0].val == "if")
@@ -2192,6 +2241,45 @@ namespace gnine
          std::chrono::steady_clock::time_point interpretedEnd = std::chrono::steady_clock::now();
          traceExecution("runtime.zip_image.mode=interpreted fallback=non_closure execute_ms=" +
                         formatMillis(elapsedMillis(interpretedStart, interpretedEnd)));
+         return imageValue(resultImage);
+      }
+
+      Value Evaluator::applyCanvas(int width,
+                                   int height,
+                                   int channels,
+                                   const Cell &body,
+                                   EnvironmentObject *env,
+                                   const std::string &context)
+      {
+         std::chrono::steady_clock::time_point start = std::chrono::steady_clock::now();
+         gnine::Image resultImage(width, height, width, channels);
+         for (int channel = 0; channel < channels; ++channel)
+         {
+            for (int row = 0; row < height; ++row)
+            {
+               for (int col = 0; col < width; ++col)
+               {
+                  PixelContextScope pixelScope(_hasPixelContext, _currentRow, _currentCol, _currentChannel,
+                                               row, col, channel);
+                  Value pixelValue = eval(body, env);
+                  if (!pixelValue.isNumber() && !_reportedNonNumericPixel)
+                  {
+                     _reportedNonNumericPixel = true;
+                     traceExecution("runtime.canvas.non_numeric row=" + std::to_string(row) +
+                                    " col=" + std::to_string(col) +
+                                    " channel=" + std::to_string(channel) +
+                                    " value=" + describeValue(pixelValue));
+                  }
+                  resultImage(row, col, channel) = requireNumber(pixelValue, context);
+               }
+            }
+         }
+
+         std::chrono::steady_clock::time_point end = std::chrono::steady_clock::now();
+         traceExecution("runtime.canvas.mode=interpreted width=" + std::to_string(width) +
+                        " height=" + std::to_string(height) +
+                        " channels=" + std::to_string(channels) +
+                        " execute_ms=" + formatMillis(elapsedMillis(start, end)));
          return imageValue(resultImage);
       }
 

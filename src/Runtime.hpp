@@ -236,6 +236,12 @@ namespace gnine
          Value applyZipImage(const Value &callable,
                              const std::vector<Value> &args,
                              const std::string &context);
+         Value applyCanvas(int width,
+                           int height,
+                           int channels,
+                           const Cell &body,
+                           EnvironmentObject *env,
+                           const std::string &context);
          void traceExecution(const std::string &entry);
          Cell numberToCell(double value) const;
          std::vector<Cell> requireExprArgs(const std::vector<Value> &args,

@@ -1,4 +1,5 @@
 #include "VectorProgram.hpp"
+#include "Runtime.hpp"
 
 #include <algorithm>
 #include <array>
@@ -17,6 +18,23 @@ namespace gnine
          std::map<std::string, Cell> defines;
          Cell resultExpr;
       };
+
+      struct NormalizedValue;
+
+      struct LambdaValue
+      {
+         std::vector<std::string> params;
+         Cell body;
+      };
+
+      struct NormalizedValue
+      {
+         bool isLambda;
+         Cell expr;
+         LambdaValue lambda;
+      };
+
+      typedef std::map<std::string, NormalizedValue> NormalizeEnv;
 
       struct PipelineBinding
       {
@@ -68,6 +86,141 @@ namespace gnine
          items.push_back(makeSymbol(head));
          items.insert(items.end(), args.begin(), args.end());
          return makeList(items);
+      }
+
+      NormalizedValue makeExprValue(const Cell &cell)
+      {
+         NormalizedValue value;
+         value.isLambda = false;
+         value.expr = cell;
+         return value;
+      }
+
+      NormalizedValue makeLambdaValue(const LambdaValue &lambda)
+      {
+         NormalizedValue value;
+         value.isLambda = true;
+         value.lambda = lambda;
+         return value;
+      }
+
+      bool isLambdaForm(const Cell &cell)
+      {
+         return cell.type == Cell::List &&
+                cell.list.size() == 3 &&
+                cell.list[0].type == Cell::Symbol &&
+                cell.list[0].val == "lambda" &&
+                cell.list[1].type == Cell::List;
+      }
+
+      NormalizedValue normalizeExpr(const Cell &cell, const NormalizeEnv &env);
+
+      Cell requireExpr(const NormalizedValue &value, const std::string &context)
+      {
+         if (value.isLambda)
+            throw std::runtime_error(context + " cannot use a lambda as a scalar/image expression");
+         return value.expr;
+      }
+
+      std::vector<Cell> requireExprArgs(const std::vector<NormalizedValue> &args, const std::string &context)
+      {
+         std::vector<Cell> exprArgs;
+         exprArgs.reserve(args.size());
+         for (size_t idx = 0; idx < args.size(); ++idx)
+            exprArgs.push_back(requireExpr(args[idx], context));
+         return exprArgs;
+      }
+
+      NormalizedValue applyCallable(const NormalizedValue &callable,
+                                    const std::vector<NormalizedValue> &args,
+                                    const std::string &context)
+      {
+         if (callable.isLambda)
+         {
+            const LambdaValue &lambda = callable.lambda;
+            if (lambda.params.size() != args.size())
+               throw std::runtime_error(context + " expected " + std::to_string(lambda.params.size()) +
+                                        " arguments but got " + std::to_string(args.size()));
+
+            NormalizeEnv callEnv;
+            for (size_t idx = 0; idx < args.size(); ++idx)
+               callEnv[lambda.params[idx]] = args[idx];
+            return normalizeExpr(lambda.body, callEnv);
+         }
+
+         if (callable.expr.type != Cell::Symbol)
+            throw std::runtime_error(context + " requires a lambda or symbol in function position");
+
+         return makeExprValue(makeCall(callable.expr.val, requireExprArgs(args, context)));
+      }
+
+      NormalizedValue normalizeExpr(const Cell &cell, const NormalizeEnv &env)
+      {
+         if (cell.type == Cell::Number)
+            return makeExprValue(cell);
+
+         if (cell.type == Cell::Symbol)
+         {
+            NormalizeEnv::const_iterator bindingIt = env.find(cell.val);
+            if (bindingIt != env.end())
+               return bindingIt->second;
+            return makeExprValue(cell);
+         }
+
+         if (cell.type != Cell::List || cell.list.empty())
+            throw std::runtime_error("Invalid expression");
+
+         if (isLambdaForm(cell))
+         {
+            LambdaValue lambda;
+            std::set<std::string> seenParams;
+            NormalizeEnv lambdaEnv = env;
+
+            for (size_t idx = 0; idx < cell.list[1].list.size(); ++idx)
+            {
+               const Cell &param = cell.list[1].list[idx];
+               if (param.type != Cell::Symbol)
+                  throw std::runtime_error("lambda parameters must be symbols");
+               if (!seenParams.insert(param.val).second)
+                  throw std::runtime_error("lambda parameters must be unique");
+               lambda.params.push_back(param.val);
+               lambdaEnv.erase(param.val);
+            }
+
+            lambda.body = requireExpr(normalizeExpr(cell.list[2], lambdaEnv), "lambda body");
+            return makeLambdaValue(lambda);
+         }
+
+         const std::string context = "call to " +
+                                     (cell.list[0].type == Cell::Symbol ? cell.list[0].val : std::string("<lambda>"));
+
+         if (cell.list[0].type == Cell::Symbol &&
+             (cell.list[0].val == "map-image" || cell.list[0].val == "zip-image"))
+         {
+            const std::string &name = cell.list[0].val;
+            size_t expectedArgs = name == "map-image" ? 2 : 3;
+            if (cell.list.size() != expectedArgs + 1)
+               throw std::runtime_error(name + " expects " + std::to_string(expectedArgs) + " arguments");
+
+            NormalizedValue callable = normalizeExpr(cell.list[1], env);
+            std::vector<NormalizedValue> args;
+            for (size_t idx = 2; idx < cell.list.size(); ++idx)
+               args.push_back(normalizeExpr(cell.list[idx], env));
+            return applyCallable(callable, args, name);
+         }
+
+         NormalizedValue callable = normalizeExpr(cell.list[0], env);
+         std::vector<NormalizedValue> args;
+         args.reserve(cell.list.size() - 1);
+         for (size_t idx = 1; idx < cell.list.size(); ++idx)
+            args.push_back(normalizeExpr(cell.list[idx], env));
+         return applyCallable(callable, args, context);
+      }
+
+      Cell normalizeProgram(const Cell &program)
+      {
+         runtime::Evaluator evaluator;
+         return evaluator.normalizeProgram(program);
       }
 
       bool isPipelineForm(const Cell &cell)
@@ -572,7 +725,7 @@ namespace gnine
 
    LoweredProgram lowerProgram(const Cell &program)
    {
-      Cell effectiveProgram = expandPipelineProgram(program);
+      Cell effectiveProgram = normalizeProgram(expandPipelineProgram(program));
 
       if (effectiveProgram.type != Cell::List || effectiveProgram.list.empty() || effectiveProgram.list[0].type != Cell::List)
          throw std::runtime_error("Program must be of form ((A ...) expr)");

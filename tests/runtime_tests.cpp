@@ -376,6 +376,78 @@ int main()
 
       {
          gnine::runtime::Evaluator evaluator;
+         gnine::Image imageA(2, 2);
+         imageA(0, 0) = 0.1;
+         imageA(0, 1) = 0.2;
+         imageA(1, 0) = 0.3;
+         imageA(1, 1) = 0.4;
+
+         std::map<std::string, gnine::runtime::Value> bindings;
+         bindings["A"] = evaluator.imageValue(imageA);
+
+         gnine::runtime::Value result = evaluator.evaluateExpr(
+             gnine::cellFromString(
+                 "(canvas 5 2 "
+                 "  (if (< j 2) "
+                 "    (A 0 0) "
+                 "    (if (== j 2) 1 (A 0 -3))))"),
+             bindings);
+         require(result.isObject() && result.object->type == gnine::runtime::Object::Image,
+                 "canvas should return an image object");
+
+         gnine::runtime::ImageObject *imageObj = static_cast<gnine::runtime::ImageObject *>(result.object);
+         require(imageObj->image->width() == 5 && imageObj->image->height() == 2,
+                 "canvas should honor explicit output dimensions");
+         require(imageObj->image->channelCount() == 1,
+                 "canvas should default to a single channel");
+         require(almostEqual(imageObj->image->operator()(0, 0), 0.1) &&
+                 almostEqual(imageObj->image->operator()(0, 1), 0.2) &&
+                 almostEqual(imageObj->image->operator()(0, 2), 1.0) &&
+                 almostEqual(imageObj->image->operator()(0, 3), 0.1) &&
+                 almostEqual(imageObj->image->operator()(0, 4), 0.2) &&
+                 almostEqual(imageObj->image->operator()(1, 0), 0.3) &&
+                 almostEqual(imageObj->image->operator()(1, 1), 0.4) &&
+                 almostEqual(imageObj->image->operator()(1, 2), 1.0) &&
+                 almostEqual(imageObj->image->operator()(1, 3), 0.3) &&
+                 almostEqual(imageObj->image->operator()(1, 4), 0.4),
+                 "canvas should support larger side-by-side compositions");
+
+         const std::vector<std::string> &trace = evaluator.executionTrace();
+         require(!trace.empty() &&
+                 contains(trace[0], "runtime.canvas.mode=interpreted") &&
+                 contains(trace[0], "width=5") &&
+                 contains(trace[0], "height=2") &&
+                 contains(trace[0], "channels=1"),
+                 "canvas should trace interpreted rendering");
+      }
+
+      {
+         gnine::runtime::Evaluator evaluator;
+         gnine::Image imageA(1, 1, 1, 3);
+         imageA(0, 0, 0) = 0.2;
+         imageA(0, 0, 1) = 0.4;
+         imageA(0, 0, 2) = 0.6;
+
+         std::map<std::string, gnine::runtime::Value> bindings;
+         bindings["A"] = evaluator.imageValue(imageA);
+
+         gnine::runtime::Value result = evaluator.evaluateExpr(
+             gnine::cellFromString("(canvas 1 1 3 (+ (A 0 0) (* 0.1 c)))"),
+             bindings);
+         require(result.isObject() && result.object->type == gnine::runtime::Object::Image,
+                 "canvas with explicit channels should return an image object");
+
+         gnine::runtime::ImageObject *imageObj = static_cast<gnine::runtime::ImageObject *>(result.object);
+         require(imageObj->image->channelCount() == 3,
+                 "canvas should honor explicit channel count");
+         require(almostEqual(imageObj->image->operator()(0, 0, 0), 0.2) &&
+                 almostEqual(imageObj->image->operator()(0, 0, 1), 0.5) &&
+                 almostEqual(imageObj->image->operator()(0, 0, 2), 0.8),
+                 "canvas should expose c and sample multi-channel images");
+      }
+
+      {
+         gnine::runtime::Evaluator evaluator;
          gnine::runtime::Value result = evaluator.evaluateProgram(
              gnine::cellFromString("(() (define state (tuple 7 9)) (+ (get state 0) (get state 1)))"));
          require(result.isNumber() && almostEqual(result.number, 16.0),
