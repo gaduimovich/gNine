@@ -1,130 +1,170 @@
 ; Runtime Pong demo.
-; This is an offline animation rendered by the runtime interpreter.
-; The game objects are analytic, while the glow trail feeds back through the
-; previous frame using runtime image sampling.
+; This version uses iterate-until so the game state evolves explicitly until
+; somebody scores:
+;   frame, ball-x, ball-y, vx, vy, left-paddle-y, right-paddle-y,
+;   left-score, right-score
 ;
 ; Render with:
 ;   ./gnine --runtime --emit-frames=runtime_pong.png \
 ;     runtime_pong.psm ../example_data/lena.png \
 ;     runtime_pong_final.png
 
-(iterate 180
+(iterate-until 1000
   ((A)
     (define W (width A))
     (define H (height A))
+    (tuple
+      A
+      (/ W 2)
+      (/ H 2)
+      (max 3 (int (/ W 90)))
+      (max 2 (int (/ H 120)))
+      (/ H 2)
+      (/ H 2)
+      0
+      0))
+
+  (((frame ball-x ball-y vx vy left-y right-y left-score right-score))
+
+    (define W (width frame))
+    (define H (height frame))
     (define mid-x (/ W 2))
-    (define paddle-half-h (int (/ H 9)))
-    (define paddle-half-w (int (/ W 90)))
+    (define paddle-half-h (max 5 (int (/ H 9))))
+    (define paddle-half-w (max 2 (int (/ W 90))))
     (define paddle-left-x (int (/ W 14)))
     (define paddle-right-x (- W paddle-left-x))
+    (define paddle-speed (max 2 (int (/ H 80))))
     (define ball-half (max 2 (int (/ W 110))))
-    (define border (max 2 (int (/ H 120))))
+    (define wall-thickness (max 1 (int (/ H 150))))
+    (define paddle-min (+ wall-thickness paddle-half-h))
+    (define paddle-max (- H wall-thickness paddle-half-h 1))
+    (define top-limit (+ wall-thickness ball-half))
+    (define bottom-limit (- H wall-thickness ball-half 1))
+    (define score-y (+ wall-thickness ball-half 4))
+    (define score-gap (max 2 (int (/ W 80))))
+    (define score-half (max 2 (int (/ W 140))))
+    (define left-score-x (+ mid-x score-gap))
+    (define right-score-x (- mid-x score-gap))
 
-    (define segment
-      (lambda (t start end)
-        (and (>= t start) (< t end))))
+    (define next-left-y
+      (clamp
+        (+ left-y (clamp (- ball-y left-y) (- paddle-speed) paddle-speed))
+        paddle-min
+        paddle-max))
 
-    (define ball-x
-      (if (segment iter 1 31)
-        (+ 56 (* 8 (- iter 1)))
-        (if (segment iter 31 61)
-          (+ 296 (* 6 (- iter 31)))
-          (if (segment iter 61 91)
-            (- 476 (* 8 (- iter 61)))
-            (if (segment iter 91 121)
-              (- 236 (* 6 (- iter 91)))
-              (if (segment iter 121 151)
-                (+ 56 (* 8 (- iter 121)))
-                (+ 296 (* 5 (- iter 151)))))))))
+    (define next-right-y
+      (clamp
+        (+ right-y (clamp (- ball-y right-y) (- paddle-speed) paddle-speed))
+        paddle-min
+        paddle-max))
 
-    (define ball-y
-      (if (segment iter 1 31)
-        (+ 72 (* 4 (- iter 1)))
-        (if (segment iter 31 61)
-          (+ 192 (* 2 (- iter 31)))
-          (if (segment iter 61 91)
-            (+ 252 (* 5 (- iter 61)))
-            (if (segment iter 91 121)
-              (- 397 (* 4 (- iter 91)))
-              (if (segment iter 121 151)
-                (- 277 (* 3 (- iter 121)))
-                (+ 187 (* 2 (- iter 151)))))))))
+    (define trial-x (+ ball-x vx))
+    (define trial-y (+ ball-y vy))
+    (define left-scored (< trial-x 0))
+    (define right-scored (>= trial-x W))
 
-    (define left-paddle-y
-      (if (segment iter 1 46)
-        126
-        (if (segment iter 46 91)
-          338
-          (if (segment iter 91 136)
-            238
-            154))))
+    (define clamped-y
+      (clamp trial-y top-limit bottom-limit))
 
-    (define right-paddle-y
-      (if (segment iter 1 31)
-        146
-        (if (segment iter 31 76)
-          238
-          (if (segment iter 76 121)
-            372
-            210))))
+    (define left-hit
+      (and (< vx 0)
+           (<= (abs (- clamped-y next-left-y)) paddle-half-h)
+           (<= trial-x (+ paddle-left-x paddle-half-w ball-half))))
 
-    (define rgb
-      (lambda (r g b)
-        (if (== c 0) r
-          (if (== c 1) g b))))
+    (define right-hit
+      (and (> vx 0)
+           (<= (abs (- clamped-y next-right-y)) paddle-half-h)
+           (>= trial-x (- paddle-right-x paddle-half-w ball-half))))
 
-    (define inside-rect
-      (lambda (cy cx hh hw)
-        (and (<= (abs (- i cy)) hh)
-             (<= (abs (- j cx)) hw))))
+    (define reset-ball (or left-scored right-scored))
 
-    (define trail
-      (lambda (x)
-        (if (< iter 2)
-          0
+    (define next-ball-x
+      (if reset-ball
+        mid-x
+        (if left-hit
+          (+ paddle-left-x paddle-half-w ball-half 1)
+          (if right-hit
+            (- paddle-right-x paddle-half-w ball-half 1)
+            trial-x))))
+
+    (define next-ball-y
+      (if reset-ball
+        (/ H 2)
+        clamped-y))
+
+    (define next-left-score
+      (if right-scored
+        (+ left-score 1)
+        left-score))
+
+    (define next-right-score
+      (if left-scored
+        (+ right-score 1)
+        right-score))
+
+    (define next-frame
+      (map-image
+        (lambda (x)
           (clamp
-            (+ (* 0.70 x)
-               (* 0.10 (A -1 0))
-               (* 0.10 (A 1 0))
-               (* 0.05 (A 0 -1))
-               (* 0.05 (A 0 1)))
-            0 1))))
+            (max
+              (* 0.80 x)
+              (if (and (<= (abs (- i next-left-y)) paddle-half-h)
+                       (<= (abs (- j paddle-left-x)) paddle-half-w))
+                (if (== c 0) 0.16
+                  (if (== c 1) 0.92 1.00))
+                0)
+              (if (and (<= (abs (- i next-right-y)) paddle-half-h)
+                       (<= (abs (- j paddle-right-x)) paddle-half-w))
+                (if (== c 0) 1.00
+                  (if (== c 1) 0.26 0.86))
+                0)
+              (if (and (<= (abs (- i next-ball-y)) ball-half)
+                       (<= (abs (- j next-ball-x)) ball-half))
+                (if (== c 0) 1.00
+                  (if (== c 1) 0.82 0.18))
+                0)
+              (if (and (<= (abs (- i score-y)) score-half)
+                       (<= (abs (- j left-score-x)) score-half)
+                       (> next-left-score 0))
+                (if (== c 0) 1.00
+                  (if (== c 1) 0.90 0.22))
+                0)
+              (if (and (<= (abs (- i score-y)) score-half)
+                       (<= (abs (- j right-score-x)) score-half)
+                       (> next-right-score 0))
+                (if (== c 0) 1.00
+                  (if (== c 1) 0.90 0.22))
+                0))
+            0 1))
+        frame))
 
-    (define wall
-      (lambda ()
-        (or (< i border) (>= i (- H border)))))
+    (define bounced-vy
+      (if (or (< trial-y top-limit) (> trial-y bottom-limit))
+        (- vy)
+        vy))
 
-    (define net
-      (lambda ()
-        (and (< (abs (- j mid-x)) border)
-             (< (abs (- i (/ H 2))) (* 0.42 H)))))
+    (define next-vx
+      (if reset-ball
+        (if (< trial-x 0)
+          (abs vx)
+          (- (abs vx)))
+        (if left-hit
+          (abs vx)
+          (if right-hit
+            (- (abs vx))
+            vx))))
 
-    (define left-paddle
-      (lambda ()
-        (inside-rect left-paddle-y paddle-left-x paddle-half-h paddle-half-w)))
+    (define next-vy
+        (if reset-ball
+        vy
+        (if left-hit
+          (+ bounced-vy (clamp (/ (- clamped-y next-left-y) (max 1 ball-half)) -2 2))
+          (if right-hit
+            (+ bounced-vy (clamp (/ (- clamped-y next-right-y) (max 1 ball-half)) -2 2))
+            bounced-vy))))
 
-    (define right-paddle
-      (lambda ()
-        (inside-rect right-paddle-y paddle-right-x paddle-half-h paddle-half-w)))
+    (tuple next-frame next-ball-x next-ball-y next-vx next-vy
+           next-left-y next-right-y next-left-score next-right-score))
 
-    (define ball
-      (lambda ()
-        (inside-rect ball-y ball-x ball-half ball-half)))
-
-    (define wall-light (lambda () (if (wall) (rgb 0.10 0.85 0.18) 0)))
-    (define net-light (lambda () (if (net) (rgb 0.05 0.24 0.07) 0)))
-    (define left-light (lambda () (if (left-paddle) (rgb 0.18 0.92 1.00) 0)))
-    (define right-light (lambda () (if (right-paddle) (rgb 1.00 0.28 0.88) 0)))
-    (define ball-light (lambda () (if (ball) (rgb 1.00 0.82 0.18) 0)))
-
-    (map-image
-      (lambda (x)
-        (clamp
-          (max (trail x)
-               (wall-light)
-               (net-light)
-               (left-light)
-               (right-light)
-               (ball-light))
-          0 1))
-      A)))
+  (((frame ball-x ball-y vx vy left-y right-y left-score right-score))
+    (> (+ left-score right-score) 0)))

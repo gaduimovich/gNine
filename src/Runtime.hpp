@@ -20,6 +20,7 @@ namespace gnine
       struct EnvironmentObject;
       struct ClosureObject;
       struct ImageObject;
+      struct TupleObject;
 
       struct Value
       {
@@ -35,6 +36,8 @@ namespace gnine
          Kind kind;
          double number;
          Cell expr;
+         bool hasSourceExpr;
+         Cell sourceExpr;
          std::string builtinName;
          Object *object;
 
@@ -42,6 +45,7 @@ namespace gnine
 
          static Value nil();
          static Value numberValue(double value);
+         static Value numberValue(double value, const Cell &sourceExpr);
          static Value exprValue(const Cell &expr);
          static Value builtinValue(const std::string &name);
          static Value objectValue(Object *value);
@@ -51,6 +55,7 @@ namespace gnine
          bool isExpr() const;
          bool isBuiltin() const;
          bool isObject() const;
+         bool hasNumberSourceExpr() const;
       };
 
          struct Object
@@ -59,7 +64,8 @@ namespace gnine
             {
                Environment,
                Closure,
-               Image
+               Image,
+               Tuple
             };
 
          Type type;
@@ -75,6 +81,7 @@ namespace gnine
       {
          EnvironmentObject *parent;
          std::map<std::string, Value> bindings;
+         std::map<std::string, Cell> sourceExprs;
 
          explicit EnvironmentObject(EnvironmentObject *parentEnv);
          void trace(class Heap &heap) override;
@@ -82,11 +89,13 @@ namespace gnine
 
       struct ClosureObject : public Object
       {
+         std::vector<Cell> paramPatterns;
          std::vector<std::string> params;
          Cell body;
          EnvironmentObject *env;
 
-         ClosureObject(const std::vector<std::string> &parameters,
+         ClosureObject(const std::vector<Cell> &patterns,
+                       const std::vector<std::string> &parameters,
                        const Cell &bodyExpr,
                        EnvironmentObject *capturedEnv);
          void trace(class Heap &heap) override;
@@ -98,6 +107,14 @@ namespace gnine
 
          explicit ImageObject(const gnine::Image &source);
          ~ImageObject() override;
+         void trace(class Heap &heap) override;
+      };
+
+      struct TupleObject : public Object
+      {
+         std::vector<Value> values;
+
+         explicit TupleObject(const std::vector<Value> &elements);
          void trace(class Heap &heap) override;
       };
 
@@ -123,9 +140,11 @@ namespace gnine
 
          EnvironmentObject *allocateEnvironment(EnvironmentObject *parent);
          ClosureObject *allocateClosure(const std::vector<std::string> &params,
+                                        const std::vector<Cell> &patterns,
                                         const Cell &body,
                                         EnvironmentObject *env);
          ImageObject *allocateImage(const gnine::Image &image);
+         TupleObject *allocateTuple(const std::vector<Value> &values);
 
          void addRoot(Value *slot);
          void removeRoot(Value *slot);
@@ -165,6 +184,8 @@ namespace gnine
          Cell normalizeProgram(const Cell &program);
          Cell requireExpr(const Value &value, const std::string &context) const;
          Value imageValue(const gnine::Image &image);
+         void clearExecutionTrace();
+         const std::vector<std::string> &executionTrace() const;
 
          Heap &heap();
 
@@ -180,6 +201,14 @@ namespace gnine
                                 const std::string &context);
          Value applyClosure(ClosureObject *closure,
                             const std::vector<Value> &args);
+         void bindPattern(EnvironmentObject *env,
+                          const Cell &pattern,
+                          const Value &value);
+         void bindPattern(EnvironmentObject *env,
+                          const Cell &pattern,
+                          const Value &value,
+                          const Value &symbolicValue,
+                          EnvironmentObject *symbolicEnv);
          bool lookup(EnvironmentObject *env,
                      const std::string &name,
                      Value *outValue) const;
@@ -190,19 +219,24 @@ namespace gnine
                               const std::string &context) const;
          ImageObject *requireImageObject(const Value &value,
                                          const std::string &context) const;
+         TupleObject *requireTupleObject(const Value &value,
+                                         const std::string &context) const;
          bool tryCompiledMapImage(ClosureObject *closure,
                                   const gnine::Image &source,
-                                  Value *outResult);
+                                  Value *outResult,
+                                  std::string *fallbackReason);
          bool tryCompiledZipImage(ClosureObject *closure,
                                   const gnine::Image &lhs,
                                   const gnine::Image &rhs,
-                                  Value *outResult);
+                                  Value *outResult,
+                                  std::string *fallbackReason);
          Value applyMapImage(const Value &callable,
                              const std::vector<Value> &args,
                              const std::string &context);
          Value applyZipImage(const Value &callable,
                              const std::vector<Value> &args,
                              const std::string &context);
+         void traceExecution(const std::string &entry);
          Cell numberToCell(double value) const;
          std::vector<Cell> requireExprArgs(const std::vector<Value> &args,
                                            const std::string &context) const;
@@ -212,6 +246,11 @@ namespace gnine
          int _currentRow;
          int _currentCol;
          int _currentChannel;
+         bool _reportedNonNumericPixel;
+         int _compiledScalarScratchWidth;
+         int _compiledScalarScratchHeight;
+         std::vector<gnine::Image> _compiledScalarScratch;
+         std::vector<std::string> _executionTrace;
       };
    }
 }
