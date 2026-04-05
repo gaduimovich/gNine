@@ -1,0 +1,20 @@
+; Four-image composition benchmark.
+; Builds a 2x2 contact sheet from four equally sized inputs.
+;
+; Render with:
+;   ./gnine --runtime canvas_bench_contact_sheet_2x2.psm \
+;     ../example_data/lena.png ../example_data/duck.png \
+;     ../example_data/lena.png ../example_data/duck.png contact_sheet_2x2.png
+
+((A B C D)
+  (define W (width A))
+  (define H (height A))
+  (define ch (max (channels A) (channels B) (channels C) (channels D)))
+  (canvas (* 2 W) (* 2 H) ch
+    (if (< i H)
+      (if (< j W)
+        (A 0 0)
+        (B 0 (- W)))
+      (if (< j W)
+        (C (- H) 0)
+        (D (- H) (- W))))))
