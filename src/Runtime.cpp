@@ -725,6 +725,7 @@ namespace gnine
                                     std::set<std::string> *emittedNames,
                                     std::vector<ScalarInputBinding> *scalarInputs,
                                     std::vector<const gnine::Image *> *inputImages,
+                                    bool allowDynamicScalarRewrite,
                                     Cell *argsCell,
                                     Cell *program);
 
@@ -734,6 +735,7 @@ namespace gnine
                                                std::set<std::string> *emittedNames,
                                                std::vector<ScalarInputBinding> *scalarInputs,
                                                std::vector<const gnine::Image *> *inputImages,
+                                               bool allowDynamicScalarRewrite,
                                                Cell *argsCell,
                                                Cell *program)
          {
@@ -746,7 +748,8 @@ namespace gnine
                if (!findCompiledBinding(env, *it, &value, &sourceExpr))
                   continue;
                if (!appendCompiledBinding(*it, value, sourceExpr, env, excludedNames,
-                                          emittedNames, scalarInputs, inputImages, argsCell, program))
+                                          emittedNames, scalarInputs, inputImages,
+                                          allowDynamicScalarRewrite, argsCell, program))
                   return false;
             }
             return true;
@@ -760,6 +763,7 @@ namespace gnine
                                     std::set<std::string> *emittedNames,
                                     std::vector<ScalarInputBinding> *scalarInputs,
                                     std::vector<const gnine::Image *> *inputImages,
+                                    bool allowDynamicScalarRewrite,
                                     Cell *argsCell,
                                     Cell *program)
          {
@@ -769,10 +773,13 @@ namespace gnine
             if (value.isNumber())
             {
                Cell emittedExpr = doubleToCell(value.number);
-               if (sourceExpr != NULL && shouldEmitDynamicCompiledSource(*sourceExpr, lookupEnv))
+               if (allowDynamicScalarRewrite &&
+                   sourceExpr != NULL &&
+                   shouldEmitDynamicCompiledSource(*sourceExpr, lookupEnv))
                {
                   if (!appendCompiledReferencedBindings(lookupEnv, *sourceExpr, excludedNames, emittedNames,
-                                                       scalarInputs, inputImages, argsCell, program))
+                                                       scalarInputs, inputImages, allowDynamicScalarRewrite,
+                                                       argsCell, program))
                      return false;
                   emittedExpr = rewriteCompiledScalarExpr(*sourceExpr);
                }
@@ -811,7 +818,8 @@ namespace gnine
                   collectPatternBoundNames(closure->paramPatterns[idx], &boundNames);
                nestedExcluded.insert(boundNames.begin(), boundNames.end());
                if (!appendCompiledReferencedBindings(closure->env, closure->body, nestedExcluded,
-                                                    emittedNames, scalarInputs, inputImages, argsCell, program))
+                                                    emittedNames, scalarInputs, inputImages, allowDynamicScalarRewrite,
+                                                    argsCell, program))
                   return false;
                program->list.push_back(makeDefineCell(name, makeLambdaCell(closure)));
                return true;
@@ -1166,12 +1174,12 @@ namespace gnine
             Heap::Root resultRoot(_heap, result);
             bool sawResult = false;
 
-            for (size_t idx = 1; idx < program.list.size(); ++idx)
-            {
-               const Cell &expr = program.list[idx];
-               bool isDefine = expr.type == Cell::List &&
-                               expr.list.size() == 3 &&
-                               expr.list[0].type == Cell::Symbol &&
+           for (size_t idx = 1; idx < program.list.size(); ++idx)
+           {
+              const Cell &expr = program.list[idx];
+              bool isDefine = expr.type == Cell::List &&
+                              expr.list.size() == 3 &&
+                              expr.list[0].type == Cell::Symbol &&
                                expr.list[0].val == "define" &&
                                expr.list[1].type == Cell::Symbol;
 
@@ -1179,19 +1187,19 @@ namespace gnine
                {
                   Value defineValue = eval(expr.list[2], globalEnv);
                   Heap::Root defineRoot(_heap, defineValue);
-                  Value symbolicValue = eval(expr.list[2], symbolicEnv);
-                  Heap::Root symbolicDefineRoot(_heap, symbolicValue);
                   globalEnv->bindings[expr.list[1].val] = defineValue;
                   globalEnv->sourceExprs.erase(expr.list[1].val);
                   if (defineValue.isNumber())
                   {
+                     Value symbolicValue = eval(expr.list[2], symbolicEnv);
+                     Heap::Root symbolicDefineRoot(_heap, symbolicValue);
                      Cell sourceExpr = requireExpr(symbolicValue, "define");
                      if (!containsMetadataBuiltinCall(sourceExpr))
                         globalEnv->sourceExprs[expr.list[1].val] = sourceExpr;
                      symbolicEnv->bindings[expr.list[1].val] = Value::exprValue(expr.list[1]);
                   }
                   else
-                     symbolicEnv->bindings[expr.list[1].val] = symbolicValue;
+                     symbolicEnv->bindings[expr.list[1].val] = defineValue;
                   continue;
                }
 
@@ -1774,6 +1782,53 @@ namespace gnine
             return tuple->values[index];
          }
 
+         if (builtinName == "draw-rect")
+         {
+            if (args.size() != 5)
+               throw std::runtime_error("draw-rect expects exactly five arguments (cx cy half_w half_h value)");
+            if (!_hasPixelContext)
+               throw std::runtime_error("draw-rect requires pixel context (canvas, map-image, or zip-image)");
+            
+            double cx = requireNumber(args[0], "draw-rect");
+            double cy = requireNumber(args[1], "draw-rect");
+            double half_w = requireNumber(args[2], "draw-rect");
+            double half_h = requireNumber(args[3], "draw-rect");
+            double value = requireNumber(args[4], "draw-rect");
+            
+            double i = static_cast<double>(_currentRow);
+            double j = static_cast<double>(_currentCol);
+            
+            bool inside = (j >= cx - half_w) && (j <= cx + half_w) &&
+                         (i >= cy - half_h) && (i <= cy + half_h);
+            
+            return Value::numberValue(inside ? value : 0.0);
+         }
+
+         if (builtinName == "draw-circle")
+         {
+            if (args.size() != 4)
+               throw std::runtime_error("draw-circle expects exactly four arguments (cx cy radius value)");
+            if (!_hasPixelContext)
+               throw std::runtime_error("draw-circle requires pixel context (canvas, map-image, or zip-image)");
+            
+            double cx = requireNumber(args[0], "draw-circle");
+            double cy = requireNumber(args[1], "draw-circle");
+            double radius = requireNumber(args[2], "draw-circle");
+            double value = requireNumber(args[3], "draw-circle");
+            
+            double i = static_cast<double>(_currentRow);
+            double j = static_cast<double>(_currentCol);
+            
+            double dx = j - cx;
+            double dy = i - cy;
+            double dist_sq = dx * dx + dy * dy;
+            double radius_sq = radius * radius;
+            
+            bool inside = dist_sq <= radius_sq;
+            
+            return Value::numberValue(inside ? value : 0.0);
+         }
+
          throw std::runtime_error("Unsupported runtime builtin: " + builtinName);
       }
 
@@ -1955,7 +2010,8 @@ namespace gnine
                 name == "==" || name == "!=" || name == "and" || name == "or" ||
                 name == "not" || name == "min" || name == "max" || name == "abs" ||
                 name == "clamp" || name == "int" || name == "tuple" || name == "get" ||
-                name == "width" || name == "height" || name == "channels";
+                name == "width" || name == "height" || name == "channels" ||
+                name == "draw-rect" || name == "draw-circle";
       }
 
       bool Evaluator::allNumbers(const std::vector<Value> &args) const
@@ -2033,7 +2089,7 @@ namespace gnine
          std::vector<const gnine::Image *> inputImages;
          inputImages.push_back(&source);
          if (!appendCompiledReferencedBindings(closure->env, closure->body, excludedNames, &seenBindings,
-                                               &scalarInputs, &inputImages, &argsCell, &program))
+                                               &scalarInputs, &inputImages, true, &argsCell, &program))
          {
             if (fallbackReason != NULL)
                *fallbackReason = "unsupported_capture";
@@ -2167,7 +2223,7 @@ namespace gnine
          inputImages.push_back(&lhs);
          inputImages.push_back(&rhs);
          if (!appendCompiledReferencedBindings(closure->env, closure->body, excludedNames, &seenBindings,
-                                               &scalarInputs, &inputImages, &argsCell, &program))
+                                               &scalarInputs, &inputImages, true, &argsCell, &program))
          {
             if (fallbackReason != NULL)
                *fallbackReason = "unsupported_capture";
@@ -2304,37 +2360,9 @@ namespace gnine
                                        " channel=" + std::to_string(channel) +
                                        " value=" + describeValue(pixelValue));
                         if (callable.isObject() && callable.object->type == Object::Closure)
-                        {
-                           ClosureObject *closure = static_cast<ClosureObject *>(callable.object);
-                           const char *suspects[] = {"left-paddle-y", "paddle-half-h", "paddle-left-x",
-                                                     "ball-x", "ball-y", "border", "W", "H"};
-                           for (size_t suspectIdx = 0; suspectIdx < sizeof(suspects) / sizeof(suspects[0]); ++suspectIdx)
-                           {
-                              Value suspectValue;
-                              if (lookup(closure->env, suspects[suspectIdx], &suspectValue))
-                                 traceExecution(std::string("runtime.map_image.binding ") + suspects[suspectIdx] +
-                                               "=" + valueKindName(suspectValue) +
-                                               " value=" + describeValue(suspectValue));
-                           }
-
-                           const char *closureSuspects[] = {"left-light", "left-paddle", "inside-rect"};
-                           for (size_t suspectIdx = 0; suspectIdx < sizeof(closureSuspects) / sizeof(closureSuspects[0]); ++suspectIdx)
-                           {
-                              Value suspectValue;
-                              if (lookup(closure->env, closureSuspects[suspectIdx], &suspectValue) &&
-                                  suspectValue.isObject() &&
-                                  suspectValue.object->type == Object::Closure)
-                              {
-                                 ClosureObject *suspectClosure = static_cast<ClosureObject *>(suspectValue.object);
-                                 Value nestedValue;
-                                 std::string nestedDesc = "missing";
-                                 if (lookup(suspectClosure->env, "left-paddle-y", &nestedValue))
-                                    nestedDesc = valueKindName(nestedValue) + ":" + describeValue(nestedValue);
-                                 traceExecution(std::string("runtime.map_image.closure ") + closureSuspects[suspectIdx] +
-                                                " env.left-paddle-y=" + nestedDesc);
-                              }
-                           }
-                        }
+                           traceClosureBindings(static_cast<ClosureObject *>(callable.object),
+                                               "runtime.map_image.",
+                                               2);
                      }
                      resultImage(row, col, channel) = requireNumber(pixelValue, context);
                   }
@@ -2366,37 +2394,9 @@ namespace gnine
                                     " channel=" + std::to_string(channel) +
                                     " value=" + describeValue(pixelValue));
                      if (callable.isObject() && callable.object->type == Object::Closure)
-                     {
-                        ClosureObject *closure = static_cast<ClosureObject *>(callable.object);
-                        const char *suspects[] = {"left-paddle-y", "paddle-half-h", "paddle-left-x",
-                                                  "ball-x", "ball-y", "border", "W", "H"};
-                        for (size_t suspectIdx = 0; suspectIdx < sizeof(suspects) / sizeof(suspects[0]); ++suspectIdx)
-                        {
-                           Value suspectValue;
-                           if (lookup(closure->env, suspects[suspectIdx], &suspectValue))
-                              traceExecution(std::string("runtime.map_image.binding ") + suspects[suspectIdx] +
-                                             "=" + valueKindName(suspectValue) +
-                                             " value=" + describeValue(suspectValue));
-                        }
-
-                        const char *closureSuspects[] = {"left-light", "left-paddle", "inside-rect"};
-                        for (size_t suspectIdx = 0; suspectIdx < sizeof(closureSuspects) / sizeof(closureSuspects[0]); ++suspectIdx)
-                        {
-                           Value suspectValue;
-                           if (lookup(closure->env, closureSuspects[suspectIdx], &suspectValue) &&
-                               suspectValue.isObject() &&
-                               suspectValue.object->type == Object::Closure)
-                           {
-                              ClosureObject *suspectClosure = static_cast<ClosureObject *>(suspectValue.object);
-                              Value nestedValue;
-                              std::string nestedDesc = "missing";
-                              if (lookup(suspectClosure->env, "left-paddle-y", &nestedValue))
-                                 nestedDesc = valueKindName(nestedValue) + ":" + describeValue(nestedValue);
-                              traceExecution(std::string("runtime.map_image.closure ") + closureSuspects[suspectIdx] +
-                                             " env.left-paddle-y=" + nestedDesc);
-                           }
-                        }
-                     }
+                        traceClosureBindings(static_cast<ClosureObject *>(callable.object),
+                                            "runtime.map_image.",
+                                            2);
                   }
                   resultImage(row, col, channel) = requireNumber(pixelValue, context);
                }
@@ -2580,7 +2580,7 @@ namespace gnine
                      }
                   }
                   if (!appendCompiledReferencedBindings(env, specializedBody, excludedNames, &seenBindings,
-                                                        &scalarInputs, &inputImages, &argsCell, &program))
+                                                        &scalarInputs, &inputImages, false, &argsCell, &program))
                   {
                      if (fallbackReason != NULL)
                         *fallbackReason = "unsupported_capture";
@@ -2675,7 +2675,7 @@ namespace gnine
                std::vector<const gnine::Image *> inputImages;
 
                if (!appendCompiledReferencedBindings(env, specializedBody, excludedNames, &seenBindings,
-                                                     &scalarInputs, &inputImages, &argsCell, &program))
+                                                     &scalarInputs, &inputImages, false, &argsCell, &program))
                {
                   if (fallbackReason != NULL)
                      *fallbackReason = "unsupported_capture";
@@ -2814,6 +2814,63 @@ namespace gnine
          const char *traceEnv = std::getenv("GNINE_RUNTIME_TRACE");
          if (traceEnv != NULL && traceEnv[0] != '\0' && std::string(traceEnv) != "0")
             std::cerr << entry << std::endl;
+      }
+
+      void Evaluator::traceEnvironmentBindings(EnvironmentObject *env,
+                                               const std::string &tracePrefix,
+                                               int maxClosureDepth)
+      {
+         std::set<const EnvironmentObject *> seenEnvs;
+         std::deque<std::pair<EnvironmentObject *, std::string> > pending;
+         pending.push_back(std::make_pair(env, tracePrefix));
+         while (!pending.empty())
+         {
+            EnvironmentObject *currentEnv = pending.front().first;
+            std::string currentPrefix = pending.front().second;
+            pending.pop_front();
+            if (currentEnv == NULL || !seenEnvs.insert(currentEnv).second)
+               continue;
+
+            for (std::map<std::string, Value>::const_iterator it = currentEnv->bindings.begin();
+                 it != currentEnv->bindings.end();
+                 ++it)
+            {
+               traceExecution(currentPrefix + it->first +
+                              "=" + valueKindName(it->second) +
+                              " value=" + describeValue(it->second));
+               if (maxClosureDepth > 0 &&
+                   it->second.isObject() &&
+                   it->second.object->type == Object::Closure)
+               {
+                  traceClosureBindings(static_cast<ClosureObject *>(it->second.object),
+                                      currentPrefix + it->first + ".",
+                                      maxClosureDepth - 1);
+               }
+            }
+
+            if (currentEnv->parent != NULL)
+               pending.push_back(std::make_pair(currentEnv->parent, currentPrefix + "parent."));
+         }
+      }
+
+      void Evaluator::traceClosureBindings(ClosureObject *closure,
+                                           const std::string &tracePrefix,
+                                           int maxClosureDepth)
+      {
+         if (closure == NULL)
+            return;
+
+         std::ostringstream out;
+         out << tracePrefix << "closure.params=";
+         for (size_t idx = 0; idx < closure->params.size(); ++idx)
+         {
+            if (idx != 0)
+               out << ",";
+            out << (closure->params[idx].empty() ? "<pattern>" : closure->params[idx]);
+         }
+         traceExecution(out.str());
+         traceExecution(tracePrefix + "closure.body=" + cellToString(closure->body));
+         traceEnvironmentBindings(closure->env, tracePrefix + "env.", maxClosureDepth);
       }
 
       Cell Evaluator::numberToCell(double value) const

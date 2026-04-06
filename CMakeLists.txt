@@ -26,6 +26,7 @@ ${CMAKE_CURRENT_LIST_DIR}/libs/omr/cmake/modules/
 )
 
 include(OmrPlatform)
+include(FindPkgConfig)
 
 # Global Configuration
 
@@ -64,5 +65,15 @@ target_link_libraries(gnine_core PUBLIC stb_image jitbuilder)
 
 add_executable(gnine src/main.cpp)
 target_link_libraries(gnine PUBLIC gnine_core)
+
+if(PKG_CONFIG_FOUND)
+  pkg_check_modules(SDL2 QUIET sdl2)
+  if(SDL2_FOUND)
+    target_include_directories(gnine PRIVATE ${SDL2_INCLUDE_DIRS})
+    target_compile_options(gnine PRIVATE ${SDL2_CFLAGS_OTHER})
+    target_link_libraries(gnine PUBLIC ${SDL2_LDFLAGS})
+    target_compile_definitions(gnine PRIVATE GNINE_HAVE_SDL2=1)
+  endif()
+endif()
 
 add_subdirectory(tests)

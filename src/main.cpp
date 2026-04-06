@@ -9,6 +9,7 @@
 #include <fstream>
 #include <chrono>
 #include <algorithm>
+#include <cstdint>
 #include <cstdlib>
 #include <string>
 #include <stdexcept>
@@ -23,10 +24,237 @@
 #include "JitBuilder.hpp"
 #include "Runtime.hpp"
 
+#ifdef GNINE_HAVE_SDL2
+#include <SDL.h>
+#endif
+
 using namespace gnine;
 
 namespace
 {
+   struct RuntimeInputState
+   {
+      double keyUp;
+      double keyDown;
+      double keyLeft;
+      double keyRight;
+      double keyW;
+      double keyA;
+      double keyS;
+      double keyD;
+      double keySpace;
+      double keyReturn;
+      double keyEscape;
+      double mouseX;
+      double mouseY;
+      double mouseLeft;
+      double mouseRight;
+      bool quitRequested;
+
+      RuntimeInputState()
+         : keyUp(0.0), keyDown(0.0), keyLeft(0.0), keyRight(0.0),
+           keyW(0.0), keyA(0.0), keyS(0.0), keyD(0.0),
+           keySpace(0.0), keyReturn(0.0), keyEscape(0.0),
+           mouseX(0.0), mouseY(0.0), mouseLeft(0.0), mouseRight(0.0),
+           quitRequested(false)
+      {
+      }
+   };
+
+   runtime::Value makeDynamicRuntimeNumber(const std::string &name, double value)
+   {
+      return runtime::Value::numberValue(value, Cell(Cell::Symbol, name));
+   }
+
+   void addRuntimeInputBindings(std::map<std::string, runtime::Value> *bindings,
+                                const RuntimeInputState &input,
+                                double previewTimeMs,
+                                double previewDeltaMs)
+   {
+      (*bindings)["key-up"] = makeDynamicRuntimeNumber("key-up", input.keyUp);
+      (*bindings)["key-down"] = makeDynamicRuntimeNumber("key-down", input.keyDown);
+      (*bindings)["key-left"] = makeDynamicRuntimeNumber("key-left", input.keyLeft);
+      (*bindings)["key-right"] = makeDynamicRuntimeNumber("key-right", input.keyRight);
+      (*bindings)["key-w"] = makeDynamicRuntimeNumber("key-w", input.keyW);
+      (*bindings)["key-a"] = makeDynamicRuntimeNumber("key-a", input.keyA);
+      (*bindings)["key-s"] = makeDynamicRuntimeNumber("key-s", input.keyS);
+      (*bindings)["key-d"] = makeDynamicRuntimeNumber("key-d", input.keyD);
+      (*bindings)["key-space"] = makeDynamicRuntimeNumber("key-space", input.keySpace);
+      (*bindings)["key-return"] = makeDynamicRuntimeNumber("key-return", input.keyReturn);
+      (*bindings)["key-escape"] = makeDynamicRuntimeNumber("key-escape", input.keyEscape);
+      (*bindings)["mouse-x"] = makeDynamicRuntimeNumber("mouse-x", input.mouseX);
+      (*bindings)["mouse-y"] = makeDynamicRuntimeNumber("mouse-y", input.mouseY);
+      (*bindings)["mouse-left"] = makeDynamicRuntimeNumber("mouse-left", input.mouseLeft);
+      (*bindings)["mouse-right"] = makeDynamicRuntimeNumber("mouse-right", input.mouseRight);
+      (*bindings)["preview-time-ms"] = makeDynamicRuntimeNumber("preview-time-ms", previewTimeMs);
+      (*bindings)["preview-delta-ms"] = makeDynamicRuntimeNumber("preview-delta-ms", previewDeltaMs);
+   }
+
+#ifdef GNINE_HAVE_SDL2
+   double clampPreviewChannel(double value)
+   {
+      if (value < 0.0)
+         return 0.0;
+      if (value > 1.0)
+         return 1.0;
+      return value;
+   }
+
+   class PreviewWindow
+   {
+   public:
+      PreviewWindow()
+         : _initialized(false), _window(NULL), _renderer(NULL), _texture(NULL), _width(0), _height(0)
+      {
+      }
+
+      ~PreviewWindow()
+      {
+         if (_texture != NULL)
+            SDL_DestroyTexture(_texture);
+         if (_renderer != NULL)
+            SDL_DestroyRenderer(_renderer);
+         if (_window != NULL)
+            SDL_DestroyWindow(_window);
+         if (_initialized)
+            SDL_QuitSubSystem(SDL_INIT_VIDEO);
+      }
+
+      void ensureForImage(const Image &image)
+      {
+         if (!_initialized)
+         {
+            if (SDL_InitSubSystem(SDL_INIT_VIDEO) != 0)
+               throw std::runtime_error(std::string("SDL video init failed: ") + SDL_GetError());
+            _initialized = true;
+         }
+
+         if (_window == NULL)
+         {
+            _window = SDL_CreateWindow("gnine preview",
+                                       SDL_WINDOWPOS_CENTERED,
+                                       SDL_WINDOWPOS_CENTERED,
+                                       image.width(),
+                                       image.height(),
+                                       SDL_WINDOW_SHOWN);
+            if (_window == NULL)
+               throw std::runtime_error(std::string("SDL window creation failed: ") + SDL_GetError());
+
+            _renderer = SDL_CreateRenderer(_window, -1, SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC);
+            if (_renderer == NULL)
+               _renderer = SDL_CreateRenderer(_window, -1, SDL_RENDERER_SOFTWARE);
+         }
+
+         if (_texture == NULL || _width != image.width() || _height != image.height())
+         {
+            if (_texture != NULL)
+               SDL_DestroyTexture(_texture);
+            SDL_SetWindowSize(_window, image.width(), image.height());
+            _texture = NULL;
+            if (_renderer != NULL)
+            {
+               _texture = SDL_CreateTexture(_renderer,
+                                            SDL_PIXELFORMAT_RGBA32,
+                                            SDL_TEXTUREACCESS_STREAMING,
+                                            image.width(),
+                                            image.height());
+               if (_texture == NULL)
+                  throw std::runtime_error(std::string("SDL texture creation failed: ") + SDL_GetError());
+            }
+            _width = image.width();
+            _height = image.height();
+            _pixels.resize(static_cast<size_t>(_width) * static_cast<size_t>(_height) * 4u);
+         }
+      }
+
+      void pollInput(RuntimeInputState *input)
+      {
+         input->quitRequested = false;
+         SDL_Event event;
+         while (SDL_PollEvent(&event))
+         {
+            if (event.type == SDL_QUIT)
+               input->quitRequested = true;
+         }
+
+         SDL_PumpEvents();
+         const Uint8 *keys = SDL_GetKeyboardState(NULL);
+         input->keyUp = (keys[SDL_SCANCODE_UP] || keys[SDL_SCANCODE_W]) ? 1.0 : 0.0;
+         input->keyDown = (keys[SDL_SCANCODE_DOWN] || keys[SDL_SCANCODE_S]) ? 1.0 : 0.0;
+         input->keyLeft = (keys[SDL_SCANCODE_LEFT] || keys[SDL_SCANCODE_A]) ? 1.0 : 0.0;
+         input->keyRight = (keys[SDL_SCANCODE_RIGHT] || keys[SDL_SCANCODE_D]) ? 1.0 : 0.0;
+         input->keyW = keys[SDL_SCANCODE_W] ? 1.0 : 0.0;
+         input->keyA = keys[SDL_SCANCODE_A] ? 1.0 : 0.0;
+         input->keyS = keys[SDL_SCANCODE_S] ? 1.0 : 0.0;
+         input->keyD = keys[SDL_SCANCODE_D] ? 1.0 : 0.0;
+         input->keySpace = keys[SDL_SCANCODE_SPACE] ? 1.0 : 0.0;
+         input->keyReturn = keys[SDL_SCANCODE_RETURN] ? 1.0 : 0.0;
+         input->keyEscape = keys[SDL_SCANCODE_ESCAPE] ? 1.0 : 0.0;
+
+         int mouseX = 0;
+         int mouseY = 0;
+         Uint32 mouseMask = SDL_GetMouseState(&mouseX, &mouseY);
+         input->mouseLeft = (mouseMask & SDL_BUTTON(SDL_BUTTON_LEFT)) ? 1.0 : 0.0;
+         input->mouseRight = (mouseMask & SDL_BUTTON(SDL_BUTTON_RIGHT)) ? 1.0 : 0.0;
+         input->mouseX = mouseX;
+         input->mouseY = mouseY;
+      }
+
+      void present(const Image &image)
+      {
+         ensureForImage(image);
+         for (int row = 0; row < _height; ++row)
+         {
+            for (int col = 0; col < _width; ++col)
+            {
+               const double red = clampPreviewChannel(image(row, col, image.channelCount() > 1 ? 0 : 0));
+               const double green = clampPreviewChannel(image(row, col, image.channelCount() > 1 ? 1 : 0));
+               const double blue = clampPreviewChannel(image(row, col, image.channelCount() > 1 ? 2 : 0));
+               const size_t pixelOffset =
+                   (static_cast<size_t>(row) * static_cast<size_t>(_width) + static_cast<size_t>(col)) * 4u;
+               _pixels[pixelOffset + 0u] = static_cast<uint8_t>(red * 255.0 + 0.5);
+               _pixels[pixelOffset + 1u] = static_cast<uint8_t>(green * 255.0 + 0.5);
+               _pixels[pixelOffset + 2u] = static_cast<uint8_t>(blue * 255.0 + 0.5);
+               _pixels[pixelOffset + 3u] = 255u;
+            }
+         }
+
+         if (_renderer != NULL && _texture != NULL)
+         {
+            SDL_UpdateTexture(_texture, NULL, _pixels.data(), _width * 4);
+            SDL_RenderClear(_renderer);
+            SDL_RenderCopy(_renderer, _texture, NULL, NULL);
+            SDL_RenderPresent(_renderer);
+            return;
+         }
+
+         SDL_Surface *surface = SDL_GetWindowSurface(_window);
+         if (surface == NULL)
+            throw std::runtime_error(std::string("SDL window surface failed: ") + SDL_GetError());
+         if (SDL_ConvertPixels(_width,
+                               _height,
+                               SDL_PIXELFORMAT_RGBA32,
+                               _pixels.data(),
+                               _width * 4,
+                               surface->format->format,
+                               surface->pixels,
+                               surface->pitch) != 0)
+            throw std::runtime_error(std::string("SDL pixel conversion failed: ") + SDL_GetError());
+         if (SDL_UpdateWindowSurface(_window) != 0)
+            throw std::runtime_error(std::string("SDL window surface update failed: ") + SDL_GetError());
+      }
+
+   private:
+      bool _initialized;
+      SDL_Window *_window;
+      SDL_Renderer *_renderer;
+      SDL_Texture *_texture;
+      int _width;
+      int _height;
+      std::vector<uint8_t> _pixels;
+   };
+#endif
+
    int parsePositiveInt(const std::string &text, const std::string &flagName)
    {
       std::stringstream ss(text);
@@ -393,6 +621,7 @@ int main(int argc, char *argsRaw[])
       std::cout << "--benchmark-no-write skips writing benchmark output images.\n";
       std::cout << "--benchmark-repeats=N reruns runtime benchmarks in one process to expose warm-cache timings.\n";
       std::cout << "--emit-frames=PATH writes chained iterations as PATH with _N suffixes.\n";
+      std::cout << "--preview opens a live runtime preview window.\n";
       std::cout << "--compare[=PATH] writes a side-by-side original/result comparison image.\n";
       std::cout << "--display-scale=N writes output frames enlarged by an integer factor.\n";
       std::cout << "--display-size=WIDTHxHEIGHT writes output frames at an exact size.\n";
@@ -403,6 +632,8 @@ int main(int argc, char *argsRaw[])
       std::cout << "Top-level form (iterate-until N ((A ...) init) ((state) step) ((state) done)) runs until done is nonzero or N steps are reached.\n";
       std::cout << "Inside a transform, iter is the 1-based chained iteration counter.\n";
       std::cout << "Runtime form (canvas W H [C] expr) builds a new image by evaluating expr for each output pixel under i/j/c.\n";
+      std::cout << "Runtime builtins (draw-rect cx cy half_w half_h value) and (draw-circle cx cy radius value) return value inside shape, 0 outside.\n";
+      std::cout << "Runtime preview/input bindings include key-up/key-down/key-left/key-right, key-w/key-a/key-s/key-d, key-space, key-return, key-escape, mouse-x, mouse-y, mouse-left, mouse-right, preview-time-ms, and preview-delta-ms.\n";
       std::cout << "Top-level form (pipeline ((A ...) ...) ((A ...) ...)) fuses scalar stages into one kernel.\n";
       std::cout << "In later pipeline stages, the first argument names the previous stage output.\n";
 
@@ -428,6 +659,7 @@ int main(int argc, char *argsRaw[])
    bool danger = false;
    bool benchmark = false;
    bool benchmarkNoWrite = false;
+   bool preview = false;
    bool runtimeMode = false;
    std::string emitFramesPath;
    std::string comparePath;
@@ -449,6 +681,8 @@ int main(int argc, char *argsRaw[])
          benchmark = true;
       else if (s == "--benchmark-no-write")
          benchmarkNoWrite = true;
+      else if (s == "--preview")
+         preview = true;
       else if (s == "--compare")
          comparePath = "__AUTO__";
       else if (s.length() > 10 && s.substr(0, 10) == "--compare=")
@@ -489,6 +723,10 @@ int main(int argc, char *argsRaw[])
 
    if (displayWidth > 0 && displayScale != 1)
       throw std::runtime_error("Use either --display-scale or --display-size, not both");
+   if (preview && !runtimeMode)
+      throw std::runtime_error("--preview currently requires --runtime");
+   if (preview && benchmark)
+      throw std::runtime_error("--preview does not support --benchmark");
    if (benchmarkRepeats > 1 && !runtimeMode)
       throw std::runtime_error("--benchmark-repeats currently requires --runtime");
    if (benchmarkRepeats > 1 && chain_times > 0)
@@ -652,8 +890,12 @@ int main(int argc, char *argsRaw[])
       double runtimeBenchmarkFirstExecuteMillis = 0.0;
       double runtimeBenchmarkLastCompileMillis = 0.0;
       double runtimeBenchmarkLastExecuteMillis = 0.0;
+      RuntimeInputState runtimeInputState;
 
-      auto runSingleRuntimePass = [&](double iterValue) {
+      auto runSingleRuntimePass = [&](double iterValue,
+                                     const RuntimeInputState &inputState,
+                                     double previewTimeMs,
+                                     double previewDeltaMs) {
          const Cell &argsCell = effectiveCode.list[0];
          if (argsCell.list.size() != inputImages.size())
             throw std::runtime_error("Runtime input count does not match program arguments");
@@ -663,6 +905,7 @@ int main(int argc, char *argsRaw[])
          for (size_t idx = 0; idx < argsCell.list.size(); ++idx)
             bindings[runtimeArgumentBindingName(argsCell.list[idx], idx)] = evaluator.imageValue(inputImages[idx]);
          bindings["iter"] = runtime::Value::numberValue(iterValue);
+         addRuntimeInputBindings(&bindings, inputState, previewTimeMs, previewDeltaMs);
 
          auto passStart = std::chrono::steady_clock::now();
          runtime::Value passState = runRuntimeProgram(evaluator, effectiveCode, bindings);
@@ -675,7 +918,123 @@ int main(int argc, char *argsRaw[])
                                std::make_pair(traceMetrics.compileMillis, passExecuteMillis));
       };
 
-      if (chain_times > 0)
+      if (preview)
+      {
+#ifndef GNINE_HAVE_SDL2
+         throw std::runtime_error("--preview requested but this build does not have SDL2 support");
+#else
+         PreviewWindow previewWindow;
+         bool statefulPreview = hasIterateState || hasIterateUntil || chain_times > 0;
+         int previewFrame = 0;
+         std::chrono::steady_clock::time_point previewStart = std::chrono::steady_clock::now();
+         std::chrono::steady_clock::time_point previewLast = previewStart;
+
+         if (statefulPreview && effectiveCode.list[0].list.size() != 1)
+            throw std::runtime_error("preview runtime chaining requires the step program to take exactly one state argument");
+         if (hasIterateUntil && iterateUntilDone.list[0].list.size() != 1)
+            throw std::runtime_error("iterate-until done program must take exactly one state argument");
+
+         if (hasIterateState)
+         {
+            const Cell &initArgsCell = iterateStateInit.list[0];
+            if (initArgsCell.list.size() != inputImages.size())
+               throw std::runtime_error((hasIterateUntil ? "iterate-until" : "iterate-state") +
+                                        std::string(" init input count does not match program arguments"));
+
+            std::map<std::string, runtime::Value> initBindings;
+            for (size_t idx = 0; idx < initArgsCell.list.size(); ++idx)
+               initBindings[runtimeArgumentBindingName(initArgsCell.list[idx], idx)] = evaluator.imageValue(inputImages[idx]);
+            initBindings["iter"] = runtime::Value::numberValue(0.0);
+            addRuntimeInputBindings(&initBindings, runtimeInputState, 0.0, 0.0);
+            runtimeState = runRuntimeProgram(evaluator, iterateStateInit, initBindings);
+            hasRuntimeState = true;
+         }
+         else if (statefulPreview)
+         {
+            if (inputImages.size() != 1)
+               throw std::runtime_error("--preview runtime chaining requires a single input image unless you use iterate-state");
+            runtimeState = evaluator.imageValue(inputImages[0]);
+            hasRuntimeState = true;
+         }
+
+         while (true)
+         {
+            std::chrono::steady_clock::time_point frameNow = std::chrono::steady_clock::now();
+            double previewTimeMs =
+                std::chrono::duration_cast<std::chrono::microseconds>(frameNow - previewStart).count() / 1000.0;
+            double previewDeltaMs =
+                std::chrono::duration_cast<std::chrono::microseconds>(frameNow - previewLast).count() / 1000.0;
+            previewLast = frameNow;
+
+            previewWindow.pollInput(&runtimeInputState);
+            if (runtimeInputState.quitRequested || runtimeInputState.keyEscape != 0.0)
+               break;
+
+            ++previewFrame;
+            if (statefulPreview)
+            {
+               evaluator.clearExecutionTrace();
+               std::map<std::string, runtime::Value> bindings;
+               bindings[runtimeArgumentBindingName(effectiveCode.list[0].list[0], 0)] = runtimeState;
+               bindings["iter"] = runtime::Value::numberValue(static_cast<double>(previewFrame));
+               addRuntimeInputBindings(&bindings, runtimeInputState, previewTimeMs, previewDeltaMs);
+
+               auto passStart = std::chrono::steady_clock::now();
+               runtimeState = runRuntimeProgram(evaluator, effectiveCode, bindings);
+               auto passEnd = std::chrono::steady_clock::now();
+               hasRuntimeState = true;
+               runtimeIterationsExecuted = previewFrame;
+               RuntimeTraceMetrics traceMetrics = collectRuntimeTraceMetrics(evaluator.executionTrace());
+               runtimeBenchmarkCompileMillis += traceMetrics.compileMillis;
+               runtimeBenchmarkExecuteMillis +=
+                   std::chrono::duration_cast<std::chrono::microseconds>(passEnd - passStart).count() / 1000.0;
+            }
+            else
+            {
+               std::pair<runtime::Value, std::pair<double, double> > passResult =
+                   runSingleRuntimePass(static_cast<double>(previewFrame),
+                                        runtimeInputState,
+                                        previewTimeMs,
+                                        previewDeltaMs);
+               runtimeState = passResult.first;
+               hasRuntimeState = true;
+               runtimeBenchmarkCompileMillis += passResult.second.first;
+               runtimeBenchmarkExecuteMillis += passResult.second.second;
+            }
+
+            std::unique_ptr<Image> previewImage = tryCopyRuntimeImage(runtimeState);
+            if (!previewImage)
+               throw std::runtime_error("--preview requires the runtime program to return an image or a tuple whose first element is an image");
+
+            runtimeImageResult.reset(new Image(copyImage(*previewImage)));
+            hasImageResult = true;
+            hasScalarResult = false;
+
+            Image previewDisplayImage = makeDisplayImage(*previewImage);
+            previewWindow.present(previewDisplayImage);
+
+            if (!emitFramesPath.empty())
+               writeDisplayImage(*previewImage, makeChainedFramePath(emitFramesPath, previewFrame));
+
+            if (hasIterateUntil)
+            {
+               std::map<std::string, runtime::Value> doneBindings;
+               doneBindings[runtimeArgumentBindingName(iterateUntilDone.list[0].list[0], 0)] = runtimeState;
+               doneBindings["iter"] = runtime::Value::numberValue(static_cast<double>(previewFrame));
+               addRuntimeInputBindings(&doneBindings, runtimeInputState, previewTimeMs, previewDeltaMs);
+               runtime::Value doneValue = runRuntimeProgram(evaluator, iterateUntilDone, doneBindings);
+               if (!doneValue.isNumber())
+                  throw std::runtime_error("iterate-until done program must return a number");
+               if (doneValue.number != 0.0)
+                  break;
+            }
+
+            if (chain_times > 0 && previewFrame >= chain_times)
+               break;
+         }
+#endif
+      }
+      else if (chain_times > 0)
       {
          if (hasIterateState)
          {
@@ -698,6 +1057,7 @@ int main(int argc, char *argsRaw[])
             for (size_t idx = 0; idx < initArgsCell.list.size(); ++idx)
                initBindings[runtimeArgumentBindingName(initArgsCell.list[idx], idx)] = evaluator.imageValue(inputImages[idx]);
             initBindings["iter"] = runtime::Value::numberValue(0.0);
+            addRuntimeInputBindings(&initBindings, runtimeInputState, 0.0, 0.0);
             runtimeState = runRuntimeProgram(evaluator, iterateStateInit, initBindings);
             hasRuntimeState = true;
          }
@@ -718,6 +1078,7 @@ int main(int argc, char *argsRaw[])
             std::map<std::string, runtime::Value> bindings;
             bindings[runtimeArgumentBindingName(effectiveCode.list[0].list[0], 0)] = runtimeState;
             bindings["iter"] = runtime::Value::numberValue(static_cast<double>(iter));
+            addRuntimeInputBindings(&bindings, runtimeInputState, 0.0, 0.0);
             auto passStart = std::chrono::steady_clock::now();
             runtimeState = runRuntimeProgram(evaluator, effectiveCode, bindings);
             auto passEnd = std::chrono::steady_clock::now();
@@ -743,6 +1104,7 @@ int main(int argc, char *argsRaw[])
                std::map<std::string, runtime::Value> doneBindings;
                doneBindings[runtimeArgumentBindingName(iterateUntilDone.list[0].list[0], 0)] = runtimeState;
                doneBindings["iter"] = runtime::Value::numberValue(static_cast<double>(iter));
+               addRuntimeInputBindings(&doneBindings, runtimeInputState, 0.0, 0.0);
                runtime::Value doneValue = runRuntimeProgram(evaluator, iterateUntilDone, doneBindings);
                if (!doneValue.isNumber())
                   throw std::runtime_error("iterate-until done program must return a number");
@@ -763,7 +1125,7 @@ int main(int argc, char *argsRaw[])
          for (int pass = 0; pass < passes; ++pass)
          {
             std::pair<runtime::Value, std::pair<double, double>> passResult =
-                runSingleRuntimePass(static_cast<double>(pass + 1));
+                runSingleRuntimePass(static_cast<double>(pass + 1), runtimeInputState, 0.0, 0.0);
             runtimeState = passResult.first;
             hasRuntimeState = true;
             double passCompileMillis = passResult.second.first;
@@ -836,10 +1198,11 @@ int main(int argc, char *argsRaw[])
 
       if (benchmark)
       {
-         double averageMillis = benchmarkRepeats > 0 ? runtimeBenchmarkExecuteMillis / benchmarkRepeats : 0.0;
+         int benchmarkIterations = chain_times > 0 ? runtimeIterationsExecuted : benchmarkRepeats;
+         double averageMillis = benchmarkIterations > 0 ? runtimeBenchmarkExecuteMillis / benchmarkIterations : 0.0;
          std::cout << "benchmark.compile_ms=" << runtimeBenchmarkCompileMillis << std::endl;
          std::cout << "benchmark.execute_ms=" << runtimeBenchmarkExecuteMillis << std::endl;
-         std::cout << "benchmark.iterations=" << (chain_times > 0 ? runtimeIterationsExecuted : benchmarkRepeats) << std::endl;
+         std::cout << "benchmark.iterations=" << benchmarkIterations << std::endl;
          std::cout << "benchmark.mode=" << (hasIterateUntil ? "runtime-until"
                                                             : (chain_times > 0 ? "runtime-chain"
                                                                                : (benchmarkRepeats > 1 ? "runtime-repeat" : "runtime"))) << std::endl;

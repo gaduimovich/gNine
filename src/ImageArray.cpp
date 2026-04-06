@@ -384,6 +384,29 @@ OMR::JitBuilder::IlValue *ImageArray::functionHandler(OMR::JitBuilder::IlBuilder
       max(bldr, args[1]);
       return bldr->Load("sum");
    }
+   else if (functionName == "draw-rect")
+   {
+      OMR::JitBuilder::IlValue *pixX = bldr->ConvertTo(Double, j);
+      OMR::JitBuilder::IlValue *pixY = bldr->ConvertTo(Double, i);
+      OMR::JitBuilder::IlValue *insideX =
+          bldr->And(bldr->GreaterOrEqualTo(pixX, bldr->Sub(args[0], args[2])),
+                    bldr->LessOrEqualTo(pixX, bldr->Add(args[0], args[2])));
+      OMR::JitBuilder::IlValue *insideY =
+          bldr->And(bldr->GreaterOrEqualTo(pixY, bldr->Sub(args[1], args[3])),
+                    bldr->LessOrEqualTo(pixY, bldr->Add(args[1], args[3])));
+      return bldr->Mul(bldr->ConvertTo(Double, bldr->And(insideX, insideY)), args[4]);
+   }
+   else if (functionName == "draw-circle")
+   {
+      OMR::JitBuilder::IlValue *pixX = bldr->ConvertTo(Double, j);
+      OMR::JitBuilder::IlValue *pixY = bldr->ConvertTo(Double, i);
+      OMR::JitBuilder::IlValue *dx = bldr->Sub(pixX, args[0]);
+      OMR::JitBuilder::IlValue *dy = bldr->Sub(pixY, args[1]);
+      OMR::JitBuilder::IlValue *distSq =
+          bldr->Add(bldr->Mul(dx, dx), bldr->Mul(dy, dy));
+      OMR::JitBuilder::IlValue *radiusSq = bldr->Mul(args[2], args[2]);
+      return bldr->Mul(bldr->ConvertTo(Double, bldr->LessOrEqualTo(distSq, radiusSq)), args[3]);
+   }
    else if (functionName == "+")
    {
       return foldBalanced(bldr, args, 0, args.size(), FoldOp::Add);

@@ -250,6 +250,12 @@ namespace gnine
                            EnvironmentObject *env,
                            const std::string &context);
          void traceExecution(const std::string &entry);
+         void traceEnvironmentBindings(EnvironmentObject *env,
+                                       const std::string &tracePrefix,
+                                       int maxClosureDepth);
+         void traceClosureBindings(ClosureObject *closure,
+                                   const std::string &tracePrefix,
+                                   int maxClosureDepth);
          Cell numberToCell(double value) const;
          std::vector<Cell> requireExprArgs(const std::vector<Value> &args,
                                            const std::string &context) const;

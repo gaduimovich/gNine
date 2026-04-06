@@ -41,6 +41,7 @@ namespace
    {
       return text.find(needle) != std::string::npos;
    }
+
 }
 
 int main()
@@ -449,6 +450,51 @@ int main()
                  contains(trace[0], "runtime.canvas.mode=compiled") &&
                  contains(trace[0], "fused=rgb"),
                  "sampled RGB canvas should use the fused compiled path");
+      }
+
+      {
+         gnine::runtime::Evaluator evaluator;
+         gnine::Image imageA(2, 2);
+         imageA(0, 0) = 0.1;
+         imageA(0, 1) = 0.2;
+         imageA(1, 0) = 0.3;
+         imageA(1, 1) = 0.4;
+
+         std::map<std::string, gnine::runtime::Value> bindings;
+         bindings["A"] = evaluator.imageValue(imageA);
+         bindings["iter"] = gnine::runtime::Value::numberValue(1.0);
+
+         gnine::runtime::Value state = evaluator.evaluateProgram(
+             gnine::cellFromString(
+                 "((A) "
+                 "  (define x 3) "
+                 "  (define y 2) "
+                 "  (define next-frame "
+                 "    (canvas 8 6 3 "
+                 "      (max "
+                 "        (if (== c 0) 0.03 (if (== c 1) 0.05 0.08)) "
+                 "        (* (draw-rect x y 1 1 1.0) "
+                 "           (if (== c 0) 0.16 (if (== c 1) 0.92 1.00)))))) "
+                 "  (tuple next-frame (+ x 1) y))"),
+             bindings);
+
+         require(state.isObject() && state.object->type == gnine::runtime::Object::Tuple,
+                 "runtime program should support define-bound canvas values returned via tuple state");
+         gnine::runtime::TupleObject *tupleObj = static_cast<gnine::runtime::TupleObject *>(state.object);
+         require(tupleObj->values.size() == 3,
+                 "define-bound canvas tuple state should keep all tuple fields");
+         require(tupleObj->values[0].isObject() &&
+                 tupleObj->values[0].object->type == gnine::runtime::Object::Image,
+                 "define-bound canvas tuple state should keep the rendered image as the first field");
+         require(tupleObj->values[1].isNumber() && almostEqual(tupleObj->values[1].number, 4.0) &&
+                 tupleObj->values[2].isNumber() && almostEqual(tupleObj->values[2].number, 2.0),
+                 "define-bound canvas tuple state should preserve trailing scalar fields");
+
+         const std::vector<std::string> &trace = evaluator.executionTrace();
+         require(!trace.empty() &&
+                 contains(trace[0], "runtime.canvas.mode=compiled") &&
+                 contains(trace[0], "fused=rgb"),
+                 "define-bound canvas tuple state should still use the compiled canvas path");
       }
 
       {
