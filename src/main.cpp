@@ -13,6 +13,7 @@
 #include <string>
 #include <stdexcept>
 #include <memory>
+#include <limits>
 #include <utility>
 
 #include "Image.h"
@@ -150,29 +151,53 @@ namespace
 
    void fillChannelPointers(const std::vector<Image> &images,
                             int channel,
-                            std::vector<double *> &channelPtrs)
+                            std::vector<double *> &channelPtrs,
+                            std::vector<int32_t> &inputWidths,
+                            std::vector<int32_t> &inputHeights,
+                            std::vector<int32_t> &inputStrides)
    {
       channelPtrs.clear();
       channelPtrs.reserve(images.size());
+      inputWidths.clear();
+      inputWidths.reserve(images.size());
+      inputHeights.clear();
+      inputHeights.reserve(images.size());
+      inputStrides.clear();
+      inputStrides.reserve(images.size());
       for (const Image &image : images)
       {
          int sourceChannel = image.channelCount() == 1 ? 0 : channel;
          channelPtrs.push_back(const_cast<double *>(image.getChannelData(sourceChannel)));
+         inputWidths.push_back(image.width());
+         inputHeights.push_back(image.height());
+         inputStrides.push_back(image.stride());
       }
    }
 
    void fillVectorArgPointers(const std::vector<Image> &images,
                               const std::vector<VectorArgBinding> &bindings,
-                              std::vector<double *> &dataPtrs)
+                              std::vector<double *> &dataPtrs,
+                              std::vector<int32_t> &inputWidths,
+                              std::vector<int32_t> &inputHeights,
+                              std::vector<int32_t> &inputStrides)
    {
       dataPtrs.clear();
       dataPtrs.reserve(bindings.size());
+      inputWidths.clear();
+      inputWidths.reserve(bindings.size());
+      inputHeights.clear();
+      inputHeights.reserve(bindings.size());
+      inputStrides.clear();
+      inputStrides.reserve(bindings.size());
       for (size_t idx = 0; idx < bindings.size(); ++idx)
       {
          const VectorArgBinding &binding = bindings[idx];
          const Image &image = images[binding.inputIndex];
          int sourceChannel = image.channelCount() == 1 ? 0 : binding.channel;
          dataPtrs.push_back(const_cast<double *>(image.getChannelData(sourceChannel)));
+         inputWidths.push_back(image.width());
+         inputHeights.push_back(image.height());
+         inputStrides.push_back(image.stride());
       }
    }
 
@@ -235,6 +260,39 @@ namespace
                                    const std::map<std::string, runtime::Value> &bindings)
    {
       return evaluator.evaluateProgram(program, bindings);
+   }
+
+   double parseTraceMetric(const std::string &traceEntry, const std::string &metricName)
+   {
+      const std::string marker = metricName + "=";
+      size_t pos = traceEntry.find(marker);
+      if (pos == std::string::npos)
+         return 0.0;
+
+      pos += marker.size();
+      size_t end = pos;
+      while (end < traceEntry.size() &&
+             (isdigit(static_cast<unsigned char>(traceEntry[end])) != 0 || traceEntry[end] == '.'))
+         ++end;
+
+      std::stringstream ss(traceEntry.substr(pos, end - pos));
+      double value = 0.0;
+      ss >> value;
+      return ss ? value : 0.0;
+   }
+
+   struct RuntimeTraceMetrics
+   {
+      double compileMillis;
+   };
+
+   RuntimeTraceMetrics collectRuntimeTraceMetrics(const std::vector<std::string> &trace)
+   {
+      RuntimeTraceMetrics metrics;
+      metrics.compileMillis = 0.0;
+      for (const std::string &entry : trace)
+         metrics.compileMillis += parseTraceMetric(entry, "compile_ms");
+      return metrics;
    }
 
    std::unique_ptr<Image> tryCopyRuntimeImage(const runtime::Value &value)
@@ -332,6 +390,8 @@ int main(int argc, char *argsRaw[])
       std::cout << "TIMES=N Executes the jited function more then once.\n";
       std::cout << "CHAIN-TIMES=N Executes the jited function as a chained simulation.\n";
       std::cout << "--benchmark prints compile and execution timings.\n";
+      std::cout << "--benchmark-no-write skips writing benchmark output images.\n";
+      std::cout << "--benchmark-repeats=N reruns runtime benchmarks in one process to expose warm-cache timings.\n";
       std::cout << "--emit-frames=PATH writes chained iterations as PATH with _N suffixes.\n";
       std::cout << "--compare[=PATH] writes a side-by-side original/result comparison image.\n";
       std::cout << "--display-scale=N writes output frames enlarged by an integer factor.\n";
@@ -367,6 +427,7 @@ int main(int argc, char *argsRaw[])
    bool logCommand = false;
    bool danger = false;
    bool benchmark = false;
+   bool benchmarkNoWrite = false;
    bool runtimeMode = false;
    std::string emitFramesPath;
    std::string comparePath;
@@ -375,6 +436,7 @@ int main(int argc, char *argsRaw[])
    int displayHeight = 0;
    int n_times = 1;
    int chain_times = 0;
+   int benchmarkRepeats = 1;
    for (auto s : options)
    {
       if (s == "--logAsm")
@@ -385,6 +447,8 @@ int main(int argc, char *argsRaw[])
          danger = true;
       else if (s == "--benchmark")
          benchmark = true;
+      else if (s == "--benchmark-no-write")
+         benchmarkNoWrite = true;
       else if (s == "--compare")
          comparePath = "__AUTO__";
       else if (s.length() > 10 && s.substr(0, 10) == "--compare=")
@@ -411,6 +475,8 @@ int main(int argc, char *argsRaw[])
          std::stringstream ss(s.substr(8));
          ss >> n_times;
       }
+      else if (s.length() > 20 && s.substr(0, 20) == "--benchmark-repeats=")
+         benchmarkRepeats = parsePositiveInt(s.substr(20), "--benchmark-repeats");
       else
       {
          std::cerr << "Unrecognised command line switch: " << s << std::endl;
@@ -423,6 +489,12 @@ int main(int argc, char *argsRaw[])
 
    if (displayWidth > 0 && displayScale != 1)
       throw std::runtime_error("Use either --display-scale or --display-size, not both");
+   if (benchmarkRepeats > 1 && !runtimeMode)
+      throw std::runtime_error("--benchmark-repeats currently requires --runtime");
+   if (benchmarkRepeats > 1 && chain_times > 0)
+      throw std::runtime_error("--benchmark-repeats does not support chained runtime execution yet");
+   if (benchmarkRepeats > 1 && !emitFramesPath.empty())
+      throw std::runtime_error("--benchmark-repeats does not support --emit-frames");
 
    // See if first arg is a file and read code from it.
    // We infer file by checking that first char is not a '(' (cheeky but it works!)
@@ -565,7 +637,6 @@ int main(int argc, char *argsRaw[])
 
    if (runtimeMode)
    {
-      auto executionStart = std::chrono::steady_clock::now();
       std::unique_ptr<Image> runtimeImageResult;
       bool hasImageResult = false;
       runtime::Evaluator evaluator;
@@ -575,6 +646,34 @@ int main(int argc, char *argsRaw[])
       bool hasScalarResult = false;
       double runtimeScalarResult = 0.0;
       int runtimeIterationsExecuted = 0;
+      double runtimeBenchmarkCompileMillis = 0.0;
+      double runtimeBenchmarkExecuteMillis = 0.0;
+      double runtimeBenchmarkFirstCompileMillis = 0.0;
+      double runtimeBenchmarkFirstExecuteMillis = 0.0;
+      double runtimeBenchmarkLastCompileMillis = 0.0;
+      double runtimeBenchmarkLastExecuteMillis = 0.0;
+
+      auto runSingleRuntimePass = [&](double iterValue) {
+         const Cell &argsCell = effectiveCode.list[0];
+         if (argsCell.list.size() != inputImages.size())
+            throw std::runtime_error("Runtime input count does not match program arguments");
+
+         evaluator.clearExecutionTrace();
+         std::map<std::string, runtime::Value> bindings;
+         for (size_t idx = 0; idx < argsCell.list.size(); ++idx)
+            bindings[runtimeArgumentBindingName(argsCell.list[idx], idx)] = evaluator.imageValue(inputImages[idx]);
+         bindings["iter"] = runtime::Value::numberValue(iterValue);
+
+         auto passStart = std::chrono::steady_clock::now();
+         runtime::Value passState = runRuntimeProgram(evaluator, effectiveCode, bindings);
+         auto passEnd = std::chrono::steady_clock::now();
+         RuntimeTraceMetrics traceMetrics = collectRuntimeTraceMetrics(evaluator.executionTrace());
+         double passExecuteMillis =
+             std::chrono::duration_cast<std::chrono::microseconds>(passEnd - passStart).count() / 1000.0;
+
+         return std::make_pair(std::move(passState),
+                               std::make_pair(traceMetrics.compileMillis, passExecuteMillis));
+      };
 
       if (chain_times > 0)
       {
@@ -615,12 +714,19 @@ int main(int argc, char *argsRaw[])
          }
          for (int iter = 1; iter <= chain_times; ++iter)
          {
+            evaluator.clearExecutionTrace();
             std::map<std::string, runtime::Value> bindings;
             bindings[runtimeArgumentBindingName(effectiveCode.list[0].list[0], 0)] = runtimeState;
             bindings["iter"] = runtime::Value::numberValue(static_cast<double>(iter));
+            auto passStart = std::chrono::steady_clock::now();
             runtimeState = runRuntimeProgram(evaluator, effectiveCode, bindings);
+            auto passEnd = std::chrono::steady_clock::now();
             hasRuntimeState = true;
             runtimeIterationsExecuted = iter;
+            RuntimeTraceMetrics traceMetrics = collectRuntimeTraceMetrics(evaluator.executionTrace());
+            runtimeBenchmarkCompileMillis += traceMetrics.compileMillis;
+            runtimeBenchmarkExecuteMillis +=
+                std::chrono::duration_cast<std::chrono::microseconds>(passEnd - passStart).count() / 1000.0;
 
             std::unique_ptr<Image> nextImage = tryCopyRuntimeImage(runtimeState);
             if (!nextImage)
@@ -653,55 +759,66 @@ int main(int argc, char *argsRaw[])
             return 1;
          }
 
-         const Cell &argsCell = effectiveCode.list[0];
-         if (argsCell.list.size() != inputImages.size())
-            throw std::runtime_error("Runtime input count does not match program arguments");
-
-         std::map<std::string, runtime::Value> bindings;
-         for (size_t idx = 0; idx < argsCell.list.size(); ++idx)
-            bindings[runtimeArgumentBindingName(argsCell.list[idx], idx)] = evaluator.imageValue(inputImages[idx]);
-         bindings["iter"] = runtime::Value::numberValue(1.0);
-
-         runtimeState = runRuntimeProgram(evaluator, effectiveCode, bindings);
-         hasRuntimeState = true;
-
-         std::unique_ptr<Image> singleResultImage = tryCopyRuntimeImage(runtimeState);
-         if (singleResultImage)
+         const int passes = benchmark ? benchmarkRepeats : 1;
+         for (int pass = 0; pass < passes; ++pass)
          {
-            runtimeImageResult.reset(new Image(copyImage(*singleResultImage)));
-            hasImageResult = true;
-         }
-         else if (runtimeState.isNumber())
-         {
-            hasScalarResult = true;
-            runtimeScalarResult = runtimeState.number;
+            std::pair<runtime::Value, std::pair<double, double>> passResult =
+                runSingleRuntimePass(static_cast<double>(pass + 1));
+            runtimeState = passResult.first;
+            hasRuntimeState = true;
+            double passCompileMillis = passResult.second.first;
+            double passExecuteMillis = passResult.second.second;
+            runtimeBenchmarkCompileMillis += passCompileMillis;
+            runtimeBenchmarkExecuteMillis += passExecuteMillis;
+            if (pass == 0)
+            {
+               runtimeBenchmarkFirstCompileMillis = passCompileMillis;
+               runtimeBenchmarkFirstExecuteMillis = passExecuteMillis;
+            }
+            runtimeBenchmarkLastCompileMillis = passCompileMillis;
+            runtimeBenchmarkLastExecuteMillis = passExecuteMillis;
+
+            std::unique_ptr<Image> singleResultImage = tryCopyRuntimeImage(runtimeState);
+            if (singleResultImage)
+            {
+               runtimeImageResult.reset(new Image(copyImage(*singleResultImage)));
+               hasImageResult = true;
+               hasScalarResult = false;
+            }
+            else if (runtimeState.isNumber())
+            {
+               hasScalarResult = true;
+               hasImageResult = false;
+               runtimeScalarResult = runtimeState.number;
+            }
          }
       }
 
-      auto executionEnd = std::chrono::steady_clock::now();
-
       if (hasImageResult)
       {
-         Image writtenImage = makeDisplayImage(*runtimeImageResult);
-         writtenImage.write(outputImagePath);
-         if (!comparePath.empty())
+         if (!benchmarkNoWrite)
          {
-            if (inputImages.empty())
+            Image writtenImage = makeDisplayImage(*runtimeImageResult);
+            writtenImage.write(outputImagePath);
+            if (!comparePath.empty())
             {
-               std::cerr << "--compare requires at least one input image." << std::endl;
-               return 1;
-            }
-            if (comparePath == "__AUTO__")
-               comparePath = makeComparisonPath(outputImagePath);
+               if (inputImages.empty())
+               {
+                  std::cerr << "--compare requires at least one input image." << std::endl;
+                  return 1;
+               }
+               if (comparePath == "__AUTO__")
+                  comparePath = makeComparisonPath(outputImagePath);
 
-            const int gutter = 12;
-            int compareChannels = displayChannelCount(inputImages[0], writtenImage);
-            Image comparison(inputImages[0].width() + gutter + writtenImage.width(),
-                             std::max(inputImages[0].height(), writtenImage.height()),
-                             inputImages[0].width() + gutter + writtenImage.width(),
-                             compareChannels);
-            makeComparisonImage(inputImages[0], writtenImage, comparison);
-            comparison.write(comparePath);
+               const int gutter = 12;
+               int compareChannels = displayChannelCount(inputImages[0], writtenImage);
+               Image comparison(inputImages[0].width() + gutter + writtenImage.width(),
+                                std::max(inputImages[0].height(), writtenImage.height()),
+                                inputImages[0].width() + gutter + writtenImage.width(),
+                                compareChannels);
+               makeComparisonImage(inputImages[0], writtenImage, comparison);
+               comparison.write(comparePath);
+            }
          }
       }
       else if (hasScalarResult)
@@ -719,13 +836,21 @@ int main(int argc, char *argsRaw[])
 
       if (benchmark)
       {
-         auto executionMicros = std::chrono::duration_cast<std::chrono::microseconds>(executionEnd - executionStart).count();
-         double executionMillis = executionMicros / 1000.0;
-         std::cout << "benchmark.compile_ms=0" << std::endl;
-         std::cout << "benchmark.execute_ms=" << executionMillis << std::endl;
-         std::cout << "benchmark.iterations=" << (chain_times > 0 ? runtimeIterationsExecuted : n_times) << std::endl;
+         double averageMillis = benchmarkRepeats > 0 ? runtimeBenchmarkExecuteMillis / benchmarkRepeats : 0.0;
+         std::cout << "benchmark.compile_ms=" << runtimeBenchmarkCompileMillis << std::endl;
+         std::cout << "benchmark.execute_ms=" << runtimeBenchmarkExecuteMillis << std::endl;
+         std::cout << "benchmark.iterations=" << (chain_times > 0 ? runtimeIterationsExecuted : benchmarkRepeats) << std::endl;
          std::cout << "benchmark.mode=" << (hasIterateUntil ? "runtime-until"
-                                                            : (chain_times > 0 ? "runtime-chain" : "runtime")) << std::endl;
+                                                            : (chain_times > 0 ? "runtime-chain"
+                                                                               : (benchmarkRepeats > 1 ? "runtime-repeat" : "runtime"))) << std::endl;
+         std::cout << "benchmark.avg_iter_ms=" << averageMillis << std::endl;
+         if (benchmarkRepeats > 1)
+         {
+            std::cout << "benchmark.first_compile_ms=" << runtimeBenchmarkFirstCompileMillis << std::endl;
+            std::cout << "benchmark.first_execute_ms=" << runtimeBenchmarkFirstExecuteMillis << std::endl;
+            std::cout << "benchmark.last_compile_ms=" << runtimeBenchmarkLastCompileMillis << std::endl;
+            std::cout << "benchmark.last_execute_ms=" << runtimeBenchmarkLastExecuteMillis << std::endl;
+         }
       }
 
       inputImages.clear();
@@ -780,6 +905,9 @@ int main(int argc, char *argsRaw[])
    Image outIm(image->width(), image->height(), image->stride(), outputChannels);
 
    std::vector<double *> dataPtrs;
+   std::vector<int32_t> inputWidths;
+   std::vector<int32_t> inputHeights;
+   std::vector<int32_t> inputStrides;
    auto executionStart = std::chrono::steady_clock::now();
    if (chain_times > 0)
    {
@@ -812,10 +940,11 @@ int main(int argc, char *argsRaw[])
          for (int channel = 0; channel < outputChannels; ++channel)
          {
             if (loweredProgram.usesVectorFeatures)
-               fillVectorArgPointers(chainImages, loweredProgram.argBindings, dataPtrs);
+               fillVectorArgPointers(chainImages, loweredProgram.argBindings,
+                                     dataPtrs, inputWidths, inputHeights, inputStrides);
             else
             {
-               dataPtrs.resize(1);
+               fillChannelPointers(chainImages, channel, dataPtrs, inputWidths, inputHeights, inputStrides);
                dataPtrs[0] = chainInput.getChannelData(channel);
             }
 
@@ -824,6 +953,9 @@ int main(int argc, char *argsRaw[])
                                              image->height(),
                                              i + 1,
                                              dataPtrs.data(),
+                                             inputWidths.data(),
+                                             inputHeights.data(),
+                                             inputStrides.data(),
                                              chainOutput.getChannelData(channel));
          }
          std::swap(chainInput.data, chainOutput.data);
@@ -848,18 +980,22 @@ int main(int argc, char *argsRaw[])
       }
       for (int i = 0; i < n_times; i++)
       {
-         for (int channel = 0; channel < outputChannels; ++channel)
-         {
-            if (loweredProgram.usesVectorFeatures)
-               fillVectorArgPointers(inputImages, loweredProgram.argBindings, dataPtrs);
+        for (int channel = 0; channel < outputChannels; ++channel)
+        {
+           if (loweredProgram.usesVectorFeatures)
+               fillVectorArgPointers(inputImages, loweredProgram.argBindings,
+                                     dataPtrs, inputWidths, inputHeights, inputStrides);
             else
-               fillChannelPointers(inputImages, channel, dataPtrs);
+               fillChannelPointers(inputImages, channel, dataPtrs, inputWidths, inputHeights, inputStrides);
 
             size_t functionIndex = loweredProgram.usesVectorFeatures ? static_cast<size_t>(channel) : 0;
             compiledFunctions[functionIndex](image->width(),
                                              image->height(),
                                              1,
                                              dataPtrs.data(),
+                                             inputWidths.data(),
+                                             inputHeights.data(),
+                                             inputStrides.data(),
                                              outIm.getChannelData(channel));
          }
       }
@@ -867,20 +1003,23 @@ int main(int argc, char *argsRaw[])
    auto executionEnd = std::chrono::steady_clock::now();
 
    Image writtenOutput = makeDisplayImage(outIm);
-   writtenOutput.write(outputImagePath);
-   if (!comparePath.empty())
+   if (!benchmarkNoWrite)
    {
-      if (comparePath == "__AUTO__")
-         comparePath = makeComparisonPath(outputImagePath);
+      writtenOutput.write(outputImagePath);
+      if (!comparePath.empty())
+      {
+         if (comparePath == "__AUTO__")
+            comparePath = makeComparisonPath(outputImagePath);
 
-      const int gutter = 12;
-      int compareChannels = displayChannelCount(inputImages[0], writtenOutput);
-      Image comparison(inputImages[0].width() + gutter + writtenOutput.width(),
-                       std::max(inputImages[0].height(), writtenOutput.height()),
-                       inputImages[0].width() + gutter + writtenOutput.width(),
-                       compareChannels);
-      makeComparisonImage(inputImages[0], writtenOutput, comparison);
-      comparison.write(comparePath);
+         const int gutter = 12;
+         int compareChannels = displayChannelCount(inputImages[0], writtenOutput);
+         Image comparison(inputImages[0].width() + gutter + writtenOutput.width(),
+                          std::max(inputImages[0].height(), writtenOutput.height()),
+                          inputImages[0].width() + gutter + writtenOutput.width(),
+                          compareChannels);
+         makeComparisonImage(inputImages[0], writtenOutput, comparison);
+         comparison.write(comparePath);
+      }
    }
    if (benchmark)
    {

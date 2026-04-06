@@ -20,19 +20,15 @@
 #include <dlfcn.h>
 #include <errno.h>
 #include <vector>
+#include <string>
+#include <deque>
 #include <Parser.h>
 #include <iostream>
 #include "JitBuilder.hpp"
 
-// width, height, iteration, data, result
-typedef void(ImageArrayFunctionType)(int32_t, int32_t, int32_t, double **, double *);
-
-static const char *argsAndTempNames[] = {
-    "arg00", "arg01", "arg02", "arg03", "arg04", "arg05", "arg06",
-    "arg07", "arg08", "arg09", "arg10", "arg11", "arg12", "arg13",
-    "arg14", "arg15", "arg16", "arg17", "arg18", "arg19", "arg20",
-    "arg21", "arg22", "arg23", "arg24", "arg25", "arg26", "arg27",
-    "arg28", "arg29", "arg30", "arg31", "arg32"};
+// width, height, iteration, data, input widths, input heights, input strides, result
+typedef void(ImageArrayFunctionType)(int32_t, int32_t, int32_t, double **, int32_t *, int32_t *, int32_t *, double *);
+typedef void(ImageArrayRGBFunctionType)(int32_t, int32_t, int32_t, double **, int32_t *, int32_t *, int32_t *, double *, double *, double *);
 
 class ImageArray : public OMR::JitBuilder::MethodBuilder
 {
@@ -44,6 +40,9 @@ private:
                 OMR::JitBuilder::IlValue *value);
    OMR::JitBuilder::IlValue *Load2D(OMR::JitBuilder::IlBuilder *bldr,
                                     OMR::JitBuilder::IlValue *base,
+                                    OMR::JitBuilder::IlValue *widthMinusOne,
+                                    OMR::JitBuilder::IlValue *heightMinusOne,
+                                    OMR::JitBuilder::IlValue *stride,
                                     OMR::JitBuilder::IlValue *first,
                                     OMR::JitBuilder::IlValue *second);
 
@@ -73,6 +72,11 @@ private:
    std::map<std::string, const char *> symbols_map;
 
    std::vector<OMR::JitBuilder::IlValue *> argv;
+   std::vector<OMR::JitBuilder::IlValue *> argMaxWidths;
+   std::vector<OMR::JitBuilder::IlValue *> argMaxHeights;
+   std::vector<OMR::JitBuilder::IlValue *> argStrides;
+   std::vector<OMR::JitBuilder::IlValue *> resultPlanes;
+   int resultChannels_;
 
 public:
    void runByteCodes(gnine::Cell, bool);
@@ -83,7 +87,7 @@ public:
    OMR::JitBuilder::IlValue *numberHandler(OMR::JitBuilder::IlBuilder *, const std::string &number);
    OMR::JitBuilder::IlValue *symbolHandler(OMR::JitBuilder::IlBuilder *, const std::string &name);
 
-   ImageArray(OMR::JitBuilder::TypeDictionary *);
+   ImageArray(OMR::JitBuilder::TypeDictionary *, int resultChannels = 1);
    bool buildIL() override;
 };
 

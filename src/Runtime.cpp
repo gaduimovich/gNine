@@ -3,11 +3,19 @@
 #include "ImageArray.hpp"
 #include "VectorProgram.hpp"
 #include "JitBuilder.hpp"
+#include "compiler/runtime/Runtime.hpp"
+#include "compiler/ilgen/IlBuilder.hpp"
+#include "compiler/ilgen/MethodBuilder.hpp"
+#include "compiler/ilgen/TypeDictionary.hpp"
+#include "jitbuilder/compile/ResolvedMethod.hpp"
+#include "jitbuilder/ilgen/IlGeneratorMethodDetails.hpp"
+#include "compiler/control/CompileMethod.hpp"
 
 #include <algorithm>
 #include <chrono>
 #include <cmath>
 #include <cstdlib>
+#include <deque>
 #include <fstream>
 #include <iomanip>
 #include <iostream>
@@ -141,6 +149,135 @@ namespace gnine
                collectPatternBoundNames(pattern.list[idx], names);
          }
 
+         Cell specializeSymbol(const Cell &expr,
+                               const std::string &symbolName,
+                               const Cell &replacement)
+         {
+            if (expr.type == Cell::Symbol)
+               return expr.val == symbolName ? replacement : expr;
+
+            if (expr.type != Cell::List)
+               return expr;
+
+            if (!expr.list.empty() &&
+                expr.list[0].type == Cell::Symbol &&
+                expr.list[0].val == "lambda" &&
+                expr.list.size() == 3 &&
+                expr.list[1].type == Cell::List)
+            {
+               for (size_t idx = 0; idx < expr.list[1].list.size(); ++idx)
+               {
+                  if (expr.list[1].list[idx].type == Cell::Symbol &&
+                      expr.list[1].list[idx].val == symbolName)
+                     return expr;
+               }
+
+               Cell specialized(expr);
+               specialized.list[2] = specializeSymbol(expr.list[2], symbolName, replacement);
+               return specialized;
+            }
+
+            Cell specialized(expr);
+            for (size_t idx = 0; idx < expr.list.size(); ++idx)
+               specialized.list[idx] = specializeSymbol(expr.list[idx], symbolName, replacement);
+            return specialized;
+         }
+
+         bool findCompiledBinding(EnvironmentObject *env,
+                                  const std::string &name,
+                                  Value *outValue,
+                                  const Cell **outSourceExpr);
+
+         Cell specializeImageMetadataCalls(const Cell &expr,
+                                           EnvironmentObject *env)
+         {
+            if (expr.type != Cell::List || expr.list.empty())
+               return expr;
+
+            if (expr.list[0].type == Cell::Symbol &&
+                expr.list.size() == 2 &&
+                expr.list[1].type == Cell::Symbol &&
+                (expr.list[0].val == "width" ||
+                 expr.list[0].val == "height" ||
+                 expr.list[0].val == "channels"))
+            {
+               Value value;
+               const Cell *sourceExpr = NULL;
+               if (findCompiledBinding(env, expr.list[1].val, &value, &sourceExpr) &&
+                   value.isObject() &&
+                   value.object->type == Object::Image)
+               {
+                  const ImageObject *image = static_cast<const ImageObject *>(value.object);
+                  if (expr.list[0].val == "width")
+                     return doubleToCell(static_cast<double>(image->image->width()));
+                  if (expr.list[0].val == "height")
+                     return doubleToCell(static_cast<double>(image->image->height()));
+                  return doubleToCell(static_cast<double>(image->image->channelCount()));
+               }
+            }
+
+            if (!expr.list.empty() &&
+                expr.list[0].type == Cell::Symbol &&
+                expr.list[0].val == "lambda" &&
+                expr.list.size() == 3 &&
+                expr.list[1].type == Cell::List)
+            {
+               Cell specialized(expr);
+               specialized.list[2] = specializeImageMetadataCalls(expr.list[2], env);
+               return specialized;
+            }
+
+            Cell specialized(expr);
+            for (size_t idx = 0; idx < expr.list.size(); ++idx)
+               specialized.list[idx] = specializeImageMetadataCalls(expr.list[idx], env);
+            return specialized;
+         }
+
+         Cell renameBindingRefs(const Cell &expr,
+                                const std::string &from,
+                                const std::string &to)
+         {
+            if (expr.type == Cell::Symbol)
+               return expr.val == from ? makeSymbolCell(to) : expr;
+
+            if (expr.type != Cell::List)
+               return expr;
+
+            if (!expr.list.empty() &&
+                expr.list[0].type == Cell::Symbol &&
+                expr.list[0].val == "lambda" &&
+                expr.list.size() == 3 &&
+                expr.list[1].type == Cell::List)
+            {
+               for (size_t idx = 0; idx < expr.list[1].list.size(); ++idx)
+               {
+                  if (expr.list[1].list[idx].type == Cell::Symbol &&
+                      expr.list[1].list[idx].val == from)
+                     return expr;
+               }
+
+               Cell renamed(expr);
+               renamed.list[2] = renameBindingRefs(expr.list[2], from, to);
+               return renamed;
+            }
+
+            Cell renamed(expr);
+            for (size_t idx = 0; idx < expr.list.size(); ++idx)
+            {
+               if (idx == 0 &&
+                   expr.list[idx].type == Cell::Symbol &&
+                   expr.list[idx].val == from)
+               {
+                  renamed.list[idx] = makeSymbolCell(to);
+               }
+               else
+               {
+                  renamed.list[idx] = renameBindingRefs(expr.list[idx], from, to);
+               }
+            }
+            return renamed;
+         }
+
          std::string argumentBindingName(const Cell &pattern, size_t index)
          {
             if (pattern.type == Cell::Symbol)
@@ -186,13 +323,18 @@ namespace gnine
             double value;
          };
 
-         struct CompiledRuntimeKernel
-         {
+        struct CompiledRuntimeKernel
+        {
             ImageArrayFunctionType *fn;
+        };
+
+         struct CompiledRuntimeRGBKernel
+         {
+            ImageArrayRGBFunctionType *fn;
          };
 
-         struct CompiledKernelLookup
-         {
+        struct CompiledKernelLookup
+        {
             bool ok;
             bool cacheHit;
             double compileMillis;
@@ -203,11 +345,31 @@ namespace gnine
                : ok(false), cacheHit(false), compileMillis(0.0), fn(NULL)
             {
             }
+        };
+
+         struct CompiledRGBKernelLookup
+         {
+            bool ok;
+            bool cacheHit;
+            double compileMillis;
+            std::string fallbackReason;
+            ImageArrayRGBFunctionType *fn;
+
+            CompiledRGBKernelLookup()
+               : ok(false), cacheHit(false), compileMillis(0.0), fn(NULL)
+            {
+            }
          };
 
-         std::map<std::string, CompiledRuntimeKernel> &runtimeKernelCache()
-         {
+        std::map<std::string, CompiledRuntimeKernel> &runtimeKernelCache()
+        {
             static std::map<std::string, CompiledRuntimeKernel> cache;
+            return cache;
+        }
+
+         std::map<std::string, CompiledRuntimeRGBKernel> &runtimeRGBKernelCache()
+         {
+            static std::map<std::string, CompiledRuntimeRGBKernel> cache;
             return cache;
          }
 
@@ -241,9 +403,27 @@ namespace gnine
             return path;
          }
 
+         int32_t compileRuntimeMethodBuilderCold(OMR::JitBuilder::MethodBuilder *methodBuilder,
+                                                 void **entry)
+         {
+            TR::MethodBuilder *impl =
+                static_cast<TR::MethodBuilder *>(
+                    static_cast<TR::IlBuilder *>(methodBuilder != NULL ? methodBuilder->_impl : NULL));
+            if (impl == NULL || entry == NULL)
+               return -1;
+
+            TR::ResolvedMethod resolvedMethod(impl);
+            TR::IlGeneratorMethodDetails details(&resolvedMethod);
+
+            int32_t rc = 0;
+            *entry = reinterpret_cast<void *>(compileMethodFromDetails(NULL, details, cold, rc));
+            impl->typeDictionary()->NotifyCompilationDone();
+            return rc;
+         }
+
          bool lookupOrCompileRuntimeKernel(const Cell &program,
                                            CompiledKernelLookup *result)
-         {
+        {
             LoweredProgram lowered = lowerProgram(program);
             if (lowered.usesVectorFeatures || lowered.channelPrograms.size() != 1)
             {
@@ -268,7 +448,7 @@ namespace gnine
 
             void *entry = NULL;
             std::chrono::steady_clock::time_point compileStart = std::chrono::steady_clock::now();
-            int32_t rc = compileMethodBuilder(&method, &entry);
+            int32_t rc = compileRuntimeMethodBuilderCold(&method, &entry);
             std::chrono::steady_clock::time_point compileEnd = std::chrono::steady_clock::now();
             if (rc != 0)
             {
@@ -283,6 +463,45 @@ namespace gnine
             result->ok = true;
             result->cacheHit = false;
             result->fn = reinterpret_cast<ImageArrayFunctionType *>(entry);
+           cache[cacheKey].fn = result->fn;
+           return true;
+        }
+
+         bool lookupOrCompileRuntimeRGBKernel(const Cell &program,
+                                              CompiledRGBKernelLookup *result)
+         {
+            const std::string cacheKey = cellToString(program);
+            std::map<std::string, CompiledRuntimeRGBKernel> &cache = runtimeRGBKernelCache();
+            std::map<std::string, CompiledRuntimeRGBKernel>::const_iterator it = cache.find(cacheKey);
+            if (it != cache.end())
+            {
+               result->ok = true;
+               result->cacheHit = true;
+               result->fn = it->second.fn;
+               return true;
+            }
+
+            std::chrono::steady_clock::time_point compileStart = std::chrono::steady_clock::now();
+            OMR::JitBuilder::TypeDictionary types;
+            ImageArray method(&types, 3);
+            method.runByteCodes(program, false);
+
+            void *entry = 0;
+            int32_t rc = compileRuntimeMethodBuilderCold(&method, &entry);
+            std::chrono::steady_clock::time_point compileEnd = std::chrono::steady_clock::now();
+            if (rc != 0)
+            {
+               std::string dumpPath = dumpRuntimeProgram(program);
+               result->fallbackReason = "jit_compile_failed rc=" + std::to_string(rc) +
+                                        " dump=" + dumpPath +
+                                        " program=" + summarizeProgram(program, 800);
+               return false;
+            }
+
+            result->compileMillis = elapsedMillis(compileStart, compileEnd);
+            result->ok = true;
+            result->cacheHit = false;
+            result->fn = reinterpret_cast<ImageArrayRGBFunctionType *>(entry);
             cache[cacheKey].fn = result->fn;
             return true;
          }
@@ -1858,17 +2077,34 @@ namespace gnine
                inputImages.push_back(&scalarImage);
             }
             std::vector<double *> dataPtrs;
+            std::vector<int32_t> inputWidths;
+            std::vector<int32_t> inputHeights;
+            std::vector<int32_t> inputStrides;
             dataPtrs.reserve(inputImages.size());
+            inputWidths.reserve(inputImages.size());
+            inputHeights.reserve(inputImages.size());
+            inputStrides.reserve(inputImages.size());
             for (int channel = 0; channel < source.channelCount(); ++channel)
             {
                dataPtrs.clear();
+               inputWidths.clear();
+               inputHeights.clear();
+               inputStrides.clear();
                for (size_t idx = 0; idx < inputImages.size(); ++idx)
                {
                   const gnine::Image *image = inputImages[idx];
                   int sourceChannel = image->channelCount() == 1 ? 0 : channel;
                   dataPtrs.push_back(const_cast<double *>(image->getChannelData(sourceChannel)));
+                  inputWidths.push_back(image->width());
+                  inputHeights.push_back(image->height());
+                  inputStrides.push_back(image->stride());
                }
-               fn(source.width(), source.height(), iterValue, dataPtrs.data(), resultImage.getChannelData(channel));
+               fn(source.width(), source.height(), iterValue,
+                  dataPtrs.data(),
+                  inputWidths.data(),
+                  inputHeights.data(),
+                  inputStrides.data(),
+                  resultImage.getChannelData(channel));
             }
 
             *outResult = imageValue(resultImage);
@@ -1975,17 +2211,34 @@ namespace gnine
                inputImages.push_back(&scalarImage);
             }
             std::vector<double *> dataPtrs;
+            std::vector<int32_t> inputWidths;
+            std::vector<int32_t> inputHeights;
+            std::vector<int32_t> inputStrides;
             dataPtrs.reserve(inputImages.size());
+            inputWidths.reserve(inputImages.size());
+            inputHeights.reserve(inputImages.size());
+            inputStrides.reserve(inputImages.size());
             for (int channel = 0; channel < lhs.channelCount(); ++channel)
             {
                dataPtrs.clear();
+               inputWidths.clear();
+               inputHeights.clear();
+               inputStrides.clear();
                for (size_t idx = 0; idx < inputImages.size(); ++idx)
                {
                   const gnine::Image *image = inputImages[idx];
                   int sourceChannel = image->channelCount() == 1 ? 0 : channel;
                   dataPtrs.push_back(const_cast<double *>(image->getChannelData(sourceChannel)));
+                  inputWidths.push_back(image->width());
+                  inputHeights.push_back(image->height());
+                  inputStrides.push_back(image->stride());
                }
-               fn(lhs.width(), lhs.height(), iterValue, dataPtrs.data(), resultImage.getChannelData(channel));
+               fn(lhs.width(), lhs.height(), iterValue,
+                  dataPtrs.data(),
+                  inputWidths.data(),
+                  inputHeights.data(),
+                  inputStrides.data(),
+                  resultImage.getChannelData(channel));
             }
 
             *outResult = imageValue(resultImage);
@@ -2244,6 +2497,262 @@ namespace gnine
          return imageValue(resultImage);
       }
 
+      bool Evaluator::tryCompiledCanvas(int width,
+                                        int height,
+                                        int channels,
+                                        const Cell &body,
+                                        EnvironmentObject *env,
+                                        Value *outResult,
+                                        std::string *fallbackReason)
+      {
+         const char *disableCompiledEnv = std::getenv("GNINE_RUNTIME_DISABLE_COMPILED_CANVAS");
+         if (disableCompiledEnv != NULL &&
+             disableCompiledEnv[0] != '\0' &&
+             disableCompiledEnv[0] != '0')
+         {
+            if (fallbackReason != NULL)
+               *fallbackReason = "disabled_by_env";
+            return false;
+         }
+
+         if (!ensureRuntimeJitInitialized())
+            throw std::runtime_error("Failed to initialize JIT for compiled runtime canvas");
+
+         try
+         {
+            int iterValue = runtimeIterValue(env);
+            gnine::Image resultImage(width, height, width, channels);
+            double totalCompileMillis = 0.0;
+            bool allCacheHits = true;
+            const char *disableFusedEnv = std::getenv("GNINE_RUNTIME_DISABLE_FUSED_RGB_CANVAS");
+            bool allowFusedRGB = disableFusedEnv == NULL || disableFusedEnv[0] == '\0' || disableFusedEnv[0] == '0';
+            if (channels == 3 && allowFusedRGB)
+            {
+               std::set<std::string> excludedNames;
+               excludedNames.insert("i");
+               excludedNames.insert("j");
+               excludedNames.insert("c");
+               excludedNames.insert("iter");
+               excludedNames.insert("width");
+               excludedNames.insert("height");
+
+               std::vector<Cell> specializedBodies;
+               specializedBodies.reserve(3);
+               Cell argsCell(Cell::List);
+               Cell program(Cell::List);
+               program.list.push_back(argsCell);
+               std::set<std::string> seenBindings;
+               std::vector<ScalarInputBinding> scalarInputs;
+               std::vector<const gnine::Image *> inputImages;
+               std::deque<gnine::Image> inputImageViews;
+
+               for (int channel = 0; channel < 3; ++channel)
+               {
+                  Cell specializedBody = specializeSymbol(body, "c", doubleToCell(static_cast<double>(channel)));
+                  specializedBody = specializeImageMetadataCalls(specializedBody, env);
+                  std::set<std::string> symbols;
+                  collectReferencedSymbols(specializedBody, &symbols);
+                  for (std::set<std::string>::const_iterator it = symbols.begin(); it != symbols.end(); ++it)
+                  {
+                     Value value;
+                     const Cell *sourceExpr = NULL;
+                     if (!findCompiledBinding(env, *it, &value, &sourceExpr))
+                        continue;
+                     if (!value.isObject() || value.object->type != Object::Image)
+                        continue;
+
+                     const gnine::Image *image = static_cast<ImageObject *>(value.object)->image;
+                     if (image->channelCount() <= 1)
+                        continue;
+
+                     std::string alias = *it + "__c" + std::to_string(channel);
+                     specializedBody = renameBindingRefs(specializedBody, *it, alias);
+                     if (seenBindings.insert(alias).second)
+                     {
+                        argsCell.list.push_back(makeSymbolCell(alias));
+                        inputImageViews.push_back(gnine::Image(
+                            const_cast<double *>(image->getChannelData(channel)),
+                            image->width(),
+                            image->height(),
+                            image->stride(),
+                            1));
+                        inputImages.push_back(&inputImageViews.back());
+                     }
+                  }
+                  if (!appendCompiledReferencedBindings(env, specializedBody, excludedNames, &seenBindings,
+                                                        &scalarInputs, &inputImages, &argsCell, &program))
+                  {
+                     if (fallbackReason != NULL)
+                        *fallbackReason = "unsupported_capture";
+                     return false;
+                  }
+                  specializedBodies.push_back(specializedBody);
+               }
+               program.list[0] = argsCell;
+               for (size_t idx = 0; idx < specializedBodies.size(); ++idx)
+                  program.list.push_back(specializedBodies[idx]);
+
+               CompiledRGBKernelLookup kernel;
+               if (!lookupOrCompileRuntimeRGBKernel(program, &kernel))
+               {
+                  if (fallbackReason != NULL)
+                     *fallbackReason = kernel.fallbackReason;
+                  return false;
+               }
+               totalCompileMillis += kernel.compileMillis;
+               allCacheHits = allCacheHits && kernel.cacheHit;
+
+               if (_compiledScalarScratchWidth != width ||
+                   _compiledScalarScratchHeight != height)
+               {
+                  _compiledScalarScratch.clear();
+                  _compiledScalarScratchWidth = width;
+                  _compiledScalarScratchHeight = height;
+               }
+               while (_compiledScalarScratch.size() < scalarInputs.size())
+                  _compiledScalarScratch.push_back(gnine::Image(width, height));
+
+               for (size_t idx = 0; idx < scalarInputs.size(); ++idx)
+               {
+                  gnine::Image &scalarImage = _compiledScalarScratch[idx];
+                  std::fill(scalarImage.getChannelData(0),
+                            scalarImage.getChannelData(0) + scalarImage.planeSize(),
+                            scalarInputs[idx].value);
+                  inputImages.push_back(&scalarImage);
+               }
+
+               std::vector<double *> dataPtrs;
+               std::vector<int32_t> inputWidths;
+               std::vector<int32_t> inputHeights;
+               std::vector<int32_t> inputStrides;
+               dataPtrs.reserve(inputImages.size());
+               inputWidths.reserve(inputImages.size());
+               inputHeights.reserve(inputImages.size());
+               inputStrides.reserve(inputImages.size());
+               for (size_t idx = 0; idx < inputImages.size(); ++idx)
+               {
+                  const gnine::Image *image = inputImages[idx];
+                  dataPtrs.push_back(const_cast<double *>(image->getChannelData(0)));
+                  inputWidths.push_back(image->width());
+                  inputHeights.push_back(image->height());
+                  inputStrides.push_back(image->stride());
+               }
+
+               kernel.fn(width, height, iterValue,
+                         dataPtrs.data(),
+                         inputWidths.data(),
+                         inputHeights.data(),
+                         inputStrides.data(),
+                         resultImage.getChannelData(0),
+                         resultImage.getChannelData(1),
+                         resultImage.getChannelData(2));
+
+               *outResult = imageValue(resultImage);
+               if (fallbackReason != NULL)
+                  *fallbackReason = std::string("cache=") + (allCacheHits ? "hit" : "miss") +
+                                    " compile_ms=" + formatMillis(totalCompileMillis) +
+                                    " fused=rgb";
+               return true;
+            }
+
+            for (int channel = 0; channel < channels; ++channel)
+            {
+               Cell specializedBody = specializeSymbol(body, "c", doubleToCell(static_cast<double>(channel)));
+               specializedBody = specializeImageMetadataCalls(specializedBody, env);
+               Cell argsCell(Cell::List);
+               Cell program(Cell::List);
+               program.list.push_back(argsCell);
+
+               std::set<std::string> seenBindings;
+               std::set<std::string> excludedNames;
+               excludedNames.insert("i");
+               excludedNames.insert("j");
+               excludedNames.insert("c");
+               excludedNames.insert("iter");
+               excludedNames.insert("width");
+               excludedNames.insert("height");
+               std::vector<ScalarInputBinding> scalarInputs;
+               std::vector<const gnine::Image *> inputImages;
+
+               if (!appendCompiledReferencedBindings(env, specializedBody, excludedNames, &seenBindings,
+                                                     &scalarInputs, &inputImages, &argsCell, &program))
+               {
+                  if (fallbackReason != NULL)
+                     *fallbackReason = "unsupported_capture";
+                  return false;
+               }
+
+               program.list[0] = argsCell;
+               program.list.push_back(specializedBody);
+
+               CompiledKernelLookup kernel;
+               if (!lookupOrCompileRuntimeKernel(program, &kernel))
+               {
+                  if (fallbackReason != NULL)
+                     *fallbackReason = kernel.fallbackReason;
+                  return false;
+               }
+               totalCompileMillis += kernel.compileMillis;
+               allCacheHits = allCacheHits && kernel.cacheHit;
+
+               if (_compiledScalarScratchWidth != width ||
+                   _compiledScalarScratchHeight != height)
+               {
+                  _compiledScalarScratch.clear();
+                  _compiledScalarScratchWidth = width;
+                  _compiledScalarScratchHeight = height;
+               }
+               while (_compiledScalarScratch.size() < scalarInputs.size())
+                  _compiledScalarScratch.push_back(gnine::Image(width, height));
+
+               for (size_t idx = 0; idx < scalarInputs.size(); ++idx)
+               {
+                  gnine::Image &scalarImage = _compiledScalarScratch[idx];
+                  std::fill(scalarImage.getChannelData(0),
+                            scalarImage.getChannelData(0) + scalarImage.planeSize(),
+                            scalarInputs[idx].value);
+                  inputImages.push_back(&scalarImage);
+               }
+
+               std::vector<double *> dataPtrs;
+               std::vector<int32_t> inputWidths;
+               std::vector<int32_t> inputHeights;
+               std::vector<int32_t> inputStrides;
+               dataPtrs.reserve(inputImages.size());
+               inputWidths.reserve(inputImages.size());
+               inputHeights.reserve(inputImages.size());
+               inputStrides.reserve(inputImages.size());
+               for (size_t idx = 0; idx < inputImages.size(); ++idx)
+               {
+                  const gnine::Image *image = inputImages[idx];
+                  int sourceChannel = image->channelCount() == 1 ? 0 : channel;
+                  dataPtrs.push_back(const_cast<double *>(image->getChannelData(sourceChannel)));
+                  inputWidths.push_back(image->width());
+                  inputHeights.push_back(image->height());
+                  inputStrides.push_back(image->stride());
+               }
+               kernel.fn(width, height, iterValue,
+                         dataPtrs.data(),
+                         inputWidths.data(),
+                         inputHeights.data(),
+                         inputStrides.data(),
+                         resultImage.getChannelData(channel));
+            }
+
+            *outResult = imageValue(resultImage);
+            if (fallbackReason != NULL)
+               *fallbackReason = std::string("cache=") + (allCacheHits ? "hit" : "miss") +
+                                 " compile_ms=" + formatMillis(totalCompileMillis);
+            return true;
+         }
+         catch (const std::exception &ex)
+         {
+            if (fallbackReason != NULL)
+               *fallbackReason = std::string("exception what=") + ex.what();
+            return false;
+         }
+      }
+
       Value Evaluator::applyCanvas(int width,
                                    int height,
                                    int channels,
@@ -2251,6 +2760,21 @@ namespace gnine
                                    EnvironmentObject *env,
                                    const std::string &context)
       {
+         // Try JIT-compiled version first
+         std::chrono::steady_clock::time_point compiledStart = std::chrono::steady_clock::now();
+         Value compiledResult = Value::nil();
+         std::string traceDetail;
+         if (tryCompiledCanvas(width, height, channels, body, env, &compiledResult, &traceDetail))
+         {
+            std::chrono::steady_clock::time_point compiledEnd = std::chrono::steady_clock::now();
+            traceExecution("runtime.canvas.mode=compiled width=" + std::to_string(width) +
+                           " height=" + std::to_string(height) +
+                           " channels=" + std::to_string(channels) +
+                           " " + traceDetail +
+                           " execute_ms=" + formatMillis(elapsedMillis(compiledStart, compiledEnd)));
+            return compiledResult;
+         }
+
          std::chrono::steady_clock::time_point start = std::chrono::steady_clock::now();
          gnine::Image resultImage(width, height, width, channels);
          for (int channel = 0; channel < channels; ++channel)
@@ -2276,7 +2800,8 @@ namespace gnine
          }
 
          std::chrono::steady_clock::time_point end = std::chrono::steady_clock::now();
-         traceExecution("runtime.canvas.mode=interpreted width=" + std::to_string(width) +
+         traceExecution("runtime.canvas.mode=interpreted fallback=" + traceDetail +
+                        " width=" + std::to_string(width) +
                         " height=" + std::to_string(height) +
                         " channels=" + std::to_string(channels) +
                         " execute_ms=" + formatMillis(elapsedMillis(start, end)));

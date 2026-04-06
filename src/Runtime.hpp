@@ -1,7 +1,7 @@
 #pragma once
 
-#ifndef RUNTIME_INCL
-#define RUNTIME_INCL
+#ifndef GNINE_RUNTIME_INCL
+#define GNINE_RUNTIME_INCL
 
 #include <cstddef>
 #include <map>
@@ -236,6 +236,13 @@ namespace gnine
          Value applyZipImage(const Value &callable,
                              const std::vector<Value> &args,
                              const std::string &context);
+         bool tryCompiledCanvas(int width,
+                                int height,
+                                int channels,
+                                const Cell &body,
+                                EnvironmentObject *env,
+                                Value *outResult,
+                                std::string *fallbackReason);
          Value applyCanvas(int width,
                            int height,
                            int channels,
@@ -261,4 +268,4 @@ namespace gnine
    }
 }
 
-#endif // RUNTIME_INCL
+#endif // GNINE_RUNTIME_INCL

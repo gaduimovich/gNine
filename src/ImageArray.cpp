@@ -50,6 +50,14 @@ static bool usesSymbolValue(const gnine::Cell &cell, const std::string &name)
    return false;
 }
 
+static const char *slotName(size_t index)
+{
+   static std::deque<std::string> names;
+   while (names.size() <= index)
+      names.push_back("arg" + std::to_string(names.size()));
+   return names[index].c_str();
+}
+
 static bool isRowInvariantExpr(const gnine::Cell &cell,
                                const std::set<std::string> &rowInvariantSymbols,
                                const std::set<std::string> &argSymbols)
@@ -157,6 +165,9 @@ ImageArray::GetIndex(OMR::JitBuilder::IlBuilder *bldr,
 OMR::JitBuilder::IlValue *
 ImageArray::Load2D(OMR::JitBuilder::IlBuilder *bldr,
                    OMR::JitBuilder::IlValue *base,
+                   OMR::JitBuilder::IlValue *widthMinusOne,
+                   OMR::JitBuilder::IlValue *heightMinusOne,
+                   OMR::JitBuilder::IlValue *stride,
                    OMR::JitBuilder::IlValue *i,
                    OMR::JitBuilder::IlValue *j)
 {
@@ -170,8 +181,8 @@ ImageArray::Load2D(OMR::JitBuilder::IlBuilder *bldr,
    }
    else
    {
-      reti = GetIndex(bldr, i, bldr->Load("h"));
-      retj = GetIndex(bldr, j, bldr->Load("w"));
+      reti = GetIndex(bldr, i, heightMinusOne);
+      retj = GetIndex(bldr, j, widthMinusOne);
    }
 
 //         bldr->Call("printInt32   ", 1,
@@ -182,7 +193,7 @@ ImageArray::Load2D(OMR::JitBuilder::IlBuilder *bldr,
 
 
    return bldr->LoadAt(pDouble,
-                       bldr->IndexAt(pDouble, base, bldr->Add(bldr->Mul(reti, bldr->Load("width")), retj)));
+                       bldr->IndexAt(pDouble, base, bldr->Add(bldr->Mul(reti, stride), retj)));
 }
 
 OMR::JitBuilder::IlValue *
@@ -233,15 +244,15 @@ ImageArray::Fib(OMR::JitBuilder::IlBuilder *bldr, OMR::JitBuilder::IlValue *n)
    return bldr->Load("Sum");
 }
 
-ImageArray::ImageArray(OMR::JitBuilder::TypeDictionary *d)
-    : MethodBuilder(d)
+ImageArray::ImageArray(OMR::JitBuilder::TypeDictionary *d, int resultChannels)
+    : MethodBuilder(d), resultChannels_(resultChannels)
 {
    // DefineLine(LINETOSTR(__LINE__));
    // DefineFile(__FILE__);
 
    DefineName("imagearray");
 
-   // width, height, iteration, data, result
+   // width, height, iteration, data, input metadata, result
 
    pInt32 = d->PointerTo(Int32);
    pDouble = d->PointerTo(Double);
@@ -251,8 +262,33 @@ ImageArray::ImageArray(OMR::JitBuilder::TypeDictionary *d)
    DefineParameter("height", Int32);
    DefineParameter("iter", Int32);
    DefineParameter("data", ppDouble);
-   DefineParameter("result", pDouble);
+   DefineParameter("inputWidths", pInt32);
+   DefineParameter("inputHeights", pInt32);
+   DefineParameter("inputStrides", pInt32);
+   if (resultChannels_ == 1)
+   {
+      DefineParameter("result", pDouble);
+   }
+   else if (resultChannels_ == 3)
+   {
+      DefineParameter("result0", pDouble);
+      DefineParameter("result1", pDouble);
+      DefineParameter("result2", pDouble);
+   }
+   else
+   {
+      throw std::runtime_error("ImageArray currently supports 1 or 3 result channels");
+   }
    DefineReturnType(NoType);
+   DefineLocal("w", Int32);
+   DefineLocal("h", Int32);
+   DefineLocal("idx", Int32);
+   DefineLocal("idxNeedsNormalize", Int32);
+   DefineLocal("n", Double);
+   DefineLocal("sum", Double);
+   DefineLocal("Sum", Double);
+   DefineLocal("LastSum", Double);
+   DefineLocal("tempSum", Double);
 
    DefineFunction((char *)"printString",
                   (char *)__FILE__,
@@ -443,14 +479,23 @@ OMR::JitBuilder::IlValue *ImageArray::functionHandler(OMR::JitBuilder::IlBuilder
       std::string imageName = std::string(functionName.begin() + 1, functionName.end());
       if (argNameToIndex.find(imageName) == argNameToIndex.end())
          std::runtime_error("Absolute indexing with unknown image " + imageName);
-      return Load2D(bldr, argv[argNameToIndex.at(imageName)],
+      size_t argIndex = argNameToIndex.at(imageName);
+      return Load2D(bldr,
+                    argv[argIndex],
+                    argMaxWidths[argIndex],
+                    argMaxHeights[argIndex],
+                    argStrides[argIndex],
                     bldr->ConvertTo(Int32, args[0]),
                     bldr->ConvertTo(Int32, args[1]));
    }
    else
    {
-
-      return Load2D(bldr, argv[argNameToIndex.at(functionName)],
+      size_t argIndex = argNameToIndex.at(functionName);
+      return Load2D(bldr,
+                    argv[argIndex],
+                    argMaxWidths[argIndex],
+                    argMaxHeights[argIndex],
+                    argStrides[argIndex],
                     bldr->Add(bldr->ConvertTo(Int32, args[0]), i),
                     bldr->Add(bldr->ConvertTo(Int32, args[1]), j));
    }
@@ -484,7 +529,7 @@ OMR::JitBuilder::IlValue *ImageArray::symbolHandler(OMR::JitBuilder::IlBuilder *
    }
    else
    {
-      return bldr->Load(symbols_map[name]);
+      return bldr->Load(const_cast<char *>(symbols_map[name]));
    }
 }
 void ImageArray::min(OMR::JitBuilder::IlBuilder *bldr, OMR::JitBuilder::IlValue *val1)
@@ -520,10 +565,20 @@ bool ImageArray::buildIL()
    OMR::JitBuilder::IlValue *one = ConstInt32(1);
    OMR::JitBuilder::IlValue *zero = ConstInt32(0);
 
-   // width, height, iteration, data, result
+   // width, height, iteration, data, input metadata, result
    OMR::JitBuilder::IlValue *width = Load("width");
    OMR::JitBuilder::IlValue *height = Load("height");
-   OMR::JitBuilder::IlValue *result = Load("result");
+   resultPlanes.clear();
+   if (resultChannels_ == 1)
+   {
+      resultPlanes.push_back(Load("result"));
+   }
+   else
+   {
+      resultPlanes.push_back(Load("result0"));
+      resultPlanes.push_back(Load("result1"));
+      resultPlanes.push_back(Load("result2"));
+   }
 
    Store("w", Sub(Load("width"), ConstInt32(1)));
    Store("h", Sub(Load("height"), ConstInt32(1)));
@@ -540,7 +595,8 @@ bool ImageArray::buildIL()
       if (c.type == gnine::Cell::Symbol)
       {
          argNames.push_back(c.val);
-         symbols_map[c.val] = argsAndTempNames[og_count];
+         symbols_map[c.val] = slotName(static_cast<size_t>(og_count));
+         DefineLocal(const_cast<char *>(symbols_map[c.val]), Double);
          og_count++;
       }
       else
@@ -556,22 +612,42 @@ bool ImageArray::buildIL()
    for (size_t i = 0; i < argNames.size(); ++i)
    {
       argv.push_back(builder->LoadAt(ppDouble, builder->IndexAt(ppDouble, Load("data"), ConstInt32(i))));
+      argMaxWidths.push_back(builder->Sub(builder->LoadAt(pInt32,
+                                                          builder->IndexAt(pInt32, Load("inputWidths"), ConstInt32(i))),
+                                          ConstInt32(1)));
+      argMaxHeights.push_back(builder->Sub(builder->LoadAt(pInt32,
+                                                           builder->IndexAt(pInt32, Load("inputHeights"), ConstInt32(i))),
+                                           ConstInt32(1)));
+      argStrides.push_back(builder->LoadAt(pInt32,
+                                           builder->IndexAt(pInt32, Load("inputStrides"), ConstInt32(i))));
    }
 
    argNameToIndex["output"] = argNames.size();
-   argv.push_back(result);
+   argv.push_back(resultPlanes[0]);
+   argMaxWidths.push_back(Sub(Load("width"), ConstInt32(1)));
+   argMaxHeights.push_back(Sub(Load("height"), ConstInt32(1)));
+   argStrides.push_back(Load("width"));
 
    cell_.list.erase(cell_.list.begin());
 
    int count = og_count;
+   int outputExprCount = 0;
    for (gnine::Cell c : cell_.list)
    {
       if (c.type == gnine::Cell::List and c.list[0].val == "define")
       {
-         symbols_map[c.list[1].val] = argsAndTempNames[count];
+         symbols_map[c.list[1].val] = slotName(static_cast<size_t>(count));
+         DefineLocal(const_cast<char *>(symbols_map[c.list[1].val]), Double);
          count++;
       }
+      else
+      {
+         outputExprCount++;
+      }
    }
+
+   if (outputExprCount != resultChannels_)
+      throw std::runtime_error("ImageArray result expression count does not match output channels");
 
    std::set<std::string> argSymbolSet(argNames.begin(), argNames.end());
    std::vector<bool> defineIsRowInvariant(cell_.list.size(), false);
@@ -611,7 +687,7 @@ bool ImageArray::buildIL()
       {
          gnine::Cell &expr = cell_.list[exprIndex];
          if (defineIsRowInvariant[exprIndex])
-            iloop->Store(symbols_map[expr.list[1].val], eval(iloop, expr.list[2]));
+            iloop->Store(const_cast<char *>(symbols_map[expr.list[1].val]), eval(iloop, expr.list[2]));
       }
 
       iloop->ForLoopUp("j", &jloop, zero, width, one);
@@ -622,8 +698,16 @@ bool ImageArray::buildIL()
          for (size_t mm = 0; mm < argNames.size(); ++mm)
          {
             if (argNeedsScalarLoad[mm])
-               jloop->Store(argsAndTempNames[mm], Load2D(jloop, argv[mm], i, j));
+               jloop->Store(const_cast<char *>(symbols_map[argNames[mm]]),
+                            Load2D(jloop,
+                                   argv[mm],
+                                   argMaxWidths[mm],
+                                   argMaxHeights[mm],
+                                   argStrides[mm],
+                                   i,
+                                   j));
          }
+         int resultIndex = 0;
          for (size_t exprIndex = 0; exprIndex < cell_.list.size(); ++exprIndex)
          {
             gnine::Cell &c = cell_.list[exprIndex];
@@ -633,13 +717,16 @@ bool ImageArray::buildIL()
             }
             else if (c.type == gnine::Cell::List and c.list[0].val == "define")
             {
-               jloop->Store(symbols_map[c.list[1].val], eval(jloop, c.list[2]));
+               jloop->Store(const_cast<char *>(symbols_map[c.list[1].val]), eval(jloop, c.list[2]));
             }
             else
             {
+               if (resultIndex >= resultChannels_)
+                  throw std::runtime_error("ImageArray received too many result expressions");
                gnine::Cell &code = c;
                OMR::JitBuilder::IlValue *ret = eval(jloop, code);
-               Store2D(jloop, result, i, j, ret);
+               Store2D(jloop, resultPlanes[resultIndex], i, j, ret);
+               resultIndex++;
             }
          }
       }

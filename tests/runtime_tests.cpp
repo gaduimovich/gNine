@@ -414,11 +414,11 @@ int main()
 
          const std::vector<std::string> &trace = evaluator.executionTrace();
          require(!trace.empty() &&
-                 contains(trace[0], "runtime.canvas.mode=interpreted") &&
+                 contains(trace[0], "runtime.canvas.mode=compiled") &&
                  contains(trace[0], "width=5") &&
                  contains(trace[0], "height=2") &&
                  contains(trace[0], "channels=1"),
-                 "canvas should trace interpreted rendering");
+                 "canvas should trace compiled rendering");
       }
 
       {
@@ -444,6 +444,11 @@ int main()
                  almostEqual(imageObj->image->operator()(0, 0, 1), 0.5) &&
                  almostEqual(imageObj->image->operator()(0, 0, 2), 0.8),
                  "canvas should expose c and sample multi-channel images");
+         const std::vector<std::string> &trace = evaluator.executionTrace();
+         require(!trace.empty() &&
+                 contains(trace[0], "runtime.canvas.mode=compiled") &&
+                 contains(trace[0], "fused=rgb"),
+                 "sampled RGB canvas should use the fused compiled path");
       }
 
       {
