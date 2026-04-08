@@ -7,20 +7,11 @@ Do not delete them unless the matching benchmark/regression workflow is also rem
 
 - `benchmark_all_examples_arm.sh`
 - `benchmark_all_examples_x86.sh`
-- `canvas_benchmark.sh`
 - `compare_all_arch_examples.sh`
 - `compare_arch_bench.sh`
 - `compare_arm_variants.sh`
 
 ## Benchmark Examples
-
-- `examples/canvas_bench_checkerboard_4k.psm`
-- `examples/canvas_bench_color_squares_1080p.psm`
-- `examples/canvas_bench_color_squares_4k.psm`
-- `examples/canvas_bench_contact_sheet_2x2.psm`
-- `examples/canvas_bench_gradient_4k.psm`
-- `examples/canvas_bench_rgb_triptych.psm`
-- `examples/canvas_bench_side_by_side_compare.psm`
 
 ## Regression And Hash Inputs
 

@@ -33,8 +33,9 @@ Options:
   --help               Show this message.
 
 This script:
-  1. Benchmarks the kept optimized examples on arm64 and x86_64.
-  2. Prints per-example architecture comparisons and aggregate totals.
+  1. Benchmarks the kept image and runtime examples on arm64 and x86_64.
+  2. Includes the optimized variants used by the architecture regression flow.
+  3. Prints per-example architecture comparisons and aggregate totals.
 EOF
 }
 
@@ -137,9 +138,10 @@ run_one() {
   local input_args="$5"
   local mode="$6"
   local iterations="$7"
-  local label="$8"
-  local log_file="${build_dir}/${label}_${arch_name}.txt"
-  local png_file="${build_dir}/${label}_${arch_name}.png"
+  local runtime_flag="$8"
+  local label="$9"
+  local log_file="${build_dir}/${label}.txt"
+  local png_file="${build_dir}/${label}.png"
   local benchmark_flag="--times=${iterations}"
 
   if [[ "${mode}" == "chain" ]]; then
@@ -151,7 +153,7 @@ run_one() {
   (
     cd "${build_dir}"
     # shellcheck disable=SC2086
-    ${arch_prefix} ./gnine "../${example_path}" ${input_args} "$(basename "${png_file}")" "${benchmark_flag}" --benchmark
+    ${arch_prefix} ./gnine ${runtime_flag} "../${example_path}" ${input_args} "$(basename "${png_file}")" "${benchmark_flag}" --benchmark
   ) | tee "${log_file}" >/dev/null
 
   extract_metric "benchmark.execute_ms" "${log_file}"
@@ -196,12 +198,13 @@ run_pair() {
   local input_args="$3"
   local mode="$4"
   local iterations="$5"
+  local runtime_flag="$6"
   local arm_ms
   local x86_ms
   local ratio
 
-  arm_ms="$(run_one "arm64" "${ARM_BUILD_DIR}" "" "${example_path}" "${input_args}" "${mode}" "${iterations}" "${label}")"
-  x86_ms="$(run_one "x86_64" "${X86_BUILD_DIR}" "arch -x86_64" "${example_path}" "${input_args}" "${mode}" "${iterations}" "${label}")"
+  arm_ms="$(run_one "arm64" "${ARM_BUILD_DIR}" "" "${example_path}" "${input_args}" "${mode}" "${iterations}" "${runtime_flag}" "${label}")"
+  x86_ms="$(run_one "x86_64" "${X86_BUILD_DIR}" "arch -x86_64" "${example_path}" "${input_args}" "${mode}" "${iterations}" "${runtime_flag}" "${label}")"
   ratio="$(python3 - <<PY
 arm = float("${arm_ms}")
 x86 = float("${x86_ms}")
@@ -224,11 +227,31 @@ PY
   printf "%s\t%s\t%s\t%s\t%s\t%s\n" "${label}" "${mode}" "${iterations}" "${arm_ms}" "${x86_ms}" "${ratio}" >> "${RESULTS_TSV}"
 }
 
-run_pair "metaballs_optimized" "examples/metaballs_optimized.psm" "../example_data/lena.png" "repeat" "${REPEAT_TIMES}"
-run_pair "metaballs_binary_optimized" "examples/metaballs_binary_optimized.psm" "../example_data/lena.png" "repeat" "${REPEAT_TIMES}"
-run_pair "metaballs_fancy_optimized" "examples/metaballs_fancy_optimized.psm" "../example_data/lena.png" "repeat" "${REPEAT_TIMES}"
-run_pair "parobala2_optimized" "examples/parobala2_optimized.psm" "../example_data/lena.png" "repeat" "${REPEAT_TIMES}"
-run_pair "game_of_life_optimized" "examples/game_of_life/game_of_life_optimized.psm" "../example_data/glider_gun.png" "chain" "${CHAIN_TIMES}"
+run_pair "compose_out" "examples/compose.psm" "../example_data/lena.png ../example_data/duck.png" "repeat" "${REPEAT_TIMES}" ""
+run_pair "min_out" "examples/min.psm" "../example_data/lena.png ../example_data/duck.png" "repeat" "${REPEAT_TIMES}" ""
+run_pair "box_3x3_out_1" "examples/box_3x3.psm" "../example_data/lena.png" "repeat" "${REPEAT_TIMES}" ""
+run_pair "box_5x5_out_1" "examples/box_5x5.psm" "../example_data/lena.png" "repeat" "${REPEAT_TIMES}" ""
+run_pair "metaballs_out" "examples/metaballs.psm" "../example_data/lena.png" "repeat" "${REPEAT_TIMES}" ""
+run_pair "metaballs_binary_out" "examples/metaballs_binary.psm" "../example_data/lena.png" "repeat" "${REPEAT_TIMES}" ""
+run_pair "metaballs_fancy_out" "examples/metaballs_fancy.psm" "../example_data/lena.png" "repeat" "${REPEAT_TIMES}" ""
+run_pair "box_3x3_out_2" "examples/box_3x3.psm" "metaballs_fancy_out.png" "repeat" "${REPEAT_TIMES}" ""
+run_pair "box_5x5_out_2" "examples/box_5x5.psm" "metaballs_fancy_out.png" "repeat" "${REPEAT_TIMES}" ""
+run_pair "lena_edge" "examples/double_absdiff.psm" "../example_data/lena.png box_5x5_out_1.png" "repeat" "${REPEAT_TIMES}" ""
+run_pair "metaball_edges" "examples/double_absdiff.psm" "metaballs_fancy_out.png box_5x5_out_2.png" "repeat" "${REPEAT_TIMES}" ""
+run_pair "threshold" "examples/threshold.psm" "../example_data/lena.png" "repeat" "${REPEAT_TIMES}" ""
+run_pair "abs_edges" "examples/abs_edges.psm" "../example_data/lena.png box_5x5_out_1.png" "repeat" "${REPEAT_TIMES}" ""
+run_pair "midtones_notch" "examples/midtones_notch.psm" "../example_data/lena.png" "repeat" "${REPEAT_TIMES}" ""
+run_pair "detail_boost" "examples/detail_boost.psm" "../example_data/lena.png box_5x5_out_1.png" "repeat" "${REPEAT_TIMES}" ""
+run_pair "halo_edges" "examples/halo_edges.psm" "../example_data/lena.png box_5x5_out_1.png" "repeat" "${REPEAT_TIMES}" ""
+run_pair "posterize_4" "examples/posterize_4.psm" "../example_data/lena.png" "repeat" "${REPEAT_TIMES}" ""
+run_pair "sepia_vector" "examples/sepia_vector.psm" "../example_data/lena.png" "repeat" "${REPEAT_TIMES}" ""
+run_pair "rgb_triptych" "examples/rgb_triptych.psm" "../example_data/lena.png" "repeat" "${REPEAT_TIMES}" "--runtime"
+run_pair "runtime_pong" "examples/runtime_pong.psm" "../example_data/glider_gun.png" "repeat" "${REPEAT_TIMES}" "--runtime"
+run_pair "metaballs_optimized" "examples/metaballs_optimized.psm" "../example_data/lena.png" "repeat" "${REPEAT_TIMES}" ""
+run_pair "metaballs_binary_optimized" "examples/metaballs_binary_optimized.psm" "../example_data/lena.png" "repeat" "${REPEAT_TIMES}" ""
+run_pair "metaballs_fancy_optimized" "examples/metaballs_fancy_optimized.psm" "../example_data/lena.png" "repeat" "${REPEAT_TIMES}" ""
+run_pair "parobala2_optimized" "examples/parobala2_optimized.psm" "../example_data/lena.png" "repeat" "${REPEAT_TIMES}" ""
+run_pair "game_of_life_optimized" "examples/game_of_life/game_of_life_optimized.psm" "../example_data/glider_gun.png" "chain" "${CHAIN_TIMES}" ""
 
 echo "Architecture comparison summary"
 printf "%-28s %-8s %12s %14s %14s %18s\n" "example" "mode" "iterations" "arm64_ms" "x86_64_ms" "result"
