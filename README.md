@@ -33,7 +33,12 @@ Runtime RGB Triptych
 
 Runtime Pong
 ```sh
-./build/gnine --runtime --emit-frames=runtime_pong.png ./examples/runtime_pong.psm ./example_data/glider_gun.png runtime_pong_final.png
+./build/gnine --runtime --emit-frames=runtime_pong.png ./examples/runtime_pong.psm runtime_pong_final.png
+```
+
+Runtime Snake Preview
+```sh
+./build/gnine --runtime --preview ./examples/runtime_snake.psm runtime_snake.png
 ```
 
 ### Testing
@@ -77,9 +82,123 @@ Run the test binaries:
 * Runtime preview/input bindings add `--preview` plus keyboard, mouse, and frame-time inputs for interactive programs.
 * Benchmarking helpers add `--benchmark`, `--benchmark-no-write`, and `--benchmark-repeats=N`.
 
+## Benchmarking
+
+There are three useful benchmark modes:
+
+* Non-runtime image/filter benchmarks.
+* Single-pass runtime benchmarks.
+* Chained runtime game benchmarks.
+
+### 1. Non-runtime image/filter benchmarks
+
+Use this for regular lowered kernels such as box filters, thresholding, or vector/color programs.
+
+```bash
+./build-arm64/gnine --benchmark ./examples/box_3x3.psm ./example_data/lena.png /tmp/box_3x3_bench.png
+```
+
+Useful flags:
+
+* `--benchmark` prints timing metrics.
+* `--benchmark-no-write` skips writing the output image.
+* `--times=N` reruns the same kernel N times.
+* `--chain-times=N` benchmarks chained non-runtime iteration on a single input image.
+
+### 2. Single-pass runtime benchmarks
+
+Use this for runtime programs that execute once per invocation and do not depend on chained state.
+
+```bash
+./build-arm64/gnine --runtime --benchmark --benchmark-repeats=5 --benchmark-no-write \
+  ./examples/canvas_bench_color_squares_1080p.psm /tmp/canvas_bench.png
+```
+
+`--benchmark-repeats=N` is useful here because the first repeat includes cold JIT compile cost, while later repeats show warm-cache execution.
+
+### 3. Chained runtime game benchmarks
+
+Use this for `iterate`, `iterate-state`, and `iterate-until` programs such as Pong and Snake. Supply a fixed frame budget with `--chain-times=N`.
+
+Pong:
+
+```bash
+./build-arm64/gnine --runtime --benchmark --benchmark-no-write \
+  --chain-times=300 --benchmark-repeats=3 \
+  ./examples/runtime_pong.psm /tmp/runtime_pong_bench.png
+```
+
+Snake:
+
+```bash
+./build-arm64/gnine --runtime --benchmark --benchmark-no-write \
+  --chain-times=300 --benchmark-repeats=3 \
+  ./examples/runtime_snake.psm /tmp/runtime_snake_bench.png
+```
+
+Notes:
+
+* `--preview` is for interactive viewing and is not a benchmark mode.
+* `--chain-times=N` makes the game benchmark deterministic by running exactly N step iterations per repeat.
+* `--benchmark-repeats=N` reruns the full chained game in one process so you can compare cold vs warm JIT behavior.
+* `--benchmark-no-write` is recommended when you only care about timing.
+
+### Reported Metrics
+
+All benchmark modes print:
+
+* `benchmark.compile_ms` - total compile time accumulated across the benchmark.
+* `benchmark.execute_ms` - total timed execution time accumulated across the benchmark.
+* `benchmark.iterations` - total timed iterations.
+* `benchmark.mode` - benchmark category.
+* `benchmark.avg_iter_ms` - `execute_ms / iterations`.
+
+Single-pass repeated runtime benchmarks also print:
+
+* `benchmark.first_compile_ms`
+* `benchmark.first_execute_ms`
+* `benchmark.last_compile_ms`
+* `benchmark.last_execute_ms`
+
+Chained runtime game benchmarks print repeat-scoped fields instead:
+
+* `benchmark.first_repeat_compile_ms`
+* `benchmark.first_repeat_execute_ms`
+* `benchmark.first_repeat_iterations`
+* `benchmark.first_repeat_avg_iter_ms`
+* `benchmark.last_repeat_compile_ms`
+* `benchmark.last_repeat_execute_ms`
+* `benchmark.last_repeat_iterations`
+* `benchmark.last_repeat_avg_iter_ms`
+
+For chained games, `last_repeat_execute_ms` is the total time for the full last repeat, not a single frame. Use `last_repeat_avg_iter_ms` when you want the per-frame number for the warm run.
+
+### Architecture Compare
+
+Use `compare_all_arch_examples.sh` to rebuild and compare the kept benchmark set on arm64 and x86_64.
+
+```bash
+./compare_all_arch_examples.sh [options]
+```
+
+Options:
+
+* `--arm-build DIR` - ARM build directory. Default: `build-arm64`
+* `--x86-build DIR` - x86_64 build directory. Default: `build-x86_64`
+* `--arm-cmake PATH` - arm64 CMake binary. Default: auto-detect
+* `--x86-cmake PATH` - x86_64 CMake binary. Default: auto-detect `/usr/local/bin/cmake`
+* `--repeat-times N` - Repeat benchmark count. Default: `1000`
+* `--chain-times N` - Chain benchmark count. Default: `100000`
+* `--build` - Force configure/build before benchmarking
+* `--help` - Show the script usage text
+
+The script prints per-example timings for both architectures and a total at the end.
+
 ## Runtime Demo
 
 ![Runtime Pong](readme_images/runtime_pong.gif)
+
+![Runtime Snake](readme_images/runtime_snake.gif)
 
 ## Performance
 
