@@ -1,0 +1,561 @@
+; Snake for gnine runtime mode with a prelude-style runtime shape.
+; Arrow keys or WASD steer the snake in --preview mode.
+;
+; Preview:
+;   rtk /Users/gduimovi/dev/gNine/build-arm64/gnine --runtime --preview \
+;     /Users/gduimovi/dev/gNine/examples/runtime_snake_v2.psm \
+;     /tmp/runtime_snake.png
+;
+; Headless compile/run check:
+;   rtk /Users/gduimovi/dev/gNine/build-arm64/gnine --runtime \
+;     /Users/gduimovi/dev/gNine/examples/runtime_snake_v2.psm \
+;     /tmp/runtime_snake.png
+
+(()
+  (define grid-w 24)
+  (define grid-h 24)
+  (define cell 14)
+  (define cell-half 6)
+  (define pad 24)
+  (define W (+ (* grid-w cell) (* pad 2)))
+  (define H (+ (* grid-h cell) (* pad 2)))
+  (define first-center (+ pad cell-half))
+  (define board-center (+ first-center (* 0.5 (* (- grid-w 1) cell))))
+  (define board-half (+ cell-half (* 0.5 (* (- grid-w 1) cell))))
+  (iterate-until 10000
+    (()
+      (define len 3)
+      (define head-x 6)
+      (define head-y 12)
+      (define dx 1)
+      (define dy 0)
+      (define t1-x 5)
+      (define t1-y 12)
+      (define t2-x 4)
+      (define t2-y 12)
+      (define t3-x -10)
+      (define t3-y -10)
+      (define t4-x -10)
+      (define t4-y -10)
+      (define t5-x -10)
+      (define t5-y -10)
+      (define t6-x -10)
+      (define t6-y -10)
+      (define t7-x -10)
+      (define t7-y -10)
+      (define t8-x -10)
+      (define t8-y -10)
+      (define t9-x -10)
+      (define t9-y -10)
+      (define t10-x -10)
+      (define t10-y -10)
+      (define t11-x -10)
+      (define t11-y -10)
+      (define t12-x -10)
+      (define t12-y -10)
+      (define t13-x -10)
+      (define t13-y -10)
+      (define t14-x -10)
+      (define t14-y -10)
+      (define t15-x -10)
+      (define t15-y -10)
+      (define t16-x -10)
+      (define t16-y -10)
+      (define food-index 0)
+
+      (define food-x
+        (if (== food-index 0) 15
+          (if (== food-index 1) 18
+            (if (== food-index 2) 18
+              (if (== food-index 3) 10
+                (if (== food-index 4) 10
+                  (if (== food-index 5) 20
+                    (if (== food-index 6) 20
+                      (if (== food-index 7) 5 -10)))))))))
+      (define food-y
+        (if (== food-index 0) 12
+          (if (== food-index 1) 12
+            (if (== food-index 2) 7
+              (if (== food-index 3) 7
+                (if (== food-index 4) 17
+                  (if (== food-index 5) 17
+                    (if (== food-index 6) 5
+                      (if (== food-index 7) 5 -10)))))))))
+
+      (tuple
+        (canvas W H 3
+          (max
+            (if (== c 0) 0.02
+              (if (== c 1) 0.03 0.05))
+            (* (draw-rect board-center board-center board-half board-half 1.0)
+               (if (== c 0) 0.05
+                 (if (== c 1) 0.09 0.07)))
+            (* (draw-rect (+ first-center (* food-x cell))
+                          (+ first-center (* food-y cell))
+                          cell-half cell-half 1.0)
+               (if (== c 0) 1.00
+                 (if (== c 1) 0.34 0.14)))
+            (* (draw-rect (+ first-center (* head-x cell))
+                          (+ first-center (* head-y cell))
+                          cell-half cell-half 1.0)
+               (if (== c 0) 0.18
+                 (if (== c 1) 0.95 0.30)))
+            (* (draw-rect (+ first-center (* t1-x cell))
+                          (+ first-center (* t1-y cell))
+                          cell-half cell-half 1.0)
+               (if (== c 0) 0.10
+                 (if (== c 1) 0.72 0.22)))
+            (* (draw-rect (+ first-center (* t2-x cell))
+                          (+ first-center (* t2-y cell))
+                          cell-half cell-half 1.0)
+               (if (== c 0) 0.10
+                 (if (== c 1) 0.60 0.20)))
+            0))
+        0
+        1
+        len
+        head-x
+        head-y
+        dx
+        dy
+        t1-x
+        t1-y
+        t2-x
+        t2-y
+        t3-x
+        t3-y
+        t4-x
+        t4-y
+        t5-x
+        t5-y
+        t6-x
+        t6-y
+        t7-x
+        t7-y
+        t8-x
+        t8-y
+        t9-x
+        t9-y
+        t10-x
+        t10-y
+        t11-x
+        t11-y
+        t12-x
+        t12-y
+        t13-x
+        t13-y
+        t14-x
+        t14-y
+        t15-x
+        t15-y
+        t16-x
+        t16-y
+        food-index))
+
+    (((frame tick alive len head-x head-y dx dy
+             t1-x t1-y t2-x t2-y t3-x t3-y t4-x t4-y t5-x t5-y t6-x t6-y
+             t7-x t7-y t8-x t8-y t9-x t9-y t10-x t10-y
+             t11-x t11-y t12-x t12-y t13-x t13-y t14-x t14-y
+             t15-x t15-y t16-x t16-y food-index))
+
+      (define next-tick (+ tick 1))
+      (define want-up (or key-up key-w))
+      (define want-down (or key-down key-s))
+      (define want-left (or key-left key-a))
+      (define want-right (or key-right key-d))
+
+      (define desired-dx
+        (if want-up 0
+          (if want-down 0
+            (if want-left -1
+              (if want-right 1 dx)))))
+      (define desired-dy
+        (if want-up -1
+          (if want-down 1
+            (if want-left 0
+              (if want-right 0 dy)))))
+
+      (define reversed
+        (and (== desired-dx (- dx))
+             (== desired-dy (- dy))))
+
+      (define step-dx (if reversed dx desired-dx))
+      (define step-dy (if reversed dy desired-dy))
+
+      (define move-now
+        (and (> alive 0)
+             (== (int (/ next-tick 5)) (/ next-tick 5))))
+
+      (define food-phase
+        (- food-index (* 8 (int (/ food-index 8)))))
+      (define food-x
+        (if (== food-phase 0) 15
+          (if (== food-phase 1) 18
+            (if (== food-phase 2) 18
+              (if (== food-phase 3) 10
+                (if (== food-phase 4) 10
+                  (if (== food-phase 5) 20
+                    (if (== food-phase 6) 20
+                      (if (== food-phase 7) 5 -10)))))))))
+      (define food-y
+        (if (== food-phase 0) 12
+          (if (== food-phase 1) 12
+            (if (== food-phase 2) 7
+              (if (== food-phase 3) 7
+                (if (== food-phase 4) 17
+                  (if (== food-phase 5) 17
+                    (if (== food-phase 6) 5
+                      (if (== food-phase 7) 5 -10)))))))))
+
+      (define trial-head-x
+        (if move-now (+ head-x step-dx) head-x))
+      (define trial-head-y
+        (if move-now (+ head-y step-dy) head-y))
+
+      (define ate
+        (and move-now
+             (== trial-head-x food-x)
+             (== trial-head-y food-y)))
+
+      (define wall-hit
+        (and move-now
+             (or (< trial-head-x 0)
+                 (>= trial-head-x grid-w)
+                 (< trial-head-y 0)
+                 (>= trial-head-y grid-h))))
+
+      (define next-len
+        (min 17 (+ len (if ate 1 0))))
+
+      (define hit-t1
+        (and move-now
+             (> next-len 1)
+             (== trial-head-x t1-x)
+             (== trial-head-y t1-y)))
+      (define hit-t2
+        (and move-now
+             (> next-len 2)
+             (== trial-head-x t2-x)
+             (== trial-head-y t2-y)))
+      (define hit-t3
+        (and move-now
+             (> next-len 3)
+             (== trial-head-x t3-x)
+             (== trial-head-y t3-y)))
+      (define hit-t4
+        (and move-now
+             (> next-len 4)
+             (== trial-head-x t4-x)
+             (== trial-head-y t4-y)))
+      (define hit-t5
+        (and move-now
+             (> next-len 5)
+             (== trial-head-x t5-x)
+             (== trial-head-y t5-y)))
+      (define hit-t6
+        (and move-now
+             (> next-len 6)
+             (== trial-head-x t6-x)
+             (== trial-head-y t6-y)))
+      (define hit-t7
+        (and move-now
+             (> next-len 7)
+             (== trial-head-x t7-x)
+             (== trial-head-y t7-y)))
+      (define hit-t8
+        (and move-now
+             (> next-len 8)
+             (== trial-head-x t8-x)
+             (== trial-head-y t8-y)))
+      (define hit-t9
+        (and move-now
+             (> next-len 9)
+             (== trial-head-x t9-x)
+             (== trial-head-y t9-y)))
+      (define hit-t10
+        (and move-now
+             (> next-len 10)
+             (== trial-head-x t10-x)
+             (== trial-head-y t10-y)))
+      (define hit-t11
+        (and move-now
+             (> next-len 11)
+             (== trial-head-x t11-x)
+             (== trial-head-y t11-y)))
+      (define hit-t12
+        (and move-now
+             (> next-len 12)
+             (== trial-head-x t12-x)
+             (== trial-head-y t12-y)))
+      (define hit-t13
+        (and move-now
+             (> next-len 13)
+             (== trial-head-x t13-x)
+             (== trial-head-y t13-y)))
+      (define hit-t14
+        (and move-now
+             (> next-len 14)
+             (== trial-head-x t14-x)
+             (== trial-head-y t14-y)))
+      (define hit-t15
+        (and move-now
+             (> next-len 15)
+             (== trial-head-x t15-x)
+             (== trial-head-y t15-y)))
+      (define hit-t16
+        (and move-now
+             (> next-len 16)
+             (== trial-head-x t16-x)
+             (== trial-head-y t16-y)))
+
+      (define next-alive
+        (if (or wall-hit hit-t1 hit-t2 hit-t3 hit-t4 hit-t5 hit-t6 hit-t7 hit-t8
+                hit-t9 hit-t10 hit-t11 hit-t12 hit-t13 hit-t14 hit-t15 hit-t16)
+          0
+          alive))
+
+      (define next-food-index
+        (if ate (+ food-index 1) food-index))
+
+      (define next-head-x trial-head-x)
+      (define next-head-y trial-head-y)
+      (define next-t1-x (if move-now head-x t1-x))
+      (define next-t1-y (if move-now head-y t1-y))
+      (define next-t2-x (if move-now t1-x t2-x))
+      (define next-t2-y (if move-now t1-y t2-y))
+      (define next-t3-x (if move-now t2-x t3-x))
+      (define next-t3-y (if move-now t2-y t3-y))
+      (define next-t4-x (if move-now t3-x t4-x))
+      (define next-t4-y (if move-now t3-y t4-y))
+      (define next-t5-x (if move-now t4-x t5-x))
+      (define next-t5-y (if move-now t4-y t5-y))
+      (define next-t6-x (if move-now t5-x t6-x))
+      (define next-t6-y (if move-now t5-y t6-y))
+      (define next-t7-x (if move-now t6-x t7-x))
+      (define next-t7-y (if move-now t6-y t7-y))
+      (define next-t8-x (if move-now t7-x t8-x))
+      (define next-t8-y (if move-now t7-y t8-y))
+      (define next-t9-x (if move-now t8-x t9-x))
+      (define next-t9-y (if move-now t8-y t9-y))
+      (define next-t10-x (if move-now t9-x t10-x))
+      (define next-t10-y (if move-now t9-y t10-y))
+      (define next-t11-x (if move-now t10-x t11-x))
+      (define next-t11-y (if move-now t10-y t11-y))
+      (define next-t12-x (if move-now t11-x t12-x))
+      (define next-t12-y (if move-now t11-y t12-y))
+      (define next-t13-x (if move-now t12-x t13-x))
+      (define next-t13-y (if move-now t12-y t13-y))
+      (define next-t14-x (if move-now t13-x t14-x))
+      (define next-t14-y (if move-now t13-y t14-y))
+      (define next-t15-x (if move-now t14-x t15-x))
+      (define next-t15-y (if move-now t14-y t15-y))
+      (define next-t16-x (if move-now t15-x t16-x))
+      (define next-t16-y (if move-now t15-y t16-y))
+
+      (define next-food-phase
+        (- next-food-index (* 8 (int (/ next-food-index 8)))))
+      (define next-food-x
+        (if (== next-food-phase 0) 15
+          (if (== next-food-phase 1) 18
+            (if (== next-food-phase 2) 18
+              (if (== next-food-phase 3) 10
+                (if (== next-food-phase 4) 10
+                  (if (== next-food-phase 5) 20
+                    (if (== next-food-phase 6) 20
+                      (if (== next-food-phase 7) 5 -10)))))))))
+      (define next-food-y
+        (if (== next-food-phase 0) 12
+          (if (== next-food-phase 1) 12
+            (if (== next-food-phase 2) 7
+              (if (== next-food-phase 3) 7
+                (if (== next-food-phase 4) 17
+                  (if (== next-food-phase 5) 17
+                    (if (== next-food-phase 6) 5
+                      (if (== next-food-phase 7) 5 -10)))))))))
+
+      (tuple
+        (canvas W H 3
+          (max
+            (if (== c 0) 0.02
+              (if (== c 1) 0.03 0.05))
+            (* (draw-rect board-center board-center board-half board-half 1.0)
+               (if (== c 0) 0.05
+                 (if (== c 1) 0.09 0.07)))
+            (* (draw-rect (+ first-center (* next-food-x cell))
+                          (+ first-center (* next-food-y cell))
+                          cell-half cell-half 1.0)
+               (if (== c 0) 1.00
+                 (if (== c 1) 0.34 0.14)))
+            (* (draw-rect (+ first-center (* next-head-x cell))
+                          (+ first-center (* next-head-y cell))
+                          cell-half cell-half 1.0)
+               (if (== alive 0)
+                 (if (== c 0) 0.95
+                   (if (== c 1) 0.10 0.10))
+                 (if (== c 0) 0.18
+                   (if (== c 1) 0.95 0.30))))
+            (if (> next-len 1)
+              (* (draw-rect (+ first-center (* next-t1-x cell))
+                            (+ first-center (* next-t1-y cell))
+                            cell-half cell-half 1.0)
+                 (if (== c 0) 0.10
+                   (if (== c 1) 0.72 0.22)))
+              0)
+            (if (> next-len 2)
+              (* (draw-rect (+ first-center (* next-t2-x cell))
+                            (+ first-center (* next-t2-y cell))
+                            cell-half cell-half 1.0)
+                 (if (== c 0) 0.10
+                   (if (== c 1) 0.60 0.20)))
+              0)
+            (if (> next-len 3)
+              (* (draw-rect (+ first-center (* next-t3-x cell))
+                            (+ first-center (* next-t3-y cell))
+                            cell-half cell-half 1.0)
+                 (if (== c 0) 0.10
+                   (if (== c 1) 0.52 0.18)))
+              0)
+            (if (> next-len 4)
+              (* (draw-rect (+ first-center (* next-t4-x cell))
+                            (+ first-center (* next-t4-y cell))
+                            cell-half cell-half 1.0)
+                 (if (== c 0) 0.95
+                   (if (== c 1) 0.46 0.18)))
+              0)
+            (if (> next-len 5)
+              (* (draw-rect (+ first-center (* next-t5-x cell))
+                            (+ first-center (* next-t5-y cell))
+                            cell-half cell-half 1.0)
+                 (if (== c 0) 0.95
+                   (if (== c 1) 0.40 0.18)))
+              0)
+            (if (> next-len 6)
+              (* (draw-rect (+ first-center (* next-t6-x cell))
+                            (+ first-center (* next-t6-y cell))
+                            cell-half cell-half 1.0)
+                 (if (== c 0) 0.95
+                   (if (== c 1) 0.34 0.18)))
+              0)
+            (if (> next-len 7)
+              (* (draw-rect (+ first-center (* next-t7-x cell))
+                            (+ first-center (* next-t7-y cell))
+                            cell-half cell-half 1.0)
+                 (if (== c 0) 0.95
+                   (if (== c 1) 0.28 0.16)))
+              0)
+            (if (> next-len 8)
+              (* (draw-rect (+ first-center (* next-t8-x cell))
+                            (+ first-center (* next-t8-y cell))
+                            cell-half cell-half 1.0)
+                 (if (== c 0) 0.95
+                   (if (== c 1) 0.22 0.14)))
+              0)
+            (if (> next-len 9)
+              (* (draw-rect (+ first-center (* next-t9-x cell))
+                            (+ first-center (* next-t9-y cell))
+                            cell-half cell-half 1.0)
+                 (if (== c 0) 0.95
+                   (if (== c 1) 0.20 0.12)))
+              0)
+            (if (> next-len 10)
+              (* (draw-rect (+ first-center (* next-t10-x cell))
+                            (+ first-center (* next-t10-y cell))
+                            cell-half cell-half 1.0)
+                 (if (== c 0) 0.95
+                   (if (== c 1) 0.18 0.11)))
+              0)
+            (if (> next-len 11)
+              (* (draw-rect (+ first-center (* next-t11-x cell))
+                            (+ first-center (* next-t11-y cell))
+                            cell-half cell-half 1.0)
+                 (if (== c 0) 0.95
+                   (if (== c 1) 0.16 0.10)))
+              0)
+            (if (> next-len 12)
+              (* (draw-rect (+ first-center (* next-t12-x cell))
+                            (+ first-center (* next-t12-y cell))
+                            cell-half cell-half 1.0)
+                 (if (== c 0) 0.95
+                   (if (== c 1) 0.14 0.09)))
+              0)
+            (if (> next-len 13)
+              (* (draw-rect (+ first-center (* next-t13-x cell))
+                            (+ first-center (* next-t13-y cell))
+                            cell-half cell-half 1.0)
+                 (if (== c 0) 0.95
+                   (if (== c 1) 0.12 0.08)))
+              0)
+            (if (> next-len 14)
+              (* (draw-rect (+ first-center (* next-t14-x cell))
+                            (+ first-center (* next-t14-y cell))
+                            cell-half cell-half 1.0)
+                 (if (== c 0) 0.95
+                   (if (== c 1) 0.10 0.07)))
+              0)
+            (if (> next-len 15)
+              (* (draw-rect (+ first-center (* next-t15-x cell))
+                            (+ first-center (* next-t15-y cell))
+                            cell-half cell-half 1.0)
+                 (if (== c 0) 0.95
+                   (if (== c 1) 0.09 0.06)))
+              0)
+            (if (> next-len 16)
+              (* (draw-rect (+ first-center (* next-t16-x cell))
+                            (+ first-center (* next-t16-y cell))
+                            cell-half cell-half 1.0)
+                 (if (== c 0) 0.95
+                   (if (== c 1) 0.08 0.05)))
+              0)
+            (if (== alive 0)
+              (* (draw-rect board-center board-center 56 18 1.0)
+                 (if (== c 0) 0.60
+                   (if (== c 1) 0.08 0.08)))
+              0)))
+
+        next-tick
+        next-alive
+        next-len
+        next-head-x
+        next-head-y
+        step-dx
+        step-dy
+        next-t1-x
+        next-t1-y
+        next-t2-x
+        next-t2-y
+        next-t3-x
+        next-t3-y
+        next-t4-x
+        next-t4-y
+        next-t5-x
+        next-t5-y
+        next-t6-x
+        next-t6-y
+        next-t7-x
+        next-t7-y
+        next-t8-x
+        next-t8-y
+        next-t9-x
+        next-t9-y
+        next-t10-x
+        next-t10-y
+        next-t11-x
+        next-t11-y
+        next-t12-x
+        next-t12-y
+        next-t13-x
+        next-t13-y
+        next-t14-x
+        next-t14-y
+        next-t15-x
+        next-t15-y
+        next-t16-x
+        next-t16-y
+        next-food-index))
+
+    (((frame tick alive len head-x head-y dx dy
+             t1-x t1-y t2-x t2-y t3-x t3-y t4-x t4-y t5-x t5-y t6-x t6-y
+             t7-x t7-y t8-x t8-y t9-x t9-y t10-x t10-y
+             t11-x t11-y t12-x t12-y t13-x t13-y t14-x t14-y
+             t15-x t15-y t16-x t16-y food-index))
+      0))))

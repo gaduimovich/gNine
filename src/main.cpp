@@ -105,7 +105,8 @@ namespace
    {
    public:
       PreviewWindow()
-         : _initialized(false), _window(NULL), _renderer(NULL), _texture(NULL), _width(0), _height(0)
+         : _initialized(false), _window(NULL), _renderer(NULL), _texture(NULL),
+           _imageWidth(0), _imageHeight(0), _windowWidth(0), _windowHeight(0)
       {
       }
 
@@ -121,7 +122,7 @@ namespace
             SDL_QuitSubSystem(SDL_INIT_VIDEO);
       }
 
-      void ensureForImage(const Image &image)
+      void ensureForImage(const Image &image, int targetWidth, int targetHeight)
       {
          if (!_initialized)
          {
@@ -135,8 +136,8 @@ namespace
             _window = SDL_CreateWindow("gnine preview",
                                        SDL_WINDOWPOS_CENTERED,
                                        SDL_WINDOWPOS_CENTERED,
-                                       image.width(),
-                                       image.height(),
+                                       targetWidth,
+                                       targetHeight,
                                        SDL_WINDOW_SHOWN);
             if (_window == NULL)
                throw std::runtime_error(std::string("SDL window creation failed: ") + SDL_GetError());
@@ -144,13 +145,14 @@ namespace
             _renderer = SDL_CreateRenderer(_window, -1, SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC);
             if (_renderer == NULL)
                _renderer = SDL_CreateRenderer(_window, -1, SDL_RENDERER_SOFTWARE);
+            else
+               SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY, "0");
          }
 
-         if (_texture == NULL || _width != image.width() || _height != image.height())
+         if (_texture == NULL || _imageWidth != image.width() || _imageHeight != image.height())
          {
             if (_texture != NULL)
                SDL_DestroyTexture(_texture);
-            SDL_SetWindowSize(_window, image.width(), image.height());
             _texture = NULL;
             if (_renderer != NULL)
             {
@@ -162,9 +164,16 @@ namespace
                if (_texture == NULL)
                   throw std::runtime_error(std::string("SDL texture creation failed: ") + SDL_GetError());
             }
-            _width = image.width();
-            _height = image.height();
-            _pixels.resize(static_cast<size_t>(_width) * static_cast<size_t>(_height) * 4u);
+            _imageWidth = image.width();
+            _imageHeight = image.height();
+            _pixels.resize(static_cast<size_t>(_imageWidth) * static_cast<size_t>(_imageHeight) * 4u);
+         }
+
+         if (_windowWidth != targetWidth || _windowHeight != targetHeight)
+         {
+            SDL_SetWindowSize(_window, targetWidth, targetHeight);
+            _windowWidth = targetWidth;
+            _windowHeight = targetHeight;
          }
       }
 
@@ -201,18 +210,18 @@ namespace
          input->mouseY = mouseY;
       }
 
-      void present(const Image &image)
+      void present(const Image &image, int targetWidth, int targetHeight)
       {
-         ensureForImage(image);
-         for (int row = 0; row < _height; ++row)
+         ensureForImage(image, targetWidth, targetHeight);
+         for (int row = 0; row < _imageHeight; ++row)
          {
-            for (int col = 0; col < _width; ++col)
+            for (int col = 0; col < _imageWidth; ++col)
             {
                const double red = clampPreviewChannel(image(row, col, image.channelCount() > 1 ? 0 : 0));
                const double green = clampPreviewChannel(image(row, col, image.channelCount() > 1 ? 1 : 0));
                const double blue = clampPreviewChannel(image(row, col, image.channelCount() > 1 ? 2 : 0));
                const size_t pixelOffset =
-                   (static_cast<size_t>(row) * static_cast<size_t>(_width) + static_cast<size_t>(col)) * 4u;
+                   (static_cast<size_t>(row) * static_cast<size_t>(_imageWidth) + static_cast<size_t>(col)) * 4u;
                _pixels[pixelOffset + 0u] = static_cast<uint8_t>(red * 255.0 + 0.5);
                _pixels[pixelOffset + 1u] = static_cast<uint8_t>(green * 255.0 + 0.5);
                _pixels[pixelOffset + 2u] = static_cast<uint8_t>(blue * 255.0 + 0.5);
@@ -222,7 +231,7 @@ namespace
 
          if (_renderer != NULL && _texture != NULL)
          {
-            SDL_UpdateTexture(_texture, NULL, _pixels.data(), _width * 4);
+            SDL_UpdateTexture(_texture, NULL, _pixels.data(), _imageWidth * 4);
             SDL_RenderClear(_renderer);
             SDL_RenderCopy(_renderer, _texture, NULL, NULL);
             SDL_RenderPresent(_renderer);
@@ -232,11 +241,13 @@ namespace
          SDL_Surface *surface = SDL_GetWindowSurface(_window);
          if (surface == NULL)
             throw std::runtime_error(std::string("SDL window surface failed: ") + SDL_GetError());
-         if (SDL_ConvertPixels(_width,
-                               _height,
+         if (_windowWidth != _imageWidth || _windowHeight != _imageHeight)
+            throw std::runtime_error("software preview path does not support scaled window output");
+         if (SDL_ConvertPixels(_imageWidth,
+                               _imageHeight,
                                SDL_PIXELFORMAT_RGBA32,
                                _pixels.data(),
-                               _width * 4,
+                               _imageWidth * 4,
                                surface->format->format,
                                surface->pixels,
                                surface->pitch) != 0)
@@ -250,8 +261,10 @@ namespace
       SDL_Window *_window;
       SDL_Renderer *_renderer;
       SDL_Texture *_texture;
-      int _width;
-      int _height;
+      int _imageWidth;
+      int _imageHeight;
+      int _windowWidth;
+      int _windowHeight;
       std::vector<uint8_t> _pixels;
    };
 #endif
@@ -453,6 +466,79 @@ namespace
       return program.list[0].list.size();
    }
 
+   struct RuntimePreludeProgram
+   {
+      Cell argsCell;
+      std::vector<Cell> defineForms;
+      const Cell *bodyExpr;
+
+      RuntimePreludeProgram()
+         : bodyExpr(NULL)
+      {
+      }
+   };
+
+   bool isRuntimeDefineForm(const Cell &expr)
+   {
+      return expr.type == Cell::List &&
+             expr.list.size() == 3 &&
+             expr.list[0].type == Cell::Symbol &&
+             expr.list[0].val == "define" &&
+             expr.list[1].type == Cell::Symbol;
+   }
+
+   bool parseRuntimePreludeProgram(const Cell &program, RuntimePreludeProgram *outProgram)
+   {
+      if (program.type != Cell::List || program.list.empty() || program.list[0].type != Cell::List)
+         return false;
+
+      outProgram->argsCell = program.list[0];
+      outProgram->defineForms.clear();
+      outProgram->bodyExpr = NULL;
+
+      bool sawBody = false;
+      for (size_t idx = 1; idx < program.list.size(); ++idx)
+      {
+         const Cell &expr = program.list[idx];
+         if (isRuntimeDefineForm(expr))
+         {
+            if (sawBody)
+               throw std::runtime_error("Runtime prelude defines must appear before the body expression");
+            outProgram->defineForms.push_back(expr);
+            continue;
+         }
+
+         if (sawBody)
+            throw std::runtime_error("Runtime program must contain a single body expression");
+
+         outProgram->bodyExpr = &expr;
+         sawBody = true;
+      }
+
+      if (!sawBody)
+         throw std::runtime_error("Runtime program must contain a body expression");
+
+      return true;
+   }
+
+   Cell buildRuntimePreludeProgram(const RuntimePreludeProgram &program)
+   {
+      Cell prelude(Cell::List);
+      prelude.list.push_back(program.argsCell);
+      for (size_t idx = 0; idx < program.defineForms.size(); ++idx)
+         prelude.list.push_back(program.defineForms[idx]);
+      prelude.list.push_back(Cell(Cell::Number, "0"));
+      return prelude;
+   }
+
+   Cell buildRuntimeBodyProgram(const RuntimePreludeProgram &program)
+   {
+      Cell body(Cell::List);
+      body.list.push_back(program.argsCell);
+      body.list.push_back(*program.bodyExpr);
+      return body;
+   }
+
    std::string runtimeArgumentBindingName(const Cell &pattern, size_t index)
    {
       if (pattern.type == Cell::Symbol)
@@ -500,6 +586,68 @@ namespace
                                    const std::map<std::string, runtime::Value> &bindings)
    {
       return evaluator.evaluateProgram(program, bindings);
+   }
+
+   void rootRuntimeBindings(runtime::Evaluator &evaluator,
+                            const std::map<std::string, runtime::Value> &bindings,
+                            std::vector<runtime::Value> *rootedBindings)
+   {
+      rootedBindings->clear();
+      rootedBindings->reserve(bindings.size());
+      for (std::map<std::string, runtime::Value>::const_iterator it = bindings.begin(); it != bindings.end(); ++it)
+         rootedBindings->push_back(it->second);
+      for (size_t idx = 0; idx < rootedBindings->size(); ++idx)
+         evaluator.heap().addRoot(&(*rootedBindings)[idx]);
+   }
+
+   struct RootedRuntimeBindingSet
+   {
+      runtime::Evaluator *evaluator;
+      std::vector<runtime::Value> values;
+
+      RootedRuntimeBindingSet()
+         : evaluator(NULL)
+      {
+      }
+
+      explicit RootedRuntimeBindingSet(runtime::Evaluator &eval)
+         : evaluator(&eval)
+      {
+      }
+
+      ~RootedRuntimeBindingSet()
+      {
+         clear();
+      }
+
+      void clear()
+      {
+         if (evaluator != NULL)
+         {
+            for (size_t idx = 0; idx < values.size(); ++idx)
+               evaluator->heap().removeRoot(&values[idx]);
+         }
+         values.clear();
+      }
+
+      void set(runtime::Evaluator &eval, const std::map<std::string, runtime::Value> &bindings)
+      {
+         clear();
+         evaluator = &eval;
+         rootRuntimeBindings(eval, bindings, &values);
+      }
+   };
+
+   void addRuntimeImageBindings(runtime::Evaluator &evaluator,
+                                const Cell &argsCell,
+                                const std::vector<Image> &inputImages,
+                                std::map<std::string, runtime::Value> *bindings)
+   {
+      if (argsCell.list.size() != inputImages.size())
+         throw std::runtime_error("Runtime input count does not match program arguments");
+
+      for (size_t idx = 0; idx < argsCell.list.size(); ++idx)
+         (*bindings)[runtimeArgumentBindingName(argsCell.list[idx], idx)] = evaluator.imageValue(inputImages[idx]);
    }
 
    double parseTraceMetric(const std::string &traceEntry, const std::string &metricName)
@@ -770,27 +918,30 @@ int main(int argc, char *argsRaw[])
    //   printf("Code String: %s", codeString.c_str());
    // Generate code.
    Cell code = cellFromString(codeString);
-   Cell effectiveCode = code;
+   RuntimePreludeProgram runtimePreludeProgram;
+   bool hasRuntimePreludeProgram = parseRuntimePreludeProgram(code, &runtimePreludeProgram);
+   Cell effectiveCode = hasRuntimePreludeProgram ? buildRuntimeBodyProgram(runtimePreludeProgram) : code;
    Cell iterateStateInit;
    Cell iterateUntilDone;
    bool hasIterateState = false;
    bool hasIterateUntil = false;
    int iterateCount = 0;
-   if (isTopLevelIterate(code))
+   const Cell *iterateProgram = hasRuntimePreludeProgram ? runtimePreludeProgram.bodyExpr : &code;
+   if (isTopLevelIterate(*iterateProgram))
    {
-      iterateCount = parseIterateCount(code);
-      effectiveCode = code.list[2];
+      iterateCount = parseIterateCount(*iterateProgram);
+      effectiveCode = iterateProgram->list[2];
       if (chain_times == 0)
       {
          chain_times = iterateCount;
          n_times = chain_times;
       }
    }
-   else if (isTopLevelIterateState(code))
+   else if (isTopLevelIterateState(*iterateProgram))
    {
-      iterateCount = parseIterateCount(code);
-      iterateStateInit = code.list[2];
-      effectiveCode = code.list[3];
+      iterateCount = parseIterateCount(*iterateProgram);
+      iterateStateInit = iterateProgram->list[2];
+      effectiveCode = iterateProgram->list[3];
       hasIterateState = true;
       if (chain_times == 0)
       {
@@ -798,12 +949,12 @@ int main(int argc, char *argsRaw[])
          n_times = chain_times;
       }
    }
-   else if (isTopLevelIterateUntil(code))
+   else if (isTopLevelIterateUntil(*iterateProgram))
    {
-      iterateCount = parseIterateCount(code);
-      iterateStateInit = code.list[2];
-      effectiveCode = code.list[3];
-      iterateUntilDone = code.list[4];
+      iterateCount = parseIterateCount(*iterateProgram);
+      iterateStateInit = iterateProgram->list[2];
+      effectiveCode = iterateProgram->list[3];
+      iterateUntilDone = iterateProgram->list[4];
       hasIterateState = true;
       hasIterateUntil = true;
       if (chain_times == 0)
@@ -817,7 +968,11 @@ int main(int argc, char *argsRaw[])
       throw std::runtime_error(hasIterateUntil ? "iterate-until currently requires --runtime"
                                                : "iterate-state currently requires --runtime");
 
-   size_t inputCount = runtimeMode ? programArgumentCount(hasIterateState ? iterateStateInit : effectiveCode) : 0;
+   size_t inputCount = runtimeMode
+                           ? (hasRuntimePreludeProgram
+                                 ? runtimePreludeProgram.argsCell.list.size()
+                                 : programArgumentCount(hasIterateState ? iterateStateInit : effectiveCode))
+                           : 0;
    LoweredProgram loweredProgram;
    if (!runtimeMode)
    {
@@ -904,21 +1059,40 @@ int main(int argc, char *argsRaw[])
       int runtimeBenchmarkLastIterations = 0;
       int runtimeBenchmarkIterations = 0;
       RuntimeInputState runtimeInputState;
+      std::map<std::string, runtime::Value> sharedRuntimeBindings;
+      RootedRuntimeBindingSet sharedRuntimeBindingRoots;
+
+      if (!runtimePreludeProgram.defineForms.empty())
+      {
+         std::map<std::string, runtime::Value> preludeBindings;
+         addRuntimeImageBindings(evaluator, runtimePreludeProgram.argsCell, inputImages, &preludeBindings);
+         preludeBindings["iter"] = runtime::Value::numberValue(0.0);
+         addRuntimeInputBindings(&preludeBindings, runtimeInputState, 0.0, 0.0);
+         evaluator.evaluateProgram(buildRuntimePreludeProgram(runtimePreludeProgram), preludeBindings, &sharedRuntimeBindings);
+         sharedRuntimeBindingRoots.set(evaluator, sharedRuntimeBindings);
+      }
+
+      auto buildRuntimeBindings = [&](const Cell &argsCell,
+                                      double iterValue,
+                                      const RuntimeInputState &inputState,
+                                      double previewTimeMs,
+                                      double previewDeltaMs) {
+         std::map<std::string, runtime::Value> bindings = sharedRuntimeBindings;
+         addRuntimeImageBindings(evaluator, argsCell, inputImages, &bindings);
+         bindings["iter"] = runtime::Value::numberValue(iterValue);
+         addRuntimeInputBindings(&bindings, inputState, previewTimeMs, previewDeltaMs);
+         return bindings;
+      };
 
       auto runSingleRuntimePass = [&](double iterValue,
                                      const RuntimeInputState &inputState,
                                      double previewTimeMs,
                                      double previewDeltaMs) {
          const Cell &argsCell = effectiveCode.list[0];
-         if (argsCell.list.size() != inputImages.size())
-            throw std::runtime_error("Runtime input count does not match program arguments");
 
          evaluator.clearExecutionTrace();
-         std::map<std::string, runtime::Value> bindings;
-         for (size_t idx = 0; idx < argsCell.list.size(); ++idx)
-            bindings[runtimeArgumentBindingName(argsCell.list[idx], idx)] = evaluator.imageValue(inputImages[idx]);
-         bindings["iter"] = runtime::Value::numberValue(iterValue);
-         addRuntimeInputBindings(&bindings, inputState, previewTimeMs, previewDeltaMs);
+         std::map<std::string, runtime::Value> bindings =
+             buildRuntimeBindings(argsCell, iterValue, inputState, previewTimeMs, previewDeltaMs);
 
          auto passStart = std::chrono::steady_clock::now();
          runtime::Value passState = runRuntimeProgram(evaluator, effectiveCode, bindings);
@@ -941,6 +1115,8 @@ int main(int argc, char *argsRaw[])
          int previewFrame = 0;
          std::chrono::steady_clock::time_point previewStart = std::chrono::steady_clock::now();
          std::chrono::steady_clock::time_point previewLast = previewStart;
+         const int previewTargetWidth = displayWidth > 0 ? displayWidth : 0;
+         const int previewTargetHeight = displayHeight > 0 ? displayHeight : 0;
 
          if (statefulPreview && effectiveCode.list[0].list.size() != 1)
             throw std::runtime_error("preview runtime chaining requires the step program to take exactly one state argument");
@@ -950,13 +1126,8 @@ int main(int argc, char *argsRaw[])
          if (hasIterateState)
          {
             const Cell &initArgsCell = iterateStateInit.list[0];
-            if (initArgsCell.list.size() != inputImages.size())
-               throw std::runtime_error((hasIterateUntil ? "iterate-until" : "iterate-state") +
-                                        std::string(" init input count does not match program arguments"));
-
-            std::map<std::string, runtime::Value> initBindings;
-            for (size_t idx = 0; idx < initArgsCell.list.size(); ++idx)
-               initBindings[runtimeArgumentBindingName(initArgsCell.list[idx], idx)] = evaluator.imageValue(inputImages[idx]);
+            std::map<std::string, runtime::Value> initBindings = sharedRuntimeBindings;
+            addRuntimeImageBindings(evaluator, initArgsCell, inputImages, &initBindings);
             initBindings["iter"] = runtime::Value::numberValue(0.0);
             addRuntimeInputBindings(&initBindings, runtimeInputState, 0.0, 0.0);
             runtimeState = runRuntimeProgram(evaluator, iterateStateInit, initBindings);
@@ -987,7 +1158,7 @@ int main(int argc, char *argsRaw[])
             if (statefulPreview)
             {
                evaluator.clearExecutionTrace();
-               std::map<std::string, runtime::Value> bindings;
+               std::map<std::string, runtime::Value> bindings = sharedRuntimeBindings;
                bindings[runtimeArgumentBindingName(effectiveCode.list[0].list[0], 0)] = runtimeState;
                bindings["iter"] = runtime::Value::numberValue(static_cast<double>(previewFrame));
                addRuntimeInputBindings(&bindings, runtimeInputState, previewTimeMs, previewDeltaMs);
@@ -1023,15 +1194,16 @@ int main(int argc, char *argsRaw[])
             hasImageResult = true;
             hasScalarResult = false;
 
-            Image previewDisplayImage = makeDisplayImage(*previewImage);
-            previewWindow.present(previewDisplayImage);
+            int targetWidth = previewTargetWidth > 0 ? previewTargetWidth : previewImage->width() * displayScale;
+            int targetHeight = previewTargetHeight > 0 ? previewTargetHeight : previewImage->height() * displayScale;
+            previewWindow.present(*previewImage, targetWidth, targetHeight);
 
             if (!emitFramesPath.empty())
                writeDisplayImage(*previewImage, makeChainedFramePath(emitFramesPath, previewFrame));
 
             if (hasIterateUntil)
             {
-               std::map<std::string, runtime::Value> doneBindings;
+               std::map<std::string, runtime::Value> doneBindings = sharedRuntimeBindings;
                doneBindings[runtimeArgumentBindingName(iterateUntilDone.list[0].list[0], 0)] = runtimeState;
                doneBindings["iter"] = runtime::Value::numberValue(static_cast<double>(previewFrame));
                addRuntimeInputBindings(&doneBindings, runtimeInputState, previewTimeMs, previewDeltaMs);
@@ -1070,13 +1242,8 @@ int main(int argc, char *argsRaw[])
             if (hasIterateState)
             {
                const Cell &initArgsCell = iterateStateInit.list[0];
-               if (initArgsCell.list.size() != inputImages.size())
-                  throw std::runtime_error((hasIterateUntil ? "iterate-until" : "iterate-state") +
-                                           std::string(" init input count does not match program arguments"));
-
-               std::map<std::string, runtime::Value> initBindings;
-               for (size_t idx = 0; idx < initArgsCell.list.size(); ++idx)
-                  initBindings[runtimeArgumentBindingName(initArgsCell.list[idx], idx)] = evaluator.imageValue(inputImages[idx]);
+               std::map<std::string, runtime::Value> initBindings = sharedRuntimeBindings;
+               addRuntimeImageBindings(evaluator, initArgsCell, inputImages, &initBindings);
                initBindings["iter"] = runtime::Value::numberValue(0.0);
                addRuntimeInputBindings(&initBindings, runtimeInputState, 0.0, 0.0);
                runtimeState = runRuntimeProgram(evaluator, iterateStateInit, initBindings);
@@ -1097,7 +1264,7 @@ int main(int argc, char *argsRaw[])
             for (int iter = 1; iter <= chain_times; ++iter)
             {
                evaluator.clearExecutionTrace();
-               std::map<std::string, runtime::Value> bindings;
+               std::map<std::string, runtime::Value> bindings = sharedRuntimeBindings;
                bindings[runtimeArgumentBindingName(stateArgsCell.list[0], 0)] = runtimeState;
                bindings["iter"] = runtime::Value::numberValue(static_cast<double>(iter));
                addRuntimeInputBindings(&bindings, runtimeInputState, 0.0, 0.0);
@@ -1128,7 +1295,7 @@ int main(int argc, char *argsRaw[])
 
                if (hasIterateUntil)
                {
-                  std::map<std::string, runtime::Value> doneBindings;
+                  std::map<std::string, runtime::Value> doneBindings = sharedRuntimeBindings;
                   doneBindings[runtimeArgumentBindingName(iterateUntilDone.list[0].list[0], 0)] = runtimeState;
                   doneBindings["iter"] = runtime::Value::numberValue(static_cast<double>(iter));
                   addRuntimeInputBindings(&doneBindings, runtimeInputState, 0.0, 0.0);
