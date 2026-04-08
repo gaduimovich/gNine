@@ -39,8 +39,8 @@ Runtime Pong
 ### Testing
 
 ```bash
-./build/gnine_runtime_tests
-./build/gnine_semantic_tests
+./build/tests/gnine_runtime_tests
+./build/tests/gnine_semantic_tests
 ```
 
 ## Examples
