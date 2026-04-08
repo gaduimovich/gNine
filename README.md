@@ -36,6 +36,13 @@ Runtime Pong
 ./build/gnine --runtime --emit-frames=runtime_pong.png ./examples/runtime_pong.psm ./example_data/glider_gun.png runtime_pong_final.png
 ```
 
+### Testing
+
+```bash
+./build/gnine_runtime_tests
+./build/gnine_semantic_tests
+```
+
 ## Examples
 
 * `box_3x3.psm`, `box_5x5.psm`, `threshold.psm`, `posterize_4.psm` - basic image filters
