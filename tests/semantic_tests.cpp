@@ -108,11 +108,17 @@ namespace
       auto *fn = reinterpret_cast<ImageArrayFunctionType *>(entry);
       std::vector<std::vector<double>> mutableInputs = program.inputs;
       std::vector<double *> dataPtrs;
+      std::vector<int32_t> inputWidths;
+      std::vector<int32_t> inputHeights;
+      std::vector<int32_t> inputStrides;
       for (std::vector<double> &input : mutableInputs)
       {
          if (input.size() != static_cast<size_t>(program.width * program.height))
             throw std::runtime_error("Input size mismatch in case " + program.name);
          dataPtrs.push_back(input.data());
+         inputWidths.push_back(program.width);
+         inputHeights.push_back(program.height);
+         inputStrides.push_back(program.width);
       }
 
       std::vector<double> output(program.width * program.height, 0.0);
@@ -127,10 +133,20 @@ namespace
          std::vector<double> chainInput = mutableInputs[0];
          std::vector<double> chainOutput(program.width * program.height, 0.0);
          std::vector<double *> chainPtrs(1, chainInput.data());
+         std::vector<int32_t> chainWidths(1, program.width);
+         std::vector<int32_t> chainHeights(1, program.height);
+         std::vector<int32_t> chainStrides(1, program.width);
 
          for (int iter = 0; iter < effectiveChainTimes; ++iter)
          {
-            fn(program.width, program.height, iter + 1, chainPtrs.data(), chainOutput.data());
+            fn(program.width,
+               program.height,
+               iter + 1,
+               chainPtrs.data(),
+               chainWidths.data(),
+               chainHeights.data(),
+               chainStrides.data(),
+               chainOutput.data());
             std::swap(chainInput, chainOutput);
             chainPtrs[0] = chainInput.data();
          }
@@ -139,7 +155,14 @@ namespace
       }
       else
       {
-         fn(program.width, program.height, 1, dataPtrs.data(), output.data());
+         fn(program.width,
+            program.height,
+            1,
+            dataPtrs.data(),
+            inputWidths.data(),
+            inputHeights.data(),
+            inputStrides.data(),
+            output.data());
       }
 
       return output;

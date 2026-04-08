@@ -20,16 +20,28 @@ namespace
 
    void fillVectorArgPointers(const std::vector<gnine::Image> &images,
                               const std::vector<gnine::VectorArgBinding> &bindings,
-                              std::vector<double *> &dataPtrs)
+                              std::vector<double *> &dataPtrs,
+                              std::vector<int32_t> &inputWidths,
+                              std::vector<int32_t> &inputHeights,
+                              std::vector<int32_t> &inputStrides)
    {
       dataPtrs.clear();
       dataPtrs.reserve(bindings.size());
+      inputWidths.clear();
+      inputWidths.reserve(bindings.size());
+      inputHeights.clear();
+      inputHeights.reserve(bindings.size());
+      inputStrides.clear();
+      inputStrides.reserve(bindings.size());
       for (size_t idx = 0; idx < bindings.size(); ++idx)
       {
          const gnine::VectorArgBinding &binding = bindings[idx];
          const gnine::Image &image = images[binding.inputIndex];
          int sourceChannel = image.channelCount() == 1 ? 0 : binding.channel;
          dataPtrs.push_back(const_cast<double *>(image.getChannelData(sourceChannel)));
+         inputWidths.push_back(image.width());
+         inputHeights.push_back(image.height());
+         inputStrides.push_back(image.stride());
       }
    }
 
@@ -58,23 +70,39 @@ namespace
 
       std::vector<std::vector<double>> outputs(outputChannels, std::vector<double>(width * height, 0.0));
       std::vector<double *> dataPtrs;
+      std::vector<int32_t> inputWidths;
+      std::vector<int32_t> inputHeights;
+      std::vector<int32_t> inputStrides;
       for (int channel = 0; channel < outputChannels; ++channel)
       {
          size_t functionIndex = lowered.usesVectorFeatures ? static_cast<size_t>(channel) : 0;
          if (lowered.usesVectorFeatures)
          {
-            fillVectorArgPointers(inputs, lowered.argBindings, dataPtrs);
+            fillVectorArgPointers(inputs, lowered.argBindings, dataPtrs, inputWidths, inputHeights, inputStrides);
          }
          else
          {
             dataPtrs.clear();
+            inputWidths.clear();
+            inputHeights.clear();
+            inputStrides.clear();
             for (size_t inputIdx = 0; inputIdx < inputs.size(); ++inputIdx)
             {
                int sourceChannel = inputs[inputIdx].channelCount() == 1 ? 0 : channel;
                dataPtrs.push_back(const_cast<double *>(inputs[inputIdx].getChannelData(sourceChannel)));
+               inputWidths.push_back(inputs[inputIdx].width());
+               inputHeights.push_back(inputs[inputIdx].height());
+               inputStrides.push_back(inputs[inputIdx].stride());
             }
          }
-         functions[functionIndex](width, height, 1, dataPtrs.data(), outputs[channel].data());
+         functions[functionIndex](width,
+                                  height,
+                                  1,
+                                  dataPtrs.data(),
+                                  inputWidths.data(),
+                                  inputHeights.data(),
+                                  inputStrides.data(),
+                                  outputs[channel].data());
       }
 
       return outputs;
@@ -152,11 +180,21 @@ namespace
       };
 
       std::vector<double *> dataPtrs(2);
+      std::vector<int32_t> inputWidths(2, width);
+      std::vector<int32_t> inputHeights(2, height);
+      std::vector<int32_t> inputStrides(2, width);
       for (int channel = 0; channel < 3; ++channel)
       {
          dataPtrs[0] = rgbPlanes[channel].data();
          dataPtrs[1] = grayPlane.data();
-         fn(width, height, 1, dataPtrs.data(), outputs[channel].data());
+         fn(width,
+            height,
+            1,
+            dataPtrs.data(),
+            inputWidths.data(),
+            inputHeights.data(),
+            inputStrides.data(),
+            outputs[channel].data());
       }
 
       for (int channel = 0; channel < 3; ++channel)

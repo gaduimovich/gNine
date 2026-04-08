@@ -91,12 +91,6 @@ add_custom_command(
 )
 
 add_custom_command(
-   OUTPUT flipped_duck.png
-   COMMAND gnine --logCommand flip_vertical.psm ../example_data/duck.png flipped_duck.png
-   DEPENDS gnine flip_vertical.psm 
-)
-
-add_custom_command(
    OUTPUT threshold.png
    COMMAND gnine --logCommand threshold.psm ../example_data/lena.png threshold.png
    DEPENDS gnine threshold.psm 
@@ -121,9 +115,9 @@ add_custom_command(
 )
 
 add_custom_command(
-   OUTPUT detail_boost_extreme.png
-   COMMAND gnine --logCommand detail_boost_extreme.psm ../example_data/lena.png box_5x5_out_1.png detail_boost_extreme.png
-   DEPENDS gnine detail_boost_extreme.psm box_5x5_out_1.png
+   OUTPUT halo_edges.png
+   COMMAND gnine --logCommand halo_edges.psm ../example_data/lena.png box_5x5_out_1.png halo_edges.png
+   DEPENDS gnine halo_edges.psm box_5x5_out_1.png
 )
 
 add_custom_command(
@@ -132,6 +126,18 @@ add_custom_command(
    DEPENDS gnine posterize_4.psm
 )
 
-add_custom_target(examples ALL DEPENDS copy_examples copy_example_data compose_out.png erode_3x3_out.png dilate_3x3_out.png erode_5x5_out.png dilate_5x5_out.png min_out.png metaballs_out.png metaballs_binary_out.png metaballs_fancy_out.png box_3x3_out_1.png box_3x3_out_2.png box_5x5_out_1.png box_5x5_out_2.png metaball_edges.png lena_edge.png flipped_duck.png threshold.png abs_edges.png midtones_notch.png detail_boost.png detail_boost_extreme.png posterize_4.png)
+add_custom_command(
+   OUTPUT sepia_vector.png
+   COMMAND gnine --logCommand sepia_vector.psm ../example_data/lena.png sepia_vector.png
+   DEPENDS gnine sepia_vector.psm
+)
+
+add_custom_command(
+   OUTPUT rgb_triptych.png
+   COMMAND gnine --logCommand --runtime rgb_triptych.psm ../example_data/lena.png rgb_triptych.png
+   DEPENDS gnine rgb_triptych.psm
+)
+
+add_custom_target(examples ALL DEPENDS copy_examples copy_example_data compose_out.png erode_3x3_out.png dilate_3x3_out.png erode_5x5_out.png dilate_5x5_out.png min_out.png metaballs_out.png metaballs_binary_out.png metaballs_fancy_out.png box_3x3_out_1.png box_3x3_out_2.png box_5x5_out_1.png box_5x5_out_2.png metaball_edges.png lena_edge.png threshold.png abs_edges.png midtones_notch.png detail_boost.png halo_edges.png posterize_4.png sepia_vector.png rgb_triptych.png)
 
 add_subdirectory(game_of_life)

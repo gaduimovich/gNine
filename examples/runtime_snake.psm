@@ -1,0 +1,363 @@
+; Basic Snake for gnine runtime mode.
+; Arrow keys or WASD steer the snake in --preview mode.
+;
+; Preview:
+;   rtk /Users/gduimovi/dev/gNine/build-arm64/gnine --runtime --preview \
+;     /Users/gduimovi/dev/gNine/examples/runtime_snake.psm \
+;     /tmp/runtime_snake.png
+;
+; Headless compile/run check:
+;   rtk /Users/gduimovi/dev/gNine/build-arm64/gnine --runtime \
+;     /Users/gduimovi/dev/gNine/examples/runtime_snake.psm \
+;     /tmp/runtime_snake.png
+
+(iterate-until 10000
+  (()
+    (define grid-w 24)
+    (define grid-h 24)
+    (define cell 14)
+    (define cell-half 6)
+    (define pad 24)
+    (define W (+ (* grid-w cell) (* pad 2)))
+    (define H (+ (* grid-h cell) (* pad 2)))
+    (define first-center (+ pad cell-half))
+    (define board-center (+ first-center (* 0.5 (* (- grid-w 1) cell))))
+    (define board-half (+ cell-half (* 0.5 (* (- grid-w 1) cell))))
+    (define cell-center (lambda (p) (+ first-center (* p cell))))
+    (define food-x-of
+      (lambda (idx)
+        (if (== idx 0) 15
+          (if (== idx 1) 18
+            (if (== idx 2) 18
+              (if (== idx 3) 10
+                (if (== idx 4) 10
+                  (if (== idx 5) 20
+                    (if (== idx 6) 20
+                      (if (== idx 7) 5 -10))))))))))
+    (define food-y-of
+      (lambda (idx)
+        (if (== idx 0) 12
+          (if (== idx 1) 12
+            (if (== idx 2) 7
+              (if (== idx 3) 7
+                (if (== idx 4) 17
+                  (if (== idx 5) 17
+                    (if (== idx 6) 5
+                      (if (== idx 7) 5 -10))))))))))
+
+    (define len 3)
+    (define head-x 6)
+    (define head-y 12)
+    (define dx 1)
+    (define dy 0)
+    (define t1-x 5)
+    (define t1-y 12)
+    (define t2-x 4)
+    (define t2-y 12)
+    (define t3-x -10)
+    (define t3-y -10)
+    (define t4-x -10)
+    (define t4-y -10)
+    (define t5-x -10)
+    (define t5-y -10)
+    (define t6-x -10)
+    (define t6-y -10)
+    (define food-index 0)
+
+    (define food-x (food-x-of food-index))
+    (define food-y (food-y-of food-index))
+    (define head-px (cell-center head-x))
+    (define head-py (cell-center head-y))
+    (define t1-px (cell-center t1-x))
+    (define t1-py (cell-center t1-y))
+    (define t2-px (cell-center t2-x))
+    (define t2-py (cell-center t2-y))
+    (define t3-px (cell-center t3-x))
+    (define t3-py (cell-center t3-y))
+    (define t4-px (cell-center t4-x))
+    (define t4-py (cell-center t4-y))
+    (define t5-px (cell-center t5-x))
+    (define t5-py (cell-center t5-y))
+    (define t6-px (cell-center t6-x))
+    (define t6-py (cell-center t6-y))
+    (define food-px (cell-center food-x))
+    (define food-py (cell-center food-y))
+
+    (define frame
+      (canvas W H 3
+        (max
+          (if (== c 0) 0.02
+            (if (== c 1) 0.03 0.05))
+          (* (draw-rect board-center board-center board-half board-half 1.0)
+             (if (== c 0) 0.05
+               (if (== c 1) 0.09 0.07)))
+          (* (draw-rect food-px food-py cell-half cell-half 1.0)
+             (if (== c 0) 1.00
+               (if (== c 1) 0.34 0.14)))
+          (* (draw-rect head-px head-py cell-half cell-half 1.0)
+             (if (== c 0) 0.18
+               (if (== c 1) 0.95 0.30)))
+          (* (draw-rect t1-px t1-py cell-half cell-half 1.0)
+             (if (== c 0) 0.10
+               (if (== c 1) 0.72 0.22)))
+          (* (draw-rect t2-px t2-py cell-half cell-half 1.0)
+             (if (== c 0) 0.10
+               (if (== c 1) 0.60 0.20))))))
+
+    (tuple frame 0 1 len head-x head-y dx dy
+           t1-x t1-y t2-x t2-y t3-x t3-y t4-x t4-y t5-x t5-y t6-x t6-y
+           food-index))
+
+  (((frame tick alive len head-x head-y dx dy
+           t1-x t1-y t2-x t2-y t3-x t3-y t4-x t4-y t5-x t5-y t6-x t6-y
+           food-index))
+
+    (define grid-w 24)
+    (define grid-h 24)
+    (define cell 14)
+    (define cell-half 6)
+    (define pad 24)
+    (define W (+ (* grid-w cell) (* pad 2)))
+    (define H (+ (* grid-h cell) (* pad 2)))
+    (define first-center (+ pad cell-half))
+    (define board-center (+ first-center (* 0.5 (* (- grid-w 1) cell))))
+    (define board-half (+ cell-half (* 0.5 (* (- grid-w 1) cell))))
+    (define cell-center (lambda (p) (+ first-center (* p cell))))
+    (define food-x-of
+      (lambda (idx)
+        (if (== idx 0) 15
+          (if (== idx 1) 18
+            (if (== idx 2) 18
+              (if (== idx 3) 10
+                (if (== idx 4) 10
+                  (if (== idx 5) 20
+                    (if (== idx 6) 20
+                      (if (== idx 7) 5 -10))))))))))
+    (define food-y-of
+      (lambda (idx)
+        (if (== idx 0) 12
+          (if (== idx 1) 12
+            (if (== idx 2) 7
+              (if (== idx 3) 7
+                (if (== idx 4) 17
+                  (if (== idx 5) 17
+                    (if (== idx 6) 5
+                      (if (== idx 7) 5 -10))))))))))
+
+    (define next-tick (+ tick 1))
+    (define want-up (or key-up key-w))
+    (define want-down (or key-down key-s))
+    (define want-left (or key-left key-a))
+    (define want-right (or key-right key-d))
+
+    (define desired-dx
+      (if want-up 0
+        (if want-down 0
+          (if want-left -1
+            (if want-right 1 dx)))))
+    (define desired-dy
+      (if want-up -1
+        (if want-down 1
+          (if want-left 0
+            (if want-right 0 dy)))))
+
+    (define reversed
+      (and (== desired-dx (- dx))
+           (== desired-dy (- dy))))
+
+    (define step-dx (if reversed dx desired-dx))
+    (define step-dy (if reversed dy desired-dy))
+
+    (define move-now
+      (and (> alive 0)
+           (== (int (/ next-tick 5)) (/ next-tick 5))))
+
+    (define food-phase
+      (- food-index (* 8 (int (/ food-index 8)))))
+    (define food-active 1)
+    (define food-x (food-x-of food-phase))
+    (define food-y (food-y-of food-phase))
+
+    (define trial-head-x
+      (if move-now (+ head-x step-dx) head-x))
+    (define trial-head-y
+      (if move-now (+ head-y step-dy) head-y))
+
+    (define ate
+      (and move-now
+           food-active
+           (== trial-head-x food-x)
+           (== trial-head-y food-y)))
+
+    (define wall-hit
+      (and move-now
+           (or (< trial-head-x 0)
+               (>= trial-head-x grid-w)
+               (< trial-head-y 0)
+               (>= trial-head-y grid-h))))
+
+    (define hit-t1
+      (and move-now
+           (or (> len 2) (and ate (> len 1)))
+           (== trial-head-x t1-x)
+           (== trial-head-y t1-y)))
+    (define hit-t2
+      (and move-now
+           (or (> len 3) (and ate (> len 2)))
+           (== trial-head-x t2-x)
+           (== trial-head-y t2-y)))
+    (define hit-t3
+      (and move-now
+           (or (> len 4) (and ate (> len 3)))
+           (== trial-head-x t3-x)
+           (== trial-head-y t3-y)))
+    (define hit-t4
+      (and move-now
+           (or (> len 5) (and ate (> len 4)))
+           (== trial-head-x t4-x)
+           (== trial-head-y t4-y)))
+    (define hit-t5
+      (and move-now
+           (or (> len 6) (and ate (> len 5)))
+           (== trial-head-x t5-x)
+           (== trial-head-y t5-y)))
+    (define hit-t6
+      (and move-now
+           (and ate (> len 6))
+           (== trial-head-x t6-x)
+           (== trial-head-y t6-y)))
+
+    (define next-alive
+      (if (or wall-hit hit-t1 hit-t2 hit-t3 hit-t4 hit-t5 hit-t6)
+        0
+        alive))
+
+    (define next-len
+      (min 7 (+ len (if ate 1 0))))
+
+    (define next-food-index
+      (if ate (+ food-index 1) food-index))
+
+    (define next-head-x trial-head-x)
+    (define next-head-y trial-head-y)
+    (define next-t1-x (if move-now head-x t1-x))
+    (define next-t1-y (if move-now head-y t1-y))
+    (define next-t2-x (if move-now t1-x t2-x))
+    (define next-t2-y (if move-now t1-y t2-y))
+    (define next-t3-x (if move-now t2-x t3-x))
+    (define next-t3-y (if move-now t2-y t3-y))
+    (define next-t4-x (if move-now t3-x t4-x))
+    (define next-t4-y (if move-now t3-y t4-y))
+    (define next-t5-x (if move-now t4-x t5-x))
+    (define next-t5-y (if move-now t4-y t5-y))
+    (define next-t6-x (if move-now t5-x t6-x))
+    (define next-t6-y (if move-now t5-y t6-y))
+
+    (define next-food-phase
+      (- next-food-index (* 8 (int (/ next-food-index 8)))))
+    (define next-food-active 1)
+    (define next-food-x (food-x-of next-food-phase))
+    (define next-food-y (food-y-of next-food-phase))
+
+    (define next-head-px (cell-center next-head-x))
+    (define next-head-py (cell-center next-head-y))
+    (define next-t1-px (cell-center next-t1-x))
+    (define next-t1-py (cell-center next-t1-y))
+    (define next-t2-px (cell-center next-t2-x))
+    (define next-t2-py (cell-center next-t2-y))
+    (define next-t3-px (cell-center next-t3-x))
+    (define next-t3-py (cell-center next-t3-y))
+    (define next-t4-px (cell-center next-t4-x))
+    (define next-t4-py (cell-center next-t4-y))
+    (define next-t5-px (cell-center next-t5-x))
+    (define next-t5-py (cell-center next-t5-y))
+    (define next-t6-px (cell-center next-t6-x))
+    (define next-t6-py (cell-center next-t6-y))
+    (define next-food-px (cell-center next-food-x))
+    (define next-food-py (cell-center next-food-y))
+
+    (define next-frame
+      (canvas W H 3
+        (max
+          (if (== c 0) 0.02
+            (if (== c 1) 0.03 0.05))
+          (* (draw-rect board-center board-center board-half board-half 1.0)
+             (if (== c 0) 0.05
+               (if (== c 1) 0.09 0.07)))
+          (if next-food-active
+            (* (draw-rect next-food-px next-food-py cell-half cell-half 1.0)
+               (if (== c 0) 1.00
+                 (if (== c 1) 0.34 0.14)))
+            0)
+          (* (draw-rect next-head-px next-head-py cell-half cell-half 1.0)
+             (if (== next-alive 0)
+               (if (== c 0) 0.95
+                 (if (== c 1) 0.10 0.10))
+               (if (== c 0) 0.18
+                 (if (== c 1) 0.95 0.30))))
+          (if (> next-len 1)
+            (* (draw-rect next-t1-px next-t1-py cell-half cell-half 1.0)
+               (if (== c 0) 0.10
+                 (if (== c 1) 0.72 0.22)))
+            0)
+          (if (> next-len 2)
+            (* (draw-rect next-t2-px next-t2-py cell-half cell-half 1.0)
+               (if (== c 0) 0.10
+                 (if (== c 1) 0.60 0.20)))
+            0)
+          (if (> next-len 3)
+            (* (draw-rect next-t3-px next-t3-py cell-half cell-half 1.0)
+               (if (== c 0) 0.10
+                 (if (== c 1) 0.52 0.18)))
+            0)
+          (if (> next-len 4)
+            (* (draw-rect next-t4-px next-t4-py cell-half cell-half 1.0)
+               (if (== c 0) 0.10
+                 (if (== c 1) 0.46 0.18)))
+            0)
+          (if (> next-len 5)
+            (* (draw-rect next-t5-px next-t5-py cell-half cell-half 1.0)
+               (if (== c 0) 0.10
+                 (if (== c 1) 0.40 0.18)))
+            0)
+          (if (> next-len 6)
+            (* (draw-rect next-t6-px next-t6-py cell-half cell-half 1.0)
+               (if (== c 0) 0.10
+                 (if (== c 1) 0.34 0.18)))
+            0)
+          (if (> next-food-index 0)
+            (* (draw-rect 28 10 5 3 1.0)
+               (if (== c 0) 0.95
+                 (if (== c 1) 0.78 0.20)))
+            0)
+          (if (> next-food-index 1)
+            (* (draw-rect 42 10 5 3 1.0)
+               (if (== c 0) 0.95
+                 (if (== c 1) 0.78 0.20)))
+            0)
+          (if (> next-food-index 2)
+            (* (draw-rect 56 10 5 3 1.0)
+               (if (== c 0) 0.95
+                 (if (== c 1) 0.78 0.20)))
+            0)
+          (if (> next-food-index 3)
+            (* (draw-rect 76 14 6 4 1.0)
+               (if (== c 0) 0.95
+                 (if (== c 1) 0.78 0.20)))
+            0)
+          (if (== next-alive 0)
+            (* (draw-rect board-center board-center 56 18 1.0)
+               (if (== c 0) 0.60
+                 (if (== c 1) 0.08 0.08)))
+            0))))
+
+    (tuple next-frame next-tick next-alive next-len
+           next-head-x next-head-y step-dx step-dy
+           next-t1-x next-t1-y next-t2-x next-t2-y next-t3-x next-t3-y
+           next-t4-x next-t4-y next-t5-x next-t5-y next-t6-x next-t6-y
+           next-food-index))
+
+  (((frame tick alive len head-x head-y dx dy
+           t1-x t1-y t2-x t2-y t3-x t3-y t4-x t4-y t5-x t5-y t6-x t6-y
+           food-index))
+    0))

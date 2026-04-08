@@ -1,7 +1,0 @@
-; More aggressive chroma key with a steeper distance mask.
-((A)
-  (define key (vec 0.18 0.72 0.22))
-  (define delta (- (color A) key))
-  (define dist2 (dot delta delta))
-  (define mask (clamp (* 60 dist2) 0 1))
-  (* mask (color A)))

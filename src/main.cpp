@@ -280,6 +280,14 @@ namespace
 
    size_t programInputCount(const LoweredProgram &program)
    {
+      if (program.usesVectorFeatures)
+      {
+         size_t inputCount = 0;
+         for (size_t idx = 0; idx < program.argBindings.size(); ++idx)
+            inputCount = std::max(inputCount, program.argBindings[idx].inputIndex + 1);
+         return inputCount;
+      }
+
       if (program.channelPrograms.empty())
          throw std::runtime_error("Lowered program did not produce any channel programs");
 

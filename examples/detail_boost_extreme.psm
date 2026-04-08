@@ -1,4 +1,0 @@
-; More aggressive detail boost with stronger edge gain and contrast.
-((A B)
-  (clamp (+ (* 1.8 A) (* 6.0 (- A B)) -0.35) 0 1)
-)
