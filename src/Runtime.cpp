@@ -730,17 +730,41 @@ namespace gnine
                                     Cell *program);
 
          bool appendCompiledReferencedBindings(EnvironmentObject *env,
-                                               const Cell &expr,
-                                               const std::set<std::string> &excludedNames,
-                                               std::set<std::string> *emittedNames,
-                                               std::vector<ScalarInputBinding> *scalarInputs,
-                                               std::vector<const gnine::Image *> *inputImages,
-                                               bool allowDynamicScalarRewrite,
-                                               Cell *argsCell,
-                                               Cell *program)
+                                              const Cell &expr,
+                                              const std::vector<std::string> &symbols,
+                                              const std::set<std::string> &excludedNames,
+                                              std::set<std::string> *emittedNames,
+                                              std::vector<ScalarInputBinding> *scalarInputs,
+                                              std::vector<const gnine::Image *> *inputImages,
+                                              bool allowDynamicScalarRewrite,
+                                              Cell *argsCell,
+                                              Cell *program)
          {
-            std::set<std::string> symbols;
-            collectReferencedSymbols(expr, &symbols);
+            for (size_t idx = 0; idx < symbols.size(); ++idx)
+            {
+               Value value;
+               const Cell *sourceExpr = NULL;
+               if (!findCompiledBinding(env, symbols[idx], &value, &sourceExpr))
+                  continue;
+               if (!appendCompiledBinding(symbols[idx], value, sourceExpr, env, excludedNames,
+                                          emittedNames, scalarInputs, inputImages,
+                                          allowDynamicScalarRewrite, argsCell, program))
+                  return false;
+            }
+            return true;
+         }
+
+         bool appendCompiledReferencedBindings(EnvironmentObject *env,
+                                              const Cell &expr,
+                                              const std::set<std::string> &symbols,
+                                              const std::set<std::string> &excludedNames,
+                                              std::set<std::string> *emittedNames,
+                                              std::vector<ScalarInputBinding> *scalarInputs,
+                                              std::vector<const gnine::Image *> *inputImages,
+                                              bool allowDynamicScalarRewrite,
+                                              Cell *argsCell,
+                                              Cell *program)
+         {
             for (std::set<std::string>::const_iterator it = symbols.begin(); it != symbols.end(); ++it)
             {
                Value value;
@@ -753,6 +777,23 @@ namespace gnine
                   return false;
             }
             return true;
+         }
+
+         bool appendCompiledReferencedBindings(EnvironmentObject *env,
+                                              const Cell &expr,
+                                              const std::set<std::string> &excludedNames,
+                                              std::set<std::string> *emittedNames,
+                                              std::vector<ScalarInputBinding> *scalarInputs,
+                                              std::vector<const gnine::Image *> *inputImages,
+                                              bool allowDynamicScalarRewrite,
+                                               Cell *argsCell,
+                                               Cell *program)
+         {
+            std::set<std::string> symbols;
+            collectReferencedSymbols(expr, &symbols);
+            return appendCompiledReferencedBindings(env, expr, symbols, excludedNames, emittedNames,
+                                                   scalarInputs, inputImages, allowDynamicScalarRewrite,
+                                                   argsCell, program);
          }
 
          bool appendCompiledBinding(const std::string &name,
@@ -1116,6 +1157,78 @@ namespace gnine
       {
       }
 
+      const Evaluator::ProgramMetadata &Evaluator::programMetadata(const Cell &program)
+      {
+         std::map<const Cell *, ProgramMetadata>::const_iterator cached = _programMetadataCache.find(&program);
+         if (cached != _programMetadataCache.end())
+            return cached->second;
+
+         if (program.type != Cell::List || program.list.empty() || program.list[0].type != Cell::List)
+            throw std::runtime_error("Runtime program must be of form (() expr)");
+
+         const Cell &argsCell = program.list[0];
+         ProgramMetadata metadata;
+         metadata.argBindingNames.reserve(argsCell.list.size());
+         for (size_t idx = 0; idx < argsCell.list.size(); ++idx)
+         {
+            if (!isValidPattern(argsCell.list[idx]))
+               throw std::runtime_error("Runtime program arguments must be symbols or tuple patterns");
+            metadata.argBindingNames.push_back(argumentBindingName(argsCell.list[idx], idx));
+         }
+
+         bool sawResult = false;
+         for (size_t idx = 1; idx < program.list.size(); ++idx)
+         {
+            const Cell &expr = program.list[idx];
+            bool isDefine = expr.type == Cell::List &&
+                            expr.list.size() == 3 &&
+                            expr.list[0].type == Cell::Symbol &&
+                            expr.list[0].val == "define" &&
+                            expr.list[1].type == Cell::Symbol;
+
+            if (isDefine)
+            {
+               ProgramStatement statement;
+               statement.expr = &expr;
+               statement.defineName = expr.list[1].val;
+               statement.isDefine = true;
+               metadata.statements.push_back(statement);
+               continue;
+            }
+
+            if (sawResult)
+               throw std::runtime_error("Runtime evaluator expects a single result expression plus defines");
+
+            ProgramStatement statement;
+            statement.expr = &expr;
+            statement.isDefine = false;
+            metadata.statements.push_back(statement);
+            sawResult = true;
+         }
+
+         if (!sawResult)
+            throw std::runtime_error("Runtime program must contain a result expression");
+
+         return _programMetadataCache.insert(std::make_pair(&program, metadata)).first->second;
+      }
+
+      const Evaluator::CompiledCanvasChannelMetadata &
+      Evaluator::compiledCanvasChannelMetadata(const Cell &body, int channel)
+      {
+         std::pair<const Cell *, int> key(&body, channel);
+         std::map<std::pair<const Cell *, int>, CompiledCanvasChannelMetadata>::const_iterator cached =
+             _compiledCanvasChannelMetadataCache.find(key);
+         if (cached != _compiledCanvasChannelMetadataCache.end())
+            return cached->second;
+
+         CompiledCanvasChannelMetadata metadata;
+         metadata.specializedBody = specializeSymbol(body, "c", doubleToCell(static_cast<double>(channel)));
+         std::set<std::string> referencedSymbols;
+         collectReferencedSymbols(metadata.specializedBody, &referencedSymbols);
+         metadata.referencedSymbols.assign(referencedSymbols.begin(), referencedSymbols.end());
+         return _compiledCanvasChannelMetadataCache.insert(std::make_pair(key, metadata)).first->second;
+      }
+
       Value Evaluator::evaluateProgram(const Cell &program)
       {
          std::map<std::string, Value> bindings;
@@ -1124,15 +1237,15 @@ namespace gnine
 
       Value Evaluator::evaluateProgram(const Cell &program, const std::map<std::string, Value> &bindings)
       {
-         if (program.type != Cell::List || program.list.empty() || program.list[0].type != Cell::List)
-            throw std::runtime_error("Runtime program must be of form (() expr)");
+         return evaluateProgram(program, bindings, NULL);
+      }
 
+      Value Evaluator::evaluateProgram(const Cell &program,
+                                       const std::map<std::string, Value> &bindings,
+                                       std::map<std::string, Value> *outBindings)
+      {
+         const ProgramMetadata &metadata = programMetadata(program);
          const Cell &argsCell = program.list[0];
-         for (size_t idx = 0; idx < argsCell.list.size(); ++idx)
-         {
-            if (!isValidPattern(argsCell.list[idx]))
-               throw std::runtime_error("Runtime program arguments must be symbols or tuple patterns");
-         }
 
          std::vector<Value> rootedBindings;
          rootedBindings.reserve(bindings.size());
@@ -1152,6 +1265,10 @@ namespace gnine
          {
             for (std::map<std::string, Value>::const_iterator it = bindings.begin(); it != bindings.end(); ++it)
             {
+               if (std::find(metadata.argBindingNames.begin(),
+                             metadata.argBindingNames.end(),
+                             it->first) != metadata.argBindingNames.end())
+                  continue;
                globalEnv->bindings[it->first] = it->second;
                if (it->second.isNumber())
                   symbolicEnv->bindings[it->first] = Value::exprValue(makeSymbolCell(it->first));
@@ -1161,7 +1278,7 @@ namespace gnine
 
             for (size_t idx = 0; idx < argsCell.list.size(); ++idx)
             {
-               const std::string bindingName = argumentBindingName(argsCell.list[idx], idx);
+               const std::string &bindingName = metadata.argBindingNames[idx];
                std::map<std::string, Value>::const_iterator it = bindings.find(bindingName);
                if (it == bindings.end())
                   throw std::runtime_error("Missing runtime binding for program argument: " + bindingName);
@@ -1172,49 +1289,37 @@ namespace gnine
 
             Value result = Value::nil();
             Heap::Root resultRoot(_heap, result);
-            bool sawResult = false;
-
-           for (size_t idx = 1; idx < program.list.size(); ++idx)
-           {
-              const Cell &expr = program.list[idx];
-              bool isDefine = expr.type == Cell::List &&
-                              expr.list.size() == 3 &&
-                              expr.list[0].type == Cell::Symbol &&
-                               expr.list[0].val == "define" &&
-                               expr.list[1].type == Cell::Symbol;
-
-               if (isDefine)
+            for (size_t idx = 0; idx < metadata.statements.size(); ++idx)
+            {
+               const ProgramStatement &statement = metadata.statements[idx];
+               const Cell &expr = *statement.expr;
+               if (statement.isDefine)
                {
                   Value defineValue = eval(expr.list[2], globalEnv);
                   Heap::Root defineRoot(_heap, defineValue);
-                  globalEnv->bindings[expr.list[1].val] = defineValue;
-                  globalEnv->sourceExprs.erase(expr.list[1].val);
+                  globalEnv->bindings[statement.defineName] = defineValue;
+                  globalEnv->sourceExprs.erase(statement.defineName);
                   if (defineValue.isNumber())
                   {
                      Value symbolicValue = eval(expr.list[2], symbolicEnv);
                      Heap::Root symbolicDefineRoot(_heap, symbolicValue);
                      Cell sourceExpr = requireExpr(symbolicValue, "define");
                      if (!containsMetadataBuiltinCall(sourceExpr))
-                        globalEnv->sourceExprs[expr.list[1].val] = sourceExpr;
-                     symbolicEnv->bindings[expr.list[1].val] = Value::exprValue(expr.list[1]);
+                        globalEnv->sourceExprs[statement.defineName] = sourceExpr;
+                     symbolicEnv->bindings[statement.defineName] = Value::exprValue(expr.list[1]);
                   }
                   else
-                     symbolicEnv->bindings[expr.list[1].val] = defineValue;
+                     symbolicEnv->bindings[statement.defineName] = defineValue;
                   continue;
                }
 
-               if (sawResult)
-                  throw std::runtime_error("Runtime evaluator expects a single result expression plus defines");
-
                result = eval(expr, globalEnv);
-               sawResult = true;
             }
-
-            if (!sawResult)
-               throw std::runtime_error("Runtime program must contain a result expression");
 
             for (size_t idx = 0; idx < rootedBindings.size(); ++idx)
                _heap.removeRoot(&rootedBindings[idx]);
+            if (outBindings != NULL)
+               *outBindings = globalEnv->bindings;
             return result;
          }
          catch (...)
@@ -1262,9 +1367,7 @@ namespace gnine
 
       Cell Evaluator::normalizeProgram(const Cell &program)
       {
-         if (program.type != Cell::List || program.list.empty() || program.list[0].type != Cell::List)
-            throw std::runtime_error("Program must be of form ((A ...) expr)");
-
+         const ProgramMetadata &metadata = programMetadata(program);
          Cell normalized(Cell::List);
          normalized.list.push_back(program.list[0]);
 
@@ -1275,50 +1378,36 @@ namespace gnine
          const Cell &argsCell = program.list[0];
          for (size_t idx = 0; idx < argsCell.list.size(); ++idx)
          {
-            if (!isValidPattern(argsCell.list[idx]))
-               throw std::runtime_error("Program arguments must be symbols or tuple patterns");
             bindPattern(globalEnv,
                         argsCell.list[idx],
-                        Value::exprValue(makeSymbolCell(argumentBindingName(argsCell.list[idx], idx))));
+                        Value::exprValue(makeSymbolCell(metadata.argBindingNames[idx])));
          }
 
-         bool sawResult = false;
-         for (size_t idx = 1; idx < program.list.size(); ++idx)
+         for (size_t idx = 0; idx < metadata.statements.size(); ++idx)
          {
-            const Cell &expr = program.list[idx];
-            bool isDefine = expr.type == Cell::List &&
-                            expr.list.size() == 3 &&
-                            expr.list[0].type == Cell::Symbol &&
-                            expr.list[0].val == "define" &&
-                            expr.list[1].type == Cell::Symbol;
+            const ProgramStatement &statement = metadata.statements[idx];
+            const Cell &expr = *statement.expr;
 
-            if (isDefine)
+            if (statement.isDefine)
             {
                Value value = eval(expr.list[2], globalEnv);
-               globalEnv->bindings[expr.list[1].val] = value;
+               globalEnv->bindings[statement.defineName] = value;
 
                if (value.isObject() || value.isBuiltin())
                   continue;
 
                Cell defineExpr(Cell::List);
                defineExpr.list.push_back(Cell(Cell::Symbol, "define"));
-               defineExpr.list.push_back(expr.list[1]);
+               defineExpr.list.push_back(Cell(Cell::Symbol, statement.defineName));
                defineExpr.list.push_back(requireExpr(value, "define"));
                normalized.list.push_back(defineExpr);
 
-               globalEnv->bindings[expr.list[1].val] = Value::exprValue(expr.list[1]);
+               globalEnv->bindings[statement.defineName] = Value::exprValue(Cell(Cell::Symbol, statement.defineName));
                continue;
             }
 
-            if (sawResult)
-               throw std::runtime_error("Program supports a single result expression plus defines");
-
             normalized.list.push_back(requireExpr(eval(expr, globalEnv), "program result"));
-            sawResult = true;
          }
-
-         if (!sawResult)
-            throw std::runtime_error("Program must contain a result expression");
 
          return normalized;
       }
@@ -2524,6 +2613,7 @@ namespace gnine
             gnine::Image resultImage(width, height, width, channels);
             double totalCompileMillis = 0.0;
             bool allCacheHits = true;
+            bool bodyHasMetadataCalls = containsMetadataBuiltinCall(body);
             const char *disableFusedEnv = std::getenv("GNINE_RUNTIME_DISABLE_FUSED_RGB_CANVAS");
             bool allowFusedRGB = disableFusedEnv == NULL || disableFusedEnv[0] == '\0' || disableFusedEnv[0] == '0';
             if (channels == 3 && allowFusedRGB)
@@ -2548,39 +2638,103 @@ namespace gnine
 
                for (int channel = 0; channel < 3; ++channel)
                {
-                  Cell specializedBody = specializeSymbol(body, "c", doubleToCell(static_cast<double>(channel)));
-                  specializedBody = specializeImageMetadataCalls(specializedBody, env);
+                  Cell specializedBody;
                   std::set<std::string> symbols;
-                  collectReferencedSymbols(specializedBody, &symbols);
-                  for (std::set<std::string>::const_iterator it = symbols.begin(); it != symbols.end(); ++it)
+                  const std::vector<std::string> *cachedSymbols = NULL;
+                  if (bodyHasMetadataCalls)
                   {
-                     Value value;
-                     const Cell *sourceExpr = NULL;
-                     if (!findCompiledBinding(env, *it, &value, &sourceExpr))
-                        continue;
-                     if (!value.isObject() || value.object->type != Object::Image)
-                        continue;
-
-                     const gnine::Image *image = static_cast<ImageObject *>(value.object)->image;
-                     if (image->channelCount() <= 1)
-                        continue;
-
-                     std::string alias = *it + "__c" + std::to_string(channel);
-                     specializedBody = renameBindingRefs(specializedBody, *it, alias);
-                     if (seenBindings.insert(alias).second)
+                     specializedBody = specializeSymbol(body, "c", doubleToCell(static_cast<double>(channel)));
+                     specializedBody = specializeImageMetadataCalls(specializedBody, env);
+                     collectReferencedSymbols(specializedBody, &symbols);
+                  }
+                  else
+                  {
+                     const CompiledCanvasChannelMetadata &metadata =
+                         compiledCanvasChannelMetadata(body, channel);
+                     specializedBody = metadata.specializedBody;
+                     cachedSymbols = &metadata.referencedSymbols;
+                  }
+                  bool renamedImageBinding = false;
+                  if (cachedSymbols != NULL)
+                  {
+                     for (size_t idx = 0; idx < cachedSymbols->size(); ++idx)
                      {
-                        argsCell.list.push_back(makeSymbolCell(alias));
-                        inputImageViews.push_back(gnine::Image(
-                            const_cast<double *>(image->getChannelData(channel)),
-                            image->width(),
-                            image->height(),
-                            image->stride(),
-                            1));
-                        inputImages.push_back(&inputImageViews.back());
+                        const std::string &symbol = (*cachedSymbols)[idx];
+                        Value value;
+                        const Cell *sourceExpr = NULL;
+                        if (!findCompiledBinding(env, symbol, &value, &sourceExpr))
+                           continue;
+                        if (!value.isObject() || value.object->type != Object::Image)
+                           continue;
+
+                        const gnine::Image *image = static_cast<ImageObject *>(value.object)->image;
+                        if (image->channelCount() <= 1)
+                           continue;
+
+                        std::string alias = symbol + "__c" + std::to_string(channel);
+                        specializedBody = renameBindingRefs(specializedBody, symbol, alias);
+                        renamedImageBinding = true;
+                        if (seenBindings.insert(alias).second)
+                        {
+                           argsCell.list.push_back(makeSymbolCell(alias));
+                           inputImageViews.push_back(gnine::Image(
+                               const_cast<double *>(image->getChannelData(channel)),
+                               image->width(),
+                               image->height(),
+                               image->stride(),
+                               1));
+                           inputImages.push_back(&inputImageViews.back());
+                        }
                      }
                   }
-                  if (!appendCompiledReferencedBindings(env, specializedBody, excludedNames, &seenBindings,
-                                                        &scalarInputs, &inputImages, false, &argsCell, &program))
+                  else
+                  {
+                     for (std::set<std::string>::const_iterator it = symbols.begin(); it != symbols.end(); ++it)
+                     {
+                        Value value;
+                        const Cell *sourceExpr = NULL;
+                        if (!findCompiledBinding(env, *it, &value, &sourceExpr))
+                           continue;
+                        if (!value.isObject() || value.object->type != Object::Image)
+                           continue;
+
+                        const gnine::Image *image = static_cast<ImageObject *>(value.object)->image;
+                        if (image->channelCount() <= 1)
+                           continue;
+
+                        std::string alias = *it + "__c" + std::to_string(channel);
+                        specializedBody = renameBindingRefs(specializedBody, *it, alias);
+                        renamedImageBinding = true;
+                        if (seenBindings.insert(alias).second)
+                        {
+                           argsCell.list.push_back(makeSymbolCell(alias));
+                           inputImageViews.push_back(gnine::Image(
+                               const_cast<double *>(image->getChannelData(channel)),
+                               image->width(),
+                               image->height(),
+                               image->stride(),
+                               1));
+                           inputImages.push_back(&inputImageViews.back());
+                        }
+                     }
+                  }
+                  if (renamedImageBinding)
+                  {
+                     symbols.clear();
+                     collectReferencedSymbols(specializedBody, &symbols);
+                     cachedSymbols = NULL;
+                  }
+                  bool appendedBindings =
+                      cachedSymbols != NULL
+                          ? appendCompiledReferencedBindings(env, specializedBody, *cachedSymbols,
+                                                            excludedNames, &seenBindings,
+                                                            &scalarInputs, &inputImages, false,
+                                                            &argsCell, &program)
+                          : appendCompiledReferencedBindings(env, specializedBody, symbols,
+                                                            excludedNames, &seenBindings,
+                                                            &scalarInputs, &inputImages, false,
+                                                            &argsCell, &program);
+                  if (!appendedBindings)
                   {
                      if (fallbackReason != NULL)
                         *fallbackReason = "unsupported_capture";
@@ -2657,8 +2811,22 @@ namespace gnine
 
             for (int channel = 0; channel < channels; ++channel)
             {
-               Cell specializedBody = specializeSymbol(body, "c", doubleToCell(static_cast<double>(channel)));
-               specializedBody = specializeImageMetadataCalls(specializedBody, env);
+               Cell specializedBody;
+               std::set<std::string> symbols;
+               const std::vector<std::string> *cachedSymbols = NULL;
+               if (bodyHasMetadataCalls)
+               {
+                  specializedBody = specializeSymbol(body, "c", doubleToCell(static_cast<double>(channel)));
+                  specializedBody = specializeImageMetadataCalls(specializedBody, env);
+                  collectReferencedSymbols(specializedBody, &symbols);
+               }
+               else
+               {
+                  const CompiledCanvasChannelMetadata &metadata =
+                      compiledCanvasChannelMetadata(body, channel);
+                  specializedBody = metadata.specializedBody;
+                  cachedSymbols = &metadata.referencedSymbols;
+               }
                Cell argsCell(Cell::List);
                Cell program(Cell::List);
                program.list.push_back(argsCell);
@@ -2674,8 +2842,17 @@ namespace gnine
                std::vector<ScalarInputBinding> scalarInputs;
                std::vector<const gnine::Image *> inputImages;
 
-               if (!appendCompiledReferencedBindings(env, specializedBody, excludedNames, &seenBindings,
-                                                     &scalarInputs, &inputImages, false, &argsCell, &program))
+               bool appendedBindings =
+                   cachedSymbols != NULL
+                       ? appendCompiledReferencedBindings(env, specializedBody, *cachedSymbols,
+                                                         excludedNames, &seenBindings,
+                                                         &scalarInputs, &inputImages, false,
+                                                         &argsCell, &program)
+                       : appendCompiledReferencedBindings(env, specializedBody, symbols,
+                                                         excludedNames, &seenBindings,
+                                                         &scalarInputs, &inputImages, false,
+                                                         &argsCell, &program);
+               if (!appendedBindings)
                {
                   if (fallbackReason != NULL)
                      *fallbackReason = "unsupported_capture";

@@ -5,6 +5,7 @@
 
 #include <cstddef>
 #include <map>
+#include <set>
 #include <string>
 #include <utility>
 #include <vector>
@@ -179,6 +180,9 @@ namespace gnine
 
          Value evaluateProgram(const Cell &program);
          Value evaluateProgram(const Cell &program, const std::map<std::string, Value> &bindings);
+         Value evaluateProgram(const Cell &program,
+                               const std::map<std::string, Value> &bindings,
+                               std::map<std::string, Value> *outBindings);
          Value evaluateExpr(const Cell &expr);
          Value evaluateExpr(const Cell &expr, const std::map<std::string, Value> &bindings);
          Cell normalizeProgram(const Cell &program);
@@ -190,6 +194,28 @@ namespace gnine
          Heap &heap();
 
       private:
+         struct ProgramStatement
+         {
+            const Cell *expr;
+            std::string defineName;
+            bool isDefine;
+         };
+
+         struct ProgramMetadata
+         {
+            std::vector<std::string> argBindingNames;
+            std::vector<ProgramStatement> statements;
+         };
+
+         struct CompiledCanvasChannelMetadata
+         {
+            Cell specializedBody;
+            std::vector<std::string> referencedSymbols;
+         };
+
+         const ProgramMetadata &programMetadata(const Cell &program);
+         const CompiledCanvasChannelMetadata &compiledCanvasChannelMetadata(const Cell &body,
+                                                                           int channel);
          Value eval(const Cell &expr, EnvironmentObject *env);
          Value applyBuiltin(const std::string &builtinName,
                             const std::vector<Value> &args);
@@ -269,6 +295,8 @@ namespace gnine
          int _compiledScalarScratchWidth;
          int _compiledScalarScratchHeight;
          std::vector<gnine::Image> _compiledScalarScratch;
+         std::map<const Cell *, ProgramMetadata> _programMetadataCache;
+         std::map<std::pair<const Cell *, int>, CompiledCanvasChannelMetadata> _compiledCanvasChannelMetadataCache;
          std::vector<std::string> _executionTrace;
       };
    }
