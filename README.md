@@ -72,12 +72,22 @@ Run the test binaries:
 
 ## New Features
 
-* `--runtime` executes managed image programs and can JIT fast paths for `map-image`, `zip-image`, and `canvas`.
-* Top-level `iterate`, `iterate-state`, and `iterate-until` forms support chained execution, explicit runtime state, and stop conditions.
-* Runtime tuple state supports `tuple`, `get`, and tuple destructuring in arguments and lambda parameters.
-* RGB and vector lowering add `vec`, `rgb`, `color`, `r`, `g`, `b`, and `dot`.
-* Runtime canvas generation adds `(canvas W H [C] expr)` plus `draw-rect` and `draw-circle`.
+### Language Features
+
+* Scalar arithmetic includes `+`, `-`, `*`, `/`, `min`, `max`, `abs`, `clamp`, and `int`.
+* Scalar comparison and boolean forms include `<`, `<=`, `>`, `>=`, `==`, `!=`, `and`, `or`, `not`, and `if`.
+* Image metadata forms include `width`, `height`, and `channels`.
+* Tuple forms include `tuple`, `get`, and tuple destructuring in arguments and lambda parameters.
+* Top-level chained execution forms include `iterate`, `iterate-state`, and `iterate-until`.
+* The chained runtime iterator variable `iter` exposes the current 1-based step count.
+* RGB and vector forms include `vec`, `rgb`, `color`, `r`, `g`, `b`, and `dot`.
+* Runtime image forms include `map-image`, `zip-image`, and `canvas`.
+* Runtime canvas drawing adds `draw-rect` and `draw-circle`.
 * `pipeline` fuses scalar stages into a single lowered kernel.
+
+### Runtime Helpers
+
+* `--runtime` executes managed image programs and can JIT fast paths for `map-image`, `zip-image`, and `canvas`.
 * Output helpers add `--emit-frames`, `--compare`, `--display-scale`, and `--display-size`.
 * Runtime preview/input bindings add `--preview` plus keyboard, mouse, and frame-time inputs for interactive programs.
 * Benchmarking helpers add `--benchmark`, `--benchmark-no-write`, and `--benchmark-repeats=N`.
