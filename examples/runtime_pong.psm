@@ -1,20 +1,26 @@
 ; Runtime Pong demo.
 ; This version uses iterate-until so the game state evolves explicitly until
-; somebody scores:
+; one side reaches five points:
 ;   frame, ball-x, ball-y, vx, vy, left-paddle-y, right-paddle-y,
 ;   left-score, right-score
 ;
+; Preview controls:
+;   left paddle: Up / Down
+; The right paddle remains AI-controlled.
+;
 ; Render with:
 ;   ./gnine --runtime --emit-frames=runtime_pong.png \
-;     runtime_pong.psm ../example_data/lena.png \
+;     runtime_pong.psm \
 ;     runtime_pong_final.png
 
 (iterate-until 1000
-  ((A)
-    (define W (width A))
-    (define H (height A))
+  (()
+    (define W 640)
+    (define H 360)
     (tuple
-      A
+      (canvas W H 3
+        (if (== c 0) 0.04
+          (if (== c 1) 0.06 0.12)))
       (/ W 2)
       (/ H 2)
       (max 3 (int (/ W 90)))
@@ -40,15 +46,21 @@
     (define paddle-max (- H wall-thickness paddle-half-h 1))
     (define top-limit (+ wall-thickness ball-half))
     (define bottom-limit (- H wall-thickness ball-half 1))
-    (define score-y (+ wall-thickness ball-half 4))
-    (define score-gap (max 2 (int (/ W 80))))
-    (define score-half (max 2 (int (/ W 140))))
-    (define left-score-x (+ mid-x score-gap))
-    (define right-score-x (- mid-x score-gap))
+    (define net-half-w (max 1 (int (/ W 220))))
+    (define net-half-h (max 3 (int (/ H 18))))
+    (define pip-half-w (max 3 (int (/ W 120))))
+    (define pip-half-h (max 4 (int (/ H 40))))
+    (define score-step (max 10 (int (/ W 20))))
+    (define score-y (+ wall-thickness pip-half-h 10))
+    (define left-score-base (- mid-x (* 2 score-step)))
+    (define right-score-base (+ mid-x (* 2 score-step)))
+
+    (define left-input (- key-down key-up))
 
     (define next-left-y
       (clamp
-        (+ left-y (clamp (- ball-y left-y) (- paddle-speed) paddle-speed))
+        (+ left-y
+           (* paddle-speed left-input))
         paddle-min
         paddle-max))
 
@@ -103,40 +115,112 @@
         right-score))
 
     (define next-frame
-      (map-image
-        (lambda (x)
-          (clamp
-            (max
-              (* 0.80 x)
-              (if (and (<= (abs (- i next-left-y)) paddle-half-h)
-                       (<= (abs (- j paddle-left-x)) paddle-half-w))
-                (if (== c 0) 0.16
-                  (if (== c 1) 0.92 1.00))
-                0)
-              (if (and (<= (abs (- i next-right-y)) paddle-half-h)
-                       (<= (abs (- j paddle-right-x)) paddle-half-w))
-                (if (== c 0) 1.00
-                  (if (== c 1) 0.26 0.86))
-                0)
-              (if (and (<= (abs (- i next-ball-y)) ball-half)
-                       (<= (abs (- j next-ball-x)) ball-half))
-                (if (== c 0) 1.00
-                  (if (== c 1) 0.82 0.18))
-                0)
-              (if (and (<= (abs (- i score-y)) score-half)
-                       (<= (abs (- j left-score-x)) score-half)
-                       (> next-left-score 0))
-                (if (== c 0) 1.00
-                  (if (== c 1) 0.90 0.22))
-                0)
-              (if (and (<= (abs (- i score-y)) score-half)
-                       (<= (abs (- j right-score-x)) score-half)
-                       (> next-right-score 0))
-                (if (== c 0) 1.00
-                  (if (== c 1) 0.90 0.22))
-                0))
-            0 1))
-        frame))
+      (canvas W H 3
+        (clamp
+          (max
+            (if (<= (abs (- i (/ H 2))) (/ H 2))
+              (if (== c 0) 0.04
+                (if (== c 1) 0.06 0.12))
+              0)
+            (if (<= (abs (- i wall-thickness)) wall-thickness)
+              (if (== c 0) 0.98
+                (if (== c 1) 0.42 0.16))
+              0)
+            (if (<= (abs (- i (- H wall-thickness 1))) wall-thickness)
+              (if (== c 0) 0.98
+                (if (== c 1) 0.42 0.16))
+              0)
+            (if (and (<= (abs (- j mid-x)) net-half-w)
+                     (<= (abs (- i (/ H 2))) (* 0.44 H))
+                     (<= (abs (- (- i (/ H 2))
+                                  (* (int (/ (- i (/ H 2)) (max 1 (* net-half-h 2))))
+                                     (max 1 (* net-half-h 2)))))
+                         net-half-h))
+              (if (== c 0) 0.18
+                (if (== c 1) 0.22 0.34))
+              0)
+            (if (and (<= (abs (- i next-left-y)) paddle-half-h)
+                     (<= (abs (- j paddle-left-x)) paddle-half-w))
+              (if (== c 0) 0.12
+                (if (== c 1) 0.96 0.22))
+              0)
+            (if (and (<= (abs (- i next-right-y)) paddle-half-h)
+                     (<= (abs (- j paddle-right-x)) paddle-half-w))
+              (if (== c 0) 0.18
+                (if (== c 1) 0.52 1.00))
+              0)
+            (if (and (<= (abs (- i next-ball-y)) ball-half)
+                     (<= (abs (- j next-ball-x)) ball-half))
+              (if (== c 0) 1.00
+                (if (== c 1) 0.94 0.30))
+              0)
+            (if (and (> next-left-score 0)
+                     (<= (abs (- i score-y)) pip-half-h)
+                     (<= (abs (- j (- left-score-base (* 2 score-step)))) pip-half-w))
+              (if (== c 0) 0.12
+                (if (== c 1) 0.96 0.22))
+              0)
+            (if (and (> next-left-score 1)
+                     (<= (abs (- i score-y)) pip-half-h)
+                     (<= (abs (- j (- left-score-base score-step))) pip-half-w))
+              (if (== c 0) 0.12
+                (if (== c 1) 0.96 0.22))
+              0)
+            (if (and (> next-left-score 2)
+                     (<= (abs (- i score-y)) pip-half-h)
+                     (<= (abs (- j left-score-base)) pip-half-w))
+              (if (== c 0) 0.12
+                (if (== c 1) 0.96 0.22))
+              0)
+            (if (and (> next-left-score 3)
+                     (<= (abs (- i score-y)) pip-half-h)
+                     (<= (abs (- j (+ left-score-base score-step))) pip-half-w))
+              (if (== c 0) 0.12
+                (if (== c 1) 0.96 0.22))
+              0)
+            (if (and (> next-left-score 4)
+                     (<= (abs (- i score-y)) pip-half-h)
+                     (<= (abs (- j (+ left-score-base (* 2 score-step)))) pip-half-w))
+              (if (== c 0) 0.12
+                (if (== c 1) 0.96 0.22))
+              0)
+            (if (and (> next-right-score 0)
+                     (<= (abs (- i score-y)) pip-half-h)
+                     (<= (abs (- j (- right-score-base (* 2 score-step)))) pip-half-w))
+              (if (== c 0) 0.18
+                (if (== c 1) 0.52 1.00))
+              0)
+            (if (and (> next-right-score 1)
+                     (<= (abs (- i score-y)) pip-half-h)
+                     (<= (abs (- j (- right-score-base score-step))) pip-half-w))
+              (if (== c 0) 0.18
+                (if (== c 1) 0.52 1.00))
+              0)
+            (if (and (> next-right-score 2)
+                     (<= (abs (- i score-y)) pip-half-h)
+                     (<= (abs (- j right-score-base)) pip-half-w))
+              (if (== c 0) 0.18
+                (if (== c 1) 0.52 1.00))
+              0)
+            (if (and (> next-right-score 3)
+                     (<= (abs (- i score-y)) pip-half-h)
+                     (<= (abs (- j (+ right-score-base score-step))) pip-half-w))
+              (if (== c 0) 0.18
+                (if (== c 1) 0.52 1.00))
+              0)
+            (if (and (> next-right-score 4)
+                     (<= (abs (- i score-y)) pip-half-h)
+                     (<= (abs (- j (+ right-score-base (* 2 score-step)))) pip-half-w))
+              (if (== c 0) 0.18
+                (if (== c 1) 0.52 1.00))
+              0)
+            (if (and (or (>= next-left-score 5) (>= next-right-score 5))
+                     (<= (abs (- i (/ H 2))) (max 8 (int (/ H 12))))
+                     (<= (abs (- j mid-x)) (max 24 (int (/ W 7)))))
+              (if (== c 0) 1.00
+                (if (== c 1) 0.92 0.30))
+              0))
+          0 1)))
 
     (define bounced-vy
       (if (or (< trial-y top-limit) (> trial-y bottom-limit))
@@ -167,4 +251,4 @@
            next-left-y next-right-y next-left-score next-right-score))
 
   (((frame ball-x ball-y vx vy left-y right-y left-score right-score))
-    (> (+ left-score right-score) 0)))
+    (or (>= left-score 5) (>= right-score 5))))

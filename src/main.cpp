@@ -11,6 +11,7 @@
 #include <algorithm>
 #include <cstdint>
 #include <cstdlib>
+#include <iomanip>
 #include <string>
 #include <stdexcept>
 #include <memory>
@@ -344,12 +345,15 @@ namespace
 
    std::string makeChainedFramePath(const std::string &basePath, int iteration)
    {
+      std::ostringstream suffix;
+      suffix << "_" << std::setw(4) << std::setfill('0') << iteration;
+
       size_t slashPos = basePath.find_last_of("/\\");
       size_t dotPos = basePath.find_last_of('.');
       if (dotPos == std::string::npos || (slashPos != std::string::npos && dotPos < slashPos))
-         return basePath + "_" + std::to_string(iteration);
+         return basePath + suffix.str();
 
-      return basePath.substr(0, dotPos) + "_" + std::to_string(iteration) + basePath.substr(dotPos);
+      return basePath.substr(0, dotPos) + suffix.str() + basePath.substr(dotPos);
    }
 
    std::string makeComparisonPath(const std::string &basePath)
