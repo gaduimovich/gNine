@@ -1,0 +1,7 @@
+2026-04-08 First engine optimization pass
+
+- Runtime image extraction in [src/main.cpp] now borrows the `Image` from rooted runtime state instead of copying it into a new heap image on every frame.
+- Updated preview, chained runtime, and single-pass runtime execution to carry a borrowed `const Image *` through to final display/write handling.
+- Rebuilt `gnine` and reran the game benchmarks with `--runtime --benchmark --benchmark-no-write --chain-times=300 --benchmark-repeats=3`.
+- Pong improved from `benchmark.last_repeat_avg_iter_ms=67.1182` to `62.0587` (about 7.5% faster warm frames).
+- Snake improved from `benchmark.last_repeat_avg_iter_ms=32.9599` to `31.9233` (about 3.1% faster warm frames).

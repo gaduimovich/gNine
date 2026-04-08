@@ -535,22 +535,22 @@ namespace
       return metrics;
    }
 
-   std::unique_ptr<Image> tryCopyRuntimeImage(const runtime::Value &value)
+   const Image *tryGetRuntimeImage(const runtime::Value &value)
    {
       if (value.isObject() && value.object->type == runtime::Object::Image)
       {
          runtime::ImageObject *imageObj = static_cast<runtime::ImageObject *>(value.object);
-         return std::unique_ptr<Image>(new Image(copyImage(*imageObj->image)));
+         return imageObj->image;
       }
 
       if (value.isObject() && value.object->type == runtime::Object::Tuple)
       {
          runtime::TupleObject *tupleObj = static_cast<runtime::TupleObject *>(value.object);
          if (!tupleObj->values.empty())
-            return tryCopyRuntimeImage(tupleObj->values[0]);
+            return tryGetRuntimeImage(tupleObj->values[0]);
       }
 
-      return std::unique_ptr<Image>();
+      return NULL;
    }
 
    double sampleDisplayChannel(const Image &image, int row, int col, int channel)
@@ -885,7 +885,7 @@ int main(int argc, char *argsRaw[])
 
    if (runtimeMode)
    {
-      std::unique_ptr<Image> runtimeImageResult;
+      const Image *runtimeImageResult = NULL;
       bool hasImageResult = false;
       runtime::Evaluator evaluator;
       runtime::Value runtimeState = runtime::Value::nil();
@@ -1015,11 +1015,11 @@ int main(int argc, char *argsRaw[])
                runtimeBenchmarkExecuteMillis += passResult.second.second;
             }
 
-            std::unique_ptr<Image> previewImage = tryCopyRuntimeImage(runtimeState);
+            const Image *previewImage = tryGetRuntimeImage(runtimeState);
             if (!previewImage)
                throw std::runtime_error("--preview requires the runtime program to return an image or a tuple whose first element is an image");
 
-            runtimeImageResult.reset(new Image(copyImage(*previewImage)));
+            runtimeImageResult = previewImage;
             hasImageResult = true;
             hasScalarResult = false;
 
@@ -1116,11 +1116,11 @@ int main(int argc, char *argsRaw[])
                runtimeBenchmarkExecuteMillis += passExecuteMillis;
                ++runtimeBenchmarkIterations;
 
-               std::unique_ptr<Image> nextImage = tryCopyRuntimeImage(runtimeState);
+               const Image *nextImage = tryGetRuntimeImage(runtimeState);
                if (!nextImage)
                   throw std::runtime_error("Runtime chained execution requires the program to return an image or a tuple whose first element is an image");
 
-               runtimeImageResult.reset(new Image(copyImage(*nextImage)));
+               runtimeImageResult = nextImage;
                hasImageResult = true;
 
                if (!emitFramesPath.empty())
@@ -1181,10 +1181,10 @@ int main(int argc, char *argsRaw[])
             runtimeBenchmarkLastCompileMillis = passCompileMillis;
             runtimeBenchmarkLastExecuteMillis = passExecuteMillis;
 
-            std::unique_ptr<Image> singleResultImage = tryCopyRuntimeImage(runtimeState);
+            const Image *singleResultImage = tryGetRuntimeImage(runtimeState);
             if (singleResultImage)
             {
-               runtimeImageResult.reset(new Image(copyImage(*singleResultImage)));
+               runtimeImageResult = singleResultImage;
                hasImageResult = true;
                hasScalarResult = false;
             }
@@ -1199,6 +1199,8 @@ int main(int argc, char *argsRaw[])
 
       if (hasImageResult)
       {
+         if (!runtimeImageResult)
+            throw std::runtime_error("Runtime mode expected an image result but did not find one");
          if (!benchmarkNoWrite)
          {
             Image writtenImage = makeDisplayImage(*runtimeImageResult);
