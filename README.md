@@ -38,6 +38,14 @@ Runtime Pong
 
 ### Testing
 
+Build the test targets:
+
+```bash
+cmake --build build --target gnine_runtime_tests gnine_semantic_tests gnine_color_tests -j4
+```
+
+Run the test binaries:
+
 ```bash
 ./build/tests/gnine_runtime_tests
 ./build/tests/gnine_semantic_tests
