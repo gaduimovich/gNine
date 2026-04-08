@@ -627,7 +627,7 @@ int main(int argc, char *argsRaw[])
       std::cout << "CHAIN-TIMES=N Executes the jited function as a chained simulation.\n";
       std::cout << "--benchmark prints compile and execution timings.\n";
       std::cout << "--benchmark-no-write skips writing benchmark output images.\n";
-      std::cout << "--benchmark-repeats=N reruns runtime benchmarks in one process to expose warm-cache timings.\n";
+      std::cout << "--benchmark-repeats=N reruns runtime benchmarks in one process to expose warm-cache timings, including chained runtime games.\n";
       std::cout << "--emit-frames=PATH writes chained iterations as PATH with _N suffixes.\n";
       std::cout << "--preview opens a live runtime preview window.\n";
       std::cout << "--compare[=PATH] writes a side-by-side original/result comparison image.\n";
@@ -737,8 +737,6 @@ int main(int argc, char *argsRaw[])
       throw std::runtime_error("--preview does not support --benchmark");
    if (benchmarkRepeats > 1 && !runtimeMode)
       throw std::runtime_error("--benchmark-repeats currently requires --runtime");
-   if (benchmarkRepeats > 1 && chain_times > 0)
-      throw std::runtime_error("--benchmark-repeats does not support chained runtime execution yet");
    if (benchmarkRepeats > 1 && !emitFramesPath.empty())
       throw std::runtime_error("--benchmark-repeats does not support --emit-frames");
 
@@ -898,6 +896,9 @@ int main(int argc, char *argsRaw[])
       double runtimeBenchmarkFirstExecuteMillis = 0.0;
       double runtimeBenchmarkLastCompileMillis = 0.0;
       double runtimeBenchmarkLastExecuteMillis = 0.0;
+      int runtimeBenchmarkFirstIterations = 0;
+      int runtimeBenchmarkLastIterations = 0;
+      int runtimeBenchmarkIterations = 0;
       RuntimeInputState runtimeInputState;
 
       auto runSingleRuntimePass = [&](double iterValue,
@@ -1044,80 +1045,108 @@ int main(int argc, char *argsRaw[])
       }
       else if (chain_times > 0)
       {
-         if (hasIterateState)
+         const int runtimeChainRepeats = benchmark ? benchmarkRepeats : 1;
+         const Cell &stateArgsCell = effectiveCode.list[0];
+         if (stateArgsCell.list.size() != 1)
+            throw std::runtime_error((hasIterateUntil ? "iterate-until" : "iterate-state") +
+                                     std::string(" step program must take exactly one state argument"));
+         if (hasIterateUntil)
          {
-            const Cell &initArgsCell = iterateStateInit.list[0];
-            const Cell &stateArgsCell = effectiveCode.list[0];
-            if (stateArgsCell.list.size() != 1)
-               throw std::runtime_error((hasIterateUntil ? "iterate-until" : "iterate-state") +
-                                        std::string(" step program must take exactly one state argument"));
-            if (hasIterateUntil)
-            {
-               const Cell &doneArgsCell = iterateUntilDone.list[0];
-               if (doneArgsCell.list.size() != 1)
-                  throw std::runtime_error("iterate-until done program must take exactly one state argument");
-            }
-            if (initArgsCell.list.size() != inputImages.size())
-               throw std::runtime_error((hasIterateUntil ? "iterate-until" : "iterate-state") +
-                                        std::string(" init input count does not match program arguments"));
-
-            std::map<std::string, runtime::Value> initBindings;
-            for (size_t idx = 0; idx < initArgsCell.list.size(); ++idx)
-               initBindings[runtimeArgumentBindingName(initArgsCell.list[idx], idx)] = evaluator.imageValue(inputImages[idx]);
-            initBindings["iter"] = runtime::Value::numberValue(0.0);
-            addRuntimeInputBindings(&initBindings, runtimeInputState, 0.0, 0.0);
-            runtimeState = runRuntimeProgram(evaluator, iterateStateInit, initBindings);
-            hasRuntimeState = true;
+            const Cell &doneArgsCell = iterateUntilDone.list[0];
+            if (doneArgsCell.list.size() != 1)
+               throw std::runtime_error("iterate-until done program must take exactly one state argument");
          }
-         else
+
+         for (int repeat = 0; repeat < runtimeChainRepeats; ++repeat)
          {
-            if (inputImages.size() != 1)
+            double repeatCompileMillis = 0.0;
+            double repeatExecuteMillis = 0.0;
+            int repeatIterationsExecuted = 0;
+
+            if (hasIterateState)
             {
-               std::cerr << "--runtime iterate/chain execution currently supports a single input image unless you use iterate-state." << std::endl;
-               return 1;
+               const Cell &initArgsCell = iterateStateInit.list[0];
+               if (initArgsCell.list.size() != inputImages.size())
+                  throw std::runtime_error((hasIterateUntil ? "iterate-until" : "iterate-state") +
+                                           std::string(" init input count does not match program arguments"));
+
+               std::map<std::string, runtime::Value> initBindings;
+               for (size_t idx = 0; idx < initArgsCell.list.size(); ++idx)
+                  initBindings[runtimeArgumentBindingName(initArgsCell.list[idx], idx)] = evaluator.imageValue(inputImages[idx]);
+               initBindings["iter"] = runtime::Value::numberValue(0.0);
+               addRuntimeInputBindings(&initBindings, runtimeInputState, 0.0, 0.0);
+               runtimeState = runRuntimeProgram(evaluator, iterateStateInit, initBindings);
+               hasRuntimeState = true;
+            }
+            else
+            {
+               if (inputImages.size() != 1)
+               {
+                  std::cerr << "--runtime iterate/chain execution currently supports a single input image unless you use iterate-state." << std::endl;
+                  return 1;
+               }
+
+               runtimeState = evaluator.imageValue(inputImages[0]);
+               hasRuntimeState = true;
             }
 
-            runtimeState = evaluator.imageValue(inputImages[0]);
-            hasRuntimeState = true;
-         }
-         for (int iter = 1; iter <= chain_times; ++iter)
-         {
-            evaluator.clearExecutionTrace();
-            std::map<std::string, runtime::Value> bindings;
-            bindings[runtimeArgumentBindingName(effectiveCode.list[0].list[0], 0)] = runtimeState;
-            bindings["iter"] = runtime::Value::numberValue(static_cast<double>(iter));
-            addRuntimeInputBindings(&bindings, runtimeInputState, 0.0, 0.0);
-            auto passStart = std::chrono::steady_clock::now();
-            runtimeState = runRuntimeProgram(evaluator, effectiveCode, bindings);
-            auto passEnd = std::chrono::steady_clock::now();
-            hasRuntimeState = true;
-            runtimeIterationsExecuted = iter;
-            RuntimeTraceMetrics traceMetrics = collectRuntimeTraceMetrics(evaluator.executionTrace());
-            runtimeBenchmarkCompileMillis += traceMetrics.compileMillis;
-            runtimeBenchmarkExecuteMillis +=
-                std::chrono::duration_cast<std::chrono::microseconds>(passEnd - passStart).count() / 1000.0;
-
-            std::unique_ptr<Image> nextImage = tryCopyRuntimeImage(runtimeState);
-            if (!nextImage)
-               throw std::runtime_error("Runtime chained execution requires the program to return an image or a tuple whose first element is an image");
-
-            runtimeImageResult.reset(new Image(copyImage(*nextImage)));
-            hasImageResult = true;
-
-            if (!emitFramesPath.empty())
-               writeDisplayImage(*nextImage, makeChainedFramePath(emitFramesPath, iter));
-
-            if (hasIterateUntil)
+            for (int iter = 1; iter <= chain_times; ++iter)
             {
-               std::map<std::string, runtime::Value> doneBindings;
-               doneBindings[runtimeArgumentBindingName(iterateUntilDone.list[0].list[0], 0)] = runtimeState;
-               doneBindings["iter"] = runtime::Value::numberValue(static_cast<double>(iter));
-               addRuntimeInputBindings(&doneBindings, runtimeInputState, 0.0, 0.0);
-               runtime::Value doneValue = runRuntimeProgram(evaluator, iterateUntilDone, doneBindings);
-               if (!doneValue.isNumber())
-                  throw std::runtime_error("iterate-until done program must return a number");
-               if (doneValue.number != 0.0)
-                  break;
+               evaluator.clearExecutionTrace();
+               std::map<std::string, runtime::Value> bindings;
+               bindings[runtimeArgumentBindingName(stateArgsCell.list[0], 0)] = runtimeState;
+               bindings["iter"] = runtime::Value::numberValue(static_cast<double>(iter));
+               addRuntimeInputBindings(&bindings, runtimeInputState, 0.0, 0.0);
+               auto passStart = std::chrono::steady_clock::now();
+               runtimeState = runRuntimeProgram(evaluator, effectiveCode, bindings);
+               auto passEnd = std::chrono::steady_clock::now();
+               hasRuntimeState = true;
+               runtimeIterationsExecuted = iter;
+               repeatIterationsExecuted = iter;
+               RuntimeTraceMetrics traceMetrics = collectRuntimeTraceMetrics(evaluator.executionTrace());
+               double passExecuteMillis =
+                   std::chrono::duration_cast<std::chrono::microseconds>(passEnd - passStart).count() / 1000.0;
+               repeatCompileMillis += traceMetrics.compileMillis;
+               repeatExecuteMillis += passExecuteMillis;
+               runtimeBenchmarkCompileMillis += traceMetrics.compileMillis;
+               runtimeBenchmarkExecuteMillis += passExecuteMillis;
+               ++runtimeBenchmarkIterations;
+
+               std::unique_ptr<Image> nextImage = tryCopyRuntimeImage(runtimeState);
+               if (!nextImage)
+                  throw std::runtime_error("Runtime chained execution requires the program to return an image or a tuple whose first element is an image");
+
+               runtimeImageResult.reset(new Image(copyImage(*nextImage)));
+               hasImageResult = true;
+
+               if (!emitFramesPath.empty())
+                  writeDisplayImage(*nextImage, makeChainedFramePath(emitFramesPath, iter));
+
+               if (hasIterateUntil)
+               {
+                  std::map<std::string, runtime::Value> doneBindings;
+                  doneBindings[runtimeArgumentBindingName(iterateUntilDone.list[0].list[0], 0)] = runtimeState;
+                  doneBindings["iter"] = runtime::Value::numberValue(static_cast<double>(iter));
+                  addRuntimeInputBindings(&doneBindings, runtimeInputState, 0.0, 0.0);
+                  runtime::Value doneValue = runRuntimeProgram(evaluator, iterateUntilDone, doneBindings);
+                  if (!doneValue.isNumber())
+                     throw std::runtime_error("iterate-until done program must return a number");
+                  if (doneValue.number != 0.0)
+                     break;
+               }
+            }
+
+            if (benchmark && runtimeChainRepeats > 1)
+            {
+               if (repeat == 0)
+               {
+                  runtimeBenchmarkFirstCompileMillis = repeatCompileMillis;
+                  runtimeBenchmarkFirstExecuteMillis = repeatExecuteMillis;
+                  runtimeBenchmarkFirstIterations = repeatIterationsExecuted;
+               }
+               runtimeBenchmarkLastCompileMillis = repeatCompileMillis;
+               runtimeBenchmarkLastExecuteMillis = repeatExecuteMillis;
+               runtimeBenchmarkLastIterations = repeatIterationsExecuted;
             }
          }
       }
@@ -1206,21 +1235,41 @@ int main(int argc, char *argsRaw[])
 
       if (benchmark)
       {
-         int benchmarkIterations = chain_times > 0 ? runtimeIterationsExecuted : benchmarkRepeats;
+         int benchmarkIterations = chain_times > 0 ? runtimeBenchmarkIterations : benchmarkRepeats;
          double averageMillis = benchmarkIterations > 0 ? runtimeBenchmarkExecuteMillis / benchmarkIterations : 0.0;
          std::cout << "benchmark.compile_ms=" << runtimeBenchmarkCompileMillis << std::endl;
          std::cout << "benchmark.execute_ms=" << runtimeBenchmarkExecuteMillis << std::endl;
          std::cout << "benchmark.iterations=" << benchmarkIterations << std::endl;
-         std::cout << "benchmark.mode=" << (hasIterateUntil ? "runtime-until"
-                                                            : (chain_times > 0 ? "runtime-chain"
-                                                                               : (benchmarkRepeats > 1 ? "runtime-repeat" : "runtime"))) << std::endl;
+         std::cout << "benchmark.mode=" << (hasIterateUntil
+                                                ? (benchmarkRepeats > 1 ? "runtime-until-repeat" : "runtime-until")
+                                                : (chain_times > 0
+                                                       ? (benchmarkRepeats > 1 ? "runtime-chain-repeat" : "runtime-chain")
+                                                       : (benchmarkRepeats > 1 ? "runtime-repeat" : "runtime"))) << std::endl;
          std::cout << "benchmark.avg_iter_ms=" << averageMillis << std::endl;
          if (benchmarkRepeats > 1)
          {
-            std::cout << "benchmark.first_compile_ms=" << runtimeBenchmarkFirstCompileMillis << std::endl;
-            std::cout << "benchmark.first_execute_ms=" << runtimeBenchmarkFirstExecuteMillis << std::endl;
-            std::cout << "benchmark.last_compile_ms=" << runtimeBenchmarkLastCompileMillis << std::endl;
-            std::cout << "benchmark.last_execute_ms=" << runtimeBenchmarkLastExecuteMillis << std::endl;
+            if (chain_times > 0)
+            {
+               double firstRepeatAverageMillis =
+                   runtimeBenchmarkFirstIterations > 0 ? runtimeBenchmarkFirstExecuteMillis / runtimeBenchmarkFirstIterations : 0.0;
+               double lastRepeatAverageMillis =
+                   runtimeBenchmarkLastIterations > 0 ? runtimeBenchmarkLastExecuteMillis / runtimeBenchmarkLastIterations : 0.0;
+               std::cout << "benchmark.first_repeat_compile_ms=" << runtimeBenchmarkFirstCompileMillis << std::endl;
+               std::cout << "benchmark.first_repeat_execute_ms=" << runtimeBenchmarkFirstExecuteMillis << std::endl;
+               std::cout << "benchmark.first_repeat_iterations=" << runtimeBenchmarkFirstIterations << std::endl;
+               std::cout << "benchmark.first_repeat_avg_iter_ms=" << firstRepeatAverageMillis << std::endl;
+               std::cout << "benchmark.last_repeat_compile_ms=" << runtimeBenchmarkLastCompileMillis << std::endl;
+               std::cout << "benchmark.last_repeat_execute_ms=" << runtimeBenchmarkLastExecuteMillis << std::endl;
+               std::cout << "benchmark.last_repeat_iterations=" << runtimeBenchmarkLastIterations << std::endl;
+               std::cout << "benchmark.last_repeat_avg_iter_ms=" << lastRepeatAverageMillis << std::endl;
+            }
+            else
+            {
+               std::cout << "benchmark.first_compile_ms=" << runtimeBenchmarkFirstCompileMillis << std::endl;
+               std::cout << "benchmark.first_execute_ms=" << runtimeBenchmarkFirstExecuteMillis << std::endl;
+               std::cout << "benchmark.last_compile_ms=" << runtimeBenchmarkLastCompileMillis << std::endl;
+               std::cout << "benchmark.last_execute_ms=" << runtimeBenchmarkLastExecuteMillis << std::endl;
+            }
          }
       }
 

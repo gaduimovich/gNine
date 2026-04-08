@@ -144,6 +144,8 @@ run_one() {
   local png_file="${build_dir}/${label}.png"
   local benchmark_flag="--times=${iterations}"
 
+  printf "[%s] starting %s (%s, %s iterations)\n" "${arch_name}" "${label}" "${mode}" "${iterations}" >&2
+
   if [[ "${mode}" == "chain" ]]; then
     benchmark_flag="--chain-times=${iterations}"
   fi
@@ -156,7 +158,10 @@ run_one() {
     ${arch_prefix} ./gnine ${runtime_flag} "../${example_path}" ${input_args} "$(basename "${png_file}")" "${benchmark_flag}" --benchmark
   ) | tee "${log_file}" >/dev/null
 
-  extract_metric "benchmark.execute_ms" "${log_file}"
+  local execute_ms
+  execute_ms="$(extract_metric "benchmark.execute_ms" "${log_file}")"
+  printf "[%s] finished %s: %s ms\n" "${arch_name}" "${label}" "${execute_ms}" >&2
+  printf "%s" "${execute_ms}"
 }
 
 require_positive_int "${REPEAT_TIMES}" "--repeat-times"
