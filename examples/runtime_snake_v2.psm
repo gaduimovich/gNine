@@ -4,223 +4,198 @@
 ; This version keeps the snake body in an image, so length is no longer
 ; capped by unrolled tuple fields. The display is grid-scale by design.
 
-(iterate-until 100
-  (()
-    (define W 18)
-    (define H 18)
-    (define board-center 8.5)
-    (define board-half 8.5)
-    (define food-x-of
-      (lambda (idx)
-        (if (== idx 0) 11
-          (if (== idx 1) 14
-            (if (== idx 2) 14
-              (if (== idx 3) 7
-                (if (== idx 4) 7
-                  (if (== idx 5) 15
-                    (if (== idx 6) 15
-                      (if (== idx 7) 3 -10))))))))))
-    (define food-y-of
-      (lambda (idx)
-        (if (== idx 0) 9
-          (if (== idx 1) 9
-            (if (== idx 2) 4
-              (if (== idx 3) 4
-                (if (== idx 4) 13
-                  (if (== idx 5) 13
-                    (if (== idx 6) 3
-                      (if (== idx 7) 3 -10))))))))))
+ (()
+  (define W 18)
+  (define H 18)
+  (define board-center 8.5)
+  (define board-half 8.5)
+  (define food-x-of
+    (lambda (idx)
+      (if (== idx 0) 11
+        (if (== idx 1) 14
+          (if (== idx 2) 14
+            (if (== idx 3) 7
+              (if (== idx 4) 7
+                (if (== idx 5) 15
+                  (if (== idx 6) 15
+                    (if (== idx 7) 3 -10))))))))))
+  (define food-y-of
+    (lambda (idx)
+      (if (== idx 0) 9
+        (if (== idx 1) 9
+          (if (== idx 2) 4
+            (if (== idx 3) 4
+              (if (== idx 4) 13
+                (if (== idx 5) 13
+                  (if (== idx 6) 3
+                    (if (== idx 7) 3 -10))))))))))
 
-    (define len 3)
-    (define head-x 6)
-    (define head-y 9)
-    (define dx 1)
-    (define dy 0)
-    (define food-index 0)
-    (define move-count 2)
+  (iterate-until 100
+    (()
+      (define len 3)
+      (define head-x 6)
+      (define head-y 9)
+      (define dx 1)
+      (define dy 0)
+      (define food-index 0)
+      (define move-count 2)
 
-    (define food-x (food-x-of food-index))
-    (define food-y (food-y-of food-index))
+      (define food-x (food-x-of food-index))
+      (define food-y (food-y-of food-index))
 
-    (define trail
-      (canvas W H 3
-        (max
-          (if (and (== j head-x) (== i head-y)) 2 0)
-          (if (and (== j 5) (== i 9)) 1 0)
-          (if (and (== j 4) (== i 9)) 0 0))))
-
-    (define base-frame
-      (canvas W H 3
-        (max
-          (if (== c 0) 0.02
-            (if (== c 1) 0.03 0.05))
-          (* (draw-rect board-center board-center board-half board-half 1.0)
-             (if (== c 0) 0.05
-               (if (== c 1) 0.09 0.07)))
-          (* (draw-rect food-x food-y 0.45 0.45 1.0)
-             (if (== c 0) 1.00
-               (if (== c 1) 0.34 0.14)))
-          (* (draw-rect head-x head-y 0.45 0.45 1.0)
-             (if (== c 0) 0.18
-               (if (== c 1) 0.95 0.30))))))
-
-    (define frame
-      (zip-image
-        (lambda (base body)
+      (define trail
+        (canvas W H
           (max
-            base
-            (* (if (> body (- move-count len)) 1 0)
-               (if (== c 0) 0.08
-                 (if (== c 1) 0.55 0.16)))
-            (* (clamp (/ (+ 1 (- body (- move-count len))) 6) 0 1)
-               (if (== c 0) 0.20
-                 (if (== c 1) 0.95 0.30)))))
-        base-frame trail))
+            (if (and (== j head-x) (== i head-y)) 2 0)
+            (if (and (== j 5) (== i 9)) 1 0)
+            (if (and (== j 4) (== i 9)) 0 0))))
 
-    (tuple frame 0 1 len head-x head-y dx dy move-count trail food-index))
-
-  (((frame tick alive len head-x head-y dx dy move-count trail food-index))
-
-    (define W 18)
-    (define H 18)
-    (define board-center 8.5)
-    (define board-half 8.5)
-    (define food-x-of
-      (lambda (idx)
-        (if (== idx 0) 11
-          (if (== idx 1) 14
-            (if (== idx 2) 14
-              (if (== idx 3) 7
-                (if (== idx 4) 7
-                  (if (== idx 5) 15
-                    (if (== idx 6) 15
-                      (if (== idx 7) 3 -10))))))))))
-    (define food-y-of
-      (lambda (idx)
-        (if (== idx 0) 9
-          (if (== idx 1) 9
-            (if (== idx 2) 4
-              (if (== idx 3) 4
-                (if (== idx 4) 13
-                  (if (== idx 5) 13
-                    (if (== idx 6) 3
-                      (if (== idx 7) 3 -10))))))))))
-
-    (define next-tick (+ tick 1))
-    (define want-up (or key-up key-w))
-    (define want-down (or key-down key-s))
-    (define want-left (or key-left key-a))
-    (define want-right (or key-right key-d))
-
-    (define desired-dx
-      (if want-up 0
-        (if want-down 0
-          (if want-left -1
-            (if want-right 1 dx)))))
-    (define desired-dy
-      (if want-up -1
-        (if want-down 1
-          (if want-left 0
-            (if want-right 0 dy)))))
-
-    (define reversed
-      (and (== desired-dx (- dx))
-           (== desired-dy (- dy))))
-
-    (define step-dx (if reversed dx desired-dx))
-    (define step-dy (if reversed dy desired-dy))
-
-    (define move-now
-      (and (> alive 0)
-           (== (int (/ next-tick 4)) (/ next-tick 4))))
-
-    (define food-phase
-      (- food-index (* 8 (int (/ food-index 8)))))
-    (define food-x (food-x-of food-phase))
-    (define food-y (food-y-of food-phase))
-
-    (define next-head-x
-      (if move-now (+ head-x step-dx) head-x))
-    (define next-head-y
-      (if move-now (+ head-y step-dy) head-y))
-    (define next-move-count
-      (+ move-count (if move-now 1 0)))
-
-    (define ate
-      (and move-now
-           (== next-head-x food-x)
-           (== next-head-y food-y)))
-
-    (define wall-hit
-      (and move-now
-           (or (< next-head-x 0)
-               (>= next-head-x W)
-               (< next-head-y 0)
-               (>= next-head-y H))))
-    (define hit-tail
-      (and move-now
-           (> (sample-image trail next-head-x next-head-y)
-              (- next-move-count (+ len (if ate 1 0))))))
-
-    (define next-alive
-      (if (or wall-hit hit-tail) 0 alive))
-    (define next-len
-      (+ len (if ate 1 0)))
-    (define next-food-index
-      (if ate (+ food-index 1) food-index))
-
-    (define next-food-phase
-      (- next-food-index (* 8 (int (/ next-food-index 8)))))
-    (define next-food-x (food-x-of next-food-phase))
-    (define next-food-y (food-y-of next-food-phase))
-
-    (define next-trail
-      (map-image
-        (lambda (x)
-          (if (and move-now (== j next-head-x) (== i next-head-y))
-            next-move-count
-            x))
-        trail))
-
-    (define base-frame
-      (canvas W H 3
-        (max
-          (if (== c 0) 0.02
-            (if (== c 1) 0.03 0.05))
-          (* (draw-rect board-center board-center board-half board-half 1.0)
-             (if (== c 0) 0.05
-               (if (== c 1) 0.09 0.07)))
-          (* (draw-rect next-food-x next-food-y 0.45 0.45 1.0)
-             (if (== c 0) 1.00
-               (if (== c 1) 0.34 0.14)))
-          (* (draw-rect next-head-x next-head-y 0.45 0.45 1.0)
-             (if (== next-alive 0)
-               (if (== c 0) 0.95
-                 (if (== c 1) 0.10 0.10))
+      (define base-frame
+        (canvas W H 3
+          (max
+            (if (== c 0) 0.02
+              (if (== c 1) 0.03 0.05))
+            (* (draw-rect board-center board-center board-half board-half 1.0)
+               (if (== c 0) 0.05
+                 (if (== c 1) 0.09 0.07)))
+            (* (draw-rect food-x food-y 0.45 0.45 1.0)
+               (if (== c 0) 1.00
+                 (if (== c 1) 0.34 0.14)))
+            (* (draw-rect head-x head-y 0.45 0.45 1.0)
                (if (== c 0) 0.18
-                 (if (== c 1) 0.95 0.30))))
-          (if (== next-alive 0)
-            (* (draw-rect board-center board-center 3.0 1.0 1.0)
-               (if (== c 0) 0.60
-                 (if (== c 1) 0.08 0.08)))
-            0))))
+                 (if (== c 1) 0.95 0.30))))))
 
-    (define next-frame
-      (zip-image
-        (lambda (base body)
+      (define frame
+        (zip-image
+          (lambda (base body)
+            (max
+              base
+              (* (if (> body (- move-count len)) 1 0)
+                 (if (== c 0) 0.08
+                   (if (== c 1) 0.55 0.16)))
+              (* (clamp (/ (+ 1 (- body (- move-count len))) 6) 0 1)
+                 (if (== c 0) 0.20
+                   (if (== c 1) 0.95 0.30)))))
+          base-frame trail))
+
+      (tuple frame 0 1 len head-x head-y dx dy move-count trail food-index))
+
+    (((frame tick alive len head-x head-y dx dy move-count trail food-index))
+      (define next-tick (+ tick 1))
+      (define want-up (or key-up key-w))
+      (define want-down (or key-down key-s))
+      (define want-left (or key-left key-a))
+      (define want-right (or key-right key-d))
+
+      (define desired-dx
+        (if want-up 0
+          (if want-down 0
+            (if want-left -1
+              (if want-right 1 dx)))))
+      (define desired-dy
+        (if want-up -1
+          (if want-down 1
+            (if want-left 0
+              (if want-right 0 dy)))))
+
+      (define reversed
+        (and (== desired-dx (- dx))
+             (== desired-dy (- dy))))
+
+      (define step-dx (if reversed dx desired-dx))
+      (define step-dy (if reversed dy desired-dy))
+
+      (define move-now
+        (and (> alive 0)
+             (== (int (/ next-tick 4)) (/ next-tick 4))))
+
+      (define food-phase
+        (- food-index (* 8 (int (/ food-index 8)))))
+      (define food-x (food-x-of food-phase))
+      (define food-y (food-y-of food-phase))
+
+      (define next-head-x
+        (if move-now (+ head-x step-dx) head-x))
+      (define next-head-y
+        (if move-now (+ head-y step-dy) head-y))
+      (define next-move-count
+        (+ move-count (if move-now 1 0)))
+
+      (define ate
+        (and move-now
+             (== next-head-x food-x)
+             (== next-head-y food-y)))
+
+      (define wall-hit
+        (and move-now
+             (or (< next-head-x 0)
+                 (>= next-head-x W)
+                 (< next-head-y 0)
+                 (>= next-head-y H))))
+      (define hit-tail
+        (and move-now
+             (> (sample-image trail next-head-x next-head-y)
+                (- next-move-count (+ len (if ate 1 0))))))
+
+      (define next-alive
+        (if (or wall-hit hit-tail) 0 alive))
+      (define next-len
+        (+ len (if ate 1 0)))
+      (define next-food-index
+        (if ate (+ food-index 1) food-index))
+
+      (define next-food-phase
+        (- next-food-index (* 8 (int (/ next-food-index 8)))))
+      (define next-food-x (food-x-of next-food-phase))
+      (define next-food-y (food-y-of next-food-phase))
+
+      (define next-trail
+        (map-image
+          (lambda (x)
+            (if (and move-now (== j next-head-x) (== i next-head-y))
+              next-move-count
+              x))
+          trail))
+
+      (define base-frame
+        (canvas W H 3
           (max
-            base
-            (* (if (> body (- next-move-count next-len)) 1 0)
-               (if (== c 0) 0.08
-                 (if (== c 1) 0.55 0.16)))
-            (* (clamp (/ (+ 1 (- body (- next-move-count next-len))) 6) 0 1)
-               (if (== c 0) 0.20
-                 (if (== c 1) 0.95 0.30)))))
-        base-frame next-trail))
+            (if (== c 0) 0.02
+              (if (== c 1) 0.03 0.05))
+            (* (draw-rect board-center board-center board-half board-half 1.0)
+               (if (== c 0) 0.05
+                 (if (== c 1) 0.09 0.07)))
+            (* (draw-rect next-food-x next-food-y 0.45 0.45 1.0)
+               (if (== c 0) 1.00
+                 (if (== c 1) 0.34 0.14)))
+            (* (draw-rect next-head-x next-head-y 0.45 0.45 1.0)
+               (if (== next-alive 0)
+                 (if (== c 0) 0.95
+                   (if (== c 1) 0.10 0.10))
+                 (if (== c 0) 0.18
+                   (if (== c 1) 0.95 0.30))))
+            (if (== next-alive 0)
+              (* (draw-rect board-center board-center 3.0 1.0 1.0)
+                 (if (== c 0) 0.60
+                   (if (== c 1) 0.08 0.08)))
+              0))))
 
-    (tuple next-frame next-tick next-alive next-len
-           next-head-x next-head-y step-dx step-dy next-move-count next-trail
-           next-food-index))
+      (define next-frame
+        (zip-image
+          (lambda (base body)
+            (max
+              base
+              (* (if (> body (- next-move-count next-len)) 1 0)
+                 (if (== c 0) 0.08
+                   (if (== c 1) 0.55 0.16)))
+              (* (clamp (/ (+ 1 (- body (- next-move-count next-len))) 6) 0 1)
+                 (if (== c 0) 0.20
+                   (if (== c 1) 0.95 0.30)))))
+          base-frame next-trail))
 
-  (((frame tick alive len head-x head-y dx dy move-count trail food-index))
-    0))
+      (tuple next-frame next-tick next-alive next-len
+             next-head-x next-head-y step-dx step-dy next-move-count next-trail
+             next-food-index))
+
+    (((frame tick alive len head-x head-y dx dy move-count trail food-index))
+      0)))

@@ -107,6 +107,7 @@ namespace gnine
          gnine::Image *image;
 
          explicit ImageObject(const gnine::Image &source);
+         explicit ImageObject(gnine::Image &&source);
          ~ImageObject() override;
          void trace(class Heap &heap) override;
       };
@@ -145,6 +146,7 @@ namespace gnine
                                         const Cell &body,
                                         EnvironmentObject *env);
          ImageObject *allocateImage(const gnine::Image &image);
+         ImageObject *allocateImage(gnine::Image &&image);
          TupleObject *allocateTuple(const std::vector<Value> &values);
 
          void addRoot(Value *slot);
@@ -188,6 +190,7 @@ namespace gnine
          Cell normalizeProgram(const Cell &program);
          Cell requireExpr(const Value &value, const std::string &context) const;
          Value imageValue(const gnine::Image &image);
+         Value imageValue(gnine::Image &&image);
          void clearExecutionTrace();
          const std::vector<std::string> &executionTrace() const;
 

@@ -207,6 +207,60 @@ int main()
 
       {
          gnine::runtime::Evaluator evaluator;
+         gnine::Image trail(2, 2);
+         trail(0, 0) = 0.1;
+         trail(0, 1) = 0.2;
+         trail(1, 0) = 0.3;
+         trail(1, 1) = 0.4;
+
+         gnine::Image frame(2, 2, 2, 3);
+         frame(0, 0, 0) = 1.0;
+         frame(0, 1, 0) = 2.0;
+         frame(1, 0, 0) = 3.0;
+         frame(1, 1, 0) = 4.0;
+         frame(0, 0, 1) = 10.0;
+         frame(0, 1, 1) = 20.0;
+         frame(1, 0, 1) = 30.0;
+         frame(1, 1, 1) = 40.0;
+         frame(0, 0, 2) = 100.0;
+         frame(0, 1, 2) = 200.0;
+         frame(1, 0, 2) = 300.0;
+         frame(1, 1, 2) = 400.0;
+
+         std::map<std::string, gnine::runtime::Value> bindings;
+         bindings["trail"] = evaluator.imageValue(trail);
+         bindings["frame"] = evaluator.imageValue(frame);
+
+         gnine::runtime::Value result = evaluator.evaluateExpr(
+             gnine::cellFromString("(zip-image (lambda (age color) (+ color (* 0.5 age))) trail frame)"),
+             bindings);
+         require(result.isObject() && result.object->type == gnine::runtime::Object::Image,
+                 "zip-image should support grayscale-to-rgb broadcast");
+
+         gnine::runtime::ImageObject *imageObj = static_cast<gnine::runtime::ImageObject *>(result.object);
+         require(imageObj->image->channelCount() == 3,
+                 "zip-image broadcast result should preserve rgb output");
+         require(almostEqual(imageObj->image->operator()(0, 0, 0), 1.05) &&
+                 almostEqual(imageObj->image->operator()(0, 1, 0), 2.10) &&
+                 almostEqual(imageObj->image->operator()(1, 0, 0), 3.15) &&
+                 almostEqual(imageObj->image->operator()(1, 1, 0), 4.20) &&
+                 almostEqual(imageObj->image->operator()(0, 0, 1), 10.05) &&
+                 almostEqual(imageObj->image->operator()(0, 1, 1), 20.10) &&
+                 almostEqual(imageObj->image->operator()(1, 0, 1), 30.15) &&
+                 almostEqual(imageObj->image->operator()(1, 1, 1), 40.20) &&
+                 almostEqual(imageObj->image->operator()(0, 0, 2), 100.05) &&
+                 almostEqual(imageObj->image->operator()(0, 1, 2), 200.10) &&
+                 almostEqual(imageObj->image->operator()(1, 0, 2), 300.15) &&
+                 almostEqual(imageObj->image->operator()(1, 1, 2), 400.20),
+                 "zip-image broadcast should reuse grayscale values across rgb channels");
+         const std::vector<std::string> &trace = evaluator.executionTrace();
+         require(!trace.empty() &&
+                 contains(trace[0], "runtime.zip_image.mode=compiled"),
+                 "zip-image broadcast should stay on the compiled path");
+      }
+
+      {
+         gnine::runtime::Evaluator evaluator;
          gnine::Image imageA(2, 2);
          imageA(0, 0) = 0.0;
          imageA(0, 1) = 1.0;

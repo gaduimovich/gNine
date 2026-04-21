@@ -58,6 +58,28 @@ namespace gnine
             return index;
          }
 
+         int broadcastChannelIndex(const gnine::Image &image, int outputChannel)
+         {
+            return image.channelCount() == 1 ? 0 : outputChannel;
+         }
+
+         int requireCompatibleZipImageChannels(const gnine::Image &lhs,
+                                               const gnine::Image &rhs,
+                                               const std::string &context)
+         {
+            if (lhs.width() != rhs.width() || lhs.height() != rhs.height())
+               throw std::runtime_error(context + " requires matching image extents");
+
+            if (lhs.channelCount() != rhs.channelCount() &&
+                lhs.channelCount() != 1 &&
+                rhs.channelCount() != 1)
+            {
+               throw std::runtime_error(context + " requires matching channel counts or a grayscale input");
+            }
+
+            return std::max(lhs.channelCount(), rhs.channelCount());
+         }
+
          struct PixelContextScope
          {
             PixelContextScope(bool &hasPixelContext,
@@ -994,6 +1016,11 @@ namespace gnine
                    image->getData());
       }
 
+      ImageObject::ImageObject(gnine::Image &&source)
+         : Object(Image), image(new gnine::Image(std::move(source)))
+      {
+      }
+
       ImageObject::~ImageObject()
       {
          delete image;
@@ -1060,6 +1087,11 @@ namespace gnine
       ImageObject *Heap::allocateImage(const gnine::Image &image)
       {
          return allocateObject<ImageObject>(image);
+      }
+
+      ImageObject *Heap::allocateImage(gnine::Image &&image)
+      {
+         return allocateObject<ImageObject>(std::move(image));
       }
 
       TupleObject *Heap::allocateTuple(const std::vector<Value> &values)
@@ -1425,6 +1457,11 @@ namespace gnine
       Value Evaluator::imageValue(const gnine::Image &image)
       {
          return Value::objectValue(_heap.allocateImage(image));
+      }
+
+      Value Evaluator::imageValue(gnine::Image &&image)
+      {
+         return Value::objectValue(_heap.allocateImage(std::move(image)));
       }
 
       void Evaluator::clearExecutionTrace()
@@ -2279,7 +2316,7 @@ namespace gnine
                   resultImage.getChannelData(channel));
             }
 
-            *outResult = imageValue(resultImage);
+            *outResult = imageValue(std::move(resultImage));
             if (fallbackReason != NULL)
             {
                *fallbackReason = std::string("cache=") + (kernel.cacheHit ? "hit" : "miss") +
@@ -2364,7 +2401,8 @@ namespace gnine
 
             ImageArrayFunctionType *fn = kernel.fn;
             int iterValue = runtimeIterValue(closure->env);
-            gnine::Image resultImage(lhs.width(), lhs.height(), lhs.stride(), lhs.channelCount());
+            const int resultChannels = std::max(lhs.channelCount(), rhs.channelCount());
+            gnine::Image resultImage(lhs.width(), lhs.height(), lhs.stride(), resultChannels);
             if (_compiledScalarScratchWidth != lhs.width() ||
                 _compiledScalarScratchHeight != lhs.height())
             {
@@ -2390,7 +2428,7 @@ namespace gnine
             inputWidths.reserve(inputImages.size());
             inputHeights.reserve(inputImages.size());
             inputStrides.reserve(inputImages.size());
-            for (int channel = 0; channel < lhs.channelCount(); ++channel)
+            for (int channel = 0; channel < resultChannels; ++channel)
             {
                dataPtrs.clear();
                inputWidths.clear();
@@ -2399,7 +2437,7 @@ namespace gnine
                for (size_t idx = 0; idx < inputImages.size(); ++idx)
                {
                   const gnine::Image *image = inputImages[idx];
-                  int sourceChannel = image->channelCount() == 1 ? 0 : channel;
+                  int sourceChannel = broadcastChannelIndex(*image, channel);
                   dataPtrs.push_back(const_cast<double *>(image->getChannelData(sourceChannel)));
                   inputWidths.push_back(image->width());
                   inputHeights.push_back(image->height());
@@ -2413,7 +2451,7 @@ namespace gnine
                   resultImage.getChannelData(channel));
             }
 
-            *outResult = imageValue(resultImage);
+            *outResult = imageValue(std::move(resultImage));
             if (fallbackReason != NULL)
             {
                *fallbackReason = std::string("cache=") + (kernel.cacheHit ? "hit" : "miss") +
@@ -2487,7 +2525,7 @@ namespace gnine
             std::chrono::steady_clock::time_point interpretedEnd = std::chrono::steady_clock::now();
             traceExecution("runtime.map_image.mode=interpreted fallback=" + traceDetail +
                            " execute_ms=" + formatMillis(elapsedMillis(interpretedStart, interpretedEnd)));
-            return imageValue(resultImage);
+            return imageValue(std::move(resultImage));
          }
 
          std::chrono::steady_clock::time_point interpretedStart = std::chrono::steady_clock::now();
@@ -2521,7 +2559,7 @@ namespace gnine
          std::chrono::steady_clock::time_point interpretedEnd = std::chrono::steady_clock::now();
          traceExecution("runtime.map_image.mode=interpreted fallback=non_closure execute_ms=" +
                         formatMillis(elapsedMillis(interpretedStart, interpretedEnd)));
-         return imageValue(resultImage);
+         return imageValue(std::move(resultImage));
       }
 
       Value Evaluator::applyZipImage(const Value &callable,
@@ -2533,8 +2571,7 @@ namespace gnine
 
          const gnine::Image &lhs = *requireImageObject(args[0], context)->image;
          const gnine::Image &rhs = *requireImageObject(args[1], context)->image;
-         if (lhs.width() != rhs.width() || lhs.height() != rhs.height() || lhs.channelCount() != rhs.channelCount())
-            throw std::runtime_error(context + " requires matching image extents and channel counts");
+         const int outputChannels = requireCompatibleZipImageChannels(lhs, rhs, context);
 
          if (callable.isObject() && callable.object->type == Object::Closure)
          {
@@ -2550,8 +2587,8 @@ namespace gnine
             }
             std::chrono::steady_clock::time_point interpretedStart = std::chrono::steady_clock::now();
             traceExecution("runtime.zip_image.compiled_fallback=" + traceDetail);
-            gnine::Image resultImage(lhs.width(), lhs.height(), lhs.stride(), lhs.channelCount());
-            for (int channel = 0; channel < lhs.channelCount(); ++channel)
+            gnine::Image resultImage(lhs.width(), lhs.height(), lhs.stride(), outputChannels);
+            for (int channel = 0; channel < outputChannels; ++channel)
             {
                for (int row = 0; row < lhs.height(); ++row)
                {
@@ -2560,8 +2597,8 @@ namespace gnine
                      PixelContextScope pixelScope(_hasPixelContext, _currentRow, _currentCol, _currentChannel,
                                                   row, col, channel);
                      std::vector<Value> pixelArgs;
-                     pixelArgs.push_back(Value::numberValue(lhs(row, col, channel)));
-                     pixelArgs.push_back(Value::numberValue(rhs(row, col, channel)));
+                     pixelArgs.push_back(Value::numberValue(lhs(row, col, broadcastChannelIndex(lhs, channel))));
+                     pixelArgs.push_back(Value::numberValue(rhs(row, col, broadcastChannelIndex(rhs, channel))));
                      Value pixelValue = applyCallable(callable, pixelArgs, context);
                      if (!pixelValue.isNumber() && !_reportedNonNumericPixel)
                      {
@@ -2578,12 +2615,12 @@ namespace gnine
             std::chrono::steady_clock::time_point interpretedEnd = std::chrono::steady_clock::now();
             traceExecution("runtime.zip_image.mode=interpreted fallback=" + traceDetail +
                            " execute_ms=" + formatMillis(elapsedMillis(interpretedStart, interpretedEnd)));
-            return imageValue(resultImage);
+            return imageValue(std::move(resultImage));
          }
 
          std::chrono::steady_clock::time_point interpretedStart = std::chrono::steady_clock::now();
-         gnine::Image resultImage(lhs.width(), lhs.height(), lhs.stride(), lhs.channelCount());
-         for (int channel = 0; channel < lhs.channelCount(); ++channel)
+         gnine::Image resultImage(lhs.width(), lhs.height(), lhs.stride(), outputChannels);
+         for (int channel = 0; channel < outputChannels; ++channel)
          {
             for (int row = 0; row < lhs.height(); ++row)
             {
@@ -2592,8 +2629,8 @@ namespace gnine
                   PixelContextScope pixelScope(_hasPixelContext, _currentRow, _currentCol, _currentChannel,
                                                row, col, channel);
                   std::vector<Value> pixelArgs;
-                  pixelArgs.push_back(Value::numberValue(lhs(row, col, channel)));
-                  pixelArgs.push_back(Value::numberValue(rhs(row, col, channel)));
+                  pixelArgs.push_back(Value::numberValue(lhs(row, col, broadcastChannelIndex(lhs, channel))));
+                  pixelArgs.push_back(Value::numberValue(rhs(row, col, broadcastChannelIndex(rhs, channel))));
                   Value pixelValue = applyCallable(callable, pixelArgs, context);
                   if (!pixelValue.isNumber() && !_reportedNonNumericPixel)
                   {
@@ -2610,7 +2647,7 @@ namespace gnine
          std::chrono::steady_clock::time_point interpretedEnd = std::chrono::steady_clock::now();
          traceExecution("runtime.zip_image.mode=interpreted fallback=non_closure execute_ms=" +
                         formatMillis(elapsedMillis(interpretedStart, interpretedEnd)));
-         return imageValue(resultImage);
+         return imageValue(std::move(resultImage));
       }
 
       bool Evaluator::tryCompiledCanvas(int width,
@@ -2828,7 +2865,7 @@ namespace gnine
                          resultImage.getChannelData(1),
                          resultImage.getChannelData(2));
 
-               *outResult = imageValue(resultImage);
+               *outResult = imageValue(std::move(resultImage));
                if (fallbackReason != NULL)
                   *fallbackReason = std::string("cache=") + (allCacheHits ? "hit" : "miss") +
                                     " compile_ms=" + formatMillis(totalCompileMillis) +
@@ -2943,7 +2980,7 @@ namespace gnine
                          resultImage.getChannelData(channel));
             }
 
-            *outResult = imageValue(resultImage);
+            *outResult = imageValue(std::move(resultImage));
             if (fallbackReason != NULL)
                *fallbackReason = std::string("cache=") + (allCacheHits ? "hit" : "miss") +
                                  " compile_ms=" + formatMillis(totalCompileMillis);
@@ -3009,7 +3046,7 @@ namespace gnine
                         " height=" + std::to_string(height) +
                         " channels=" + std::to_string(channels) +
                         " execute_ms=" + formatMillis(elapsedMillis(start, end)));
-         return imageValue(resultImage);
+         return imageValue(std::move(resultImage));
       }
 
       void Evaluator::traceExecution(const std::string &entry)
