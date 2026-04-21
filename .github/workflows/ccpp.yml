@@ -33,7 +33,7 @@ jobs:
         run: cmake --build build --target gnine gnine_runtime_tests gnine_semantic_tests gnine_color_tests -j4
 
       - name: Run tests
-        run: ctest --test-dir build --output-on-failure
+        run: ctest --test-dir build --output-on-failure -R '^gnine_'
 
   benchmarks:
     if: github.event_name == 'pull_request'

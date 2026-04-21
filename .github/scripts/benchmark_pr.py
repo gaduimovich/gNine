@@ -49,7 +49,7 @@ BENCHMARKS = (
     ),
     BenchmarkCase(
         name="rgb_triptych",
-        tracked_metric="benchmark.last_repeat_avg_iter_ms",
+        tracked_metric="benchmark.avg_iter_ms",
         description="Runtime single-pass benchmark",
         command=(
             "--runtime",
@@ -63,7 +63,7 @@ BENCHMARKS = (
     ),
     BenchmarkCase(
         name="runtime_pong_v2",
-        tracked_metric="benchmark.last_repeat_avg_iter_ms",
+        tracked_metric="benchmark.avg_iter_ms",
         description="Runtime chained benchmark",
         command=(
             "--runtime",
@@ -77,7 +77,7 @@ BENCHMARKS = (
     ),
     BenchmarkCase(
         name="runtime_snake_v2",
-        tracked_metric="benchmark.last_repeat_avg_iter_ms",
+        tracked_metric="benchmark.avg_iter_ms",
         description="Runtime chained benchmark",
         command=(
             "--runtime",
