@@ -14,6 +14,7 @@
 #include <algorithm>
 #include <chrono>
 #include <cmath>
+#include <cstdint>
 #include <cstdlib>
 #include <deque>
 #include <fstream>
@@ -336,7 +337,13 @@ namespace gnine
                    name == "clamp" || name == "int" ||
                    name == "width" || name == "height" || name == "channels" ||
                    name == "if" || name == "lambda" || name == "map-image" ||
-                   name == "zip-image" || name == "canvas";
+                   name == "zip-image" || name == "canvas" ||
+                   name == "mod" || name == "floor" || name == "ceil" ||
+                   name == "sqrt" || name == "sin" || name == "cos" ||
+                   name == "pow" || name == "atan2" || name == "rand-of" ||
+                   name == "draw-line" ||
+                   name == "cond" || name == "let" || name == "let*" ||
+                   name == "begin" || name == "rgb" || name == "vec";
          }
 
          struct ScalarInputBinding
@@ -532,7 +539,7 @@ namespace gnine
          {
             for (EnvironmentObject *current = env; current != NULL; current = current->parent)
             {
-               std::map<std::string, Value>::const_iterator it = current->bindings.find("iter");
+               auto it = current->bindings.find("iter");
                if (it != current->bindings.end() && it->second.isNumber())
                   return static_cast<int>(it->second.number);
             }
@@ -652,18 +659,18 @@ namespace gnine
 
             for (EnvironmentObject *current = env; current != NULL; current = current->parent)
             {
-               std::map<std::string, Cell>::const_iterator sourceIt = current->sourceExprs.find(name);
+               auto sourceIt = current->sourceExprs.find(name);
                if (sourceIt != current->sourceExprs.end())
                {
                   if (!isLowerableCompiledScalarExpr(sourceIt->second))
                   {
-                     std::map<std::string, Value>::const_iterator bindingIt = current->bindings.find(name);
+                     auto bindingIt = current->bindings.find(name);
                      return bindingIt != current->bindings.end() && bindingIt->second.isNumber();
                   }
                   return exprHasOnlyDynamicCompiledSymbols(sourceIt->second, env, visited);
                }
 
-               std::map<std::string, Value>::const_iterator bindingIt = current->bindings.find(name);
+               auto bindingIt = current->bindings.find(name);
                if (bindingIt != current->bindings.end())
                {
                   if (bindingIt->second.isNumber())
@@ -728,11 +735,11 @@ namespace gnine
          {
             for (EnvironmentObject *current = env; current != NULL; current = current->parent)
             {
-               std::map<std::string, Value>::const_iterator bindingIt = current->bindings.find(name);
+               auto bindingIt = current->bindings.find(name);
                if (bindingIt == current->bindings.end())
                   continue;
                *outValue = bindingIt->second;
-               std::map<std::string, Cell>::const_iterator sourceIt = current->sourceExprs.find(name);
+               auto sourceIt = current->sourceExprs.find(name);
                *outSourceExpr = sourceIt == current->sourceExprs.end() ? NULL : &sourceIt->second;
                return true;
             }
@@ -989,7 +996,7 @@ namespace gnine
       void EnvironmentObject::trace(Heap &heap)
       {
          heap.markObject(parent);
-         for (std::map<std::string, Value>::const_iterator it = bindings.begin();
+         for (auto it = bindings.begin();
               it != bindings.end();
               ++it)
             heap.markValue(it->second);
@@ -1183,9 +1190,7 @@ namespace gnine
            _currentRow(0),
            _currentCol(0),
            _currentChannel(0),
-           _reportedNonNumericPixel(false),
-           _compiledScalarScratchWidth(-1),
-           _compiledScalarScratchHeight(-1)
+           _reportedNonNumericPixel(false)
       {
       }
 
@@ -1352,7 +1357,7 @@ namespace gnine
             for (size_t idx = 0; idx < rootedBindings.size(); ++idx)
                _heap.removeRoot(&rootedBindings[idx]);
             if (outBindings != NULL)
-               *outBindings = globalEnv->bindings;
+               outBindings->insert(globalEnv->bindings.begin(), globalEnv->bindings.end());
             return result;
          }
          catch (...)
@@ -1688,6 +1693,137 @@ namespace gnine
             return Value::exprValue(residual);
          }
 
+         if (expr.list[0].type == Cell::Symbol && expr.list[0].val == "cond")
+         {
+            for (size_t clauseIdx = 1; clauseIdx < expr.list.size(); ++clauseIdx)
+            {
+               const Cell &clause = expr.list[clauseIdx];
+               if (clause.type != Cell::List || clause.list.size() != 2)
+                  throw std::runtime_error("cond clauses must be of form (test expr)");
+               if (clause.list[0].type == Cell::Symbol && clause.list[0].val == "else")
+                  return eval(clause.list[1], env);
+               Value test = eval(clause.list[0], env);
+               Heap::Root testRoot(_heap, test);
+               if (test.isNumber())
+               {
+                  if (test.number != 0.0)
+                     return eval(clause.list[1], env);
+               }
+               else
+               {
+                  Value thenVal = eval(clause.list[1], env);
+                  Heap::Root thenRoot(_heap, thenVal);
+                  Cell restCond(Cell::List);
+                  restCond.list.push_back(Cell(Cell::Symbol, "cond"));
+                  for (size_t restIdx = clauseIdx + 1; restIdx < expr.list.size(); ++restIdx)
+                     restCond.list.push_back(expr.list[restIdx]);
+                  Value elseVal = restCond.list.size() > 1 ? eval(restCond, env) : Value::nil();
+                  Heap::Root elseRoot(_heap, elseVal);
+                  Cell residual(Cell::List);
+                  residual.list.push_back(Cell(Cell::Symbol, "if"));
+                  residual.list.push_back(requireExpr(test, "cond condition"));
+                  residual.list.push_back(requireExpr(thenVal, "cond then"));
+                  residual.list.push_back(requireExpr(elseVal, "cond else"));
+                  return Value::exprValue(residual);
+               }
+            }
+            return Value::nil();
+         }
+
+         if (expr.list[0].type == Cell::Symbol &&
+             (expr.list[0].val == "let" || expr.list[0].val == "let*"))
+         {
+            bool isStar = (expr.list[0].val == "let*");
+            if (expr.list.size() != 3 || expr.list[1].type != Cell::List)
+               throw std::runtime_error("let/let* must be of form (let ((x v) ...) body)");
+            const Cell &bindingsList = expr.list[1];
+            const Cell &letBody = expr.list[2];
+
+            Value letEnvValue = Value::objectValue(_heap.allocateEnvironment(env));
+            Heap::Root letEnvRoot(_heap, letEnvValue);
+            EnvironmentObject *letEnv = static_cast<EnvironmentObject *>(letEnvValue.object);
+
+            for (size_t bIdx = 0; bIdx < bindingsList.list.size(); ++bIdx)
+            {
+               const Cell &binding = bindingsList.list[bIdx];
+               if (binding.type != Cell::List || binding.list.size() != 2 ||
+                   binding.list[0].type != Cell::Symbol)
+                  throw std::runtime_error("let binding must be of form (name expr)");
+               Value bindVal = eval(binding.list[1], isStar ? letEnv : env);
+               Heap::Root bindRoot(_heap, bindVal);
+               letEnv->bindings[binding.list[0].val] = bindVal;
+            }
+            return eval(letBody, letEnv);
+         }
+
+         if (expr.list[0].type == Cell::Symbol && expr.list[0].val == "begin")
+         {
+            if (expr.list.size() < 2)
+               throw std::runtime_error("begin expects at least one expression");
+            Value result = Value::nil();
+            Heap::Root resultRoot(_heap, result);
+            for (size_t bIdx = 1; bIdx < expr.list.size(); ++bIdx)
+               result = eval(expr.list[bIdx], env);
+            return result;
+         }
+
+         if (expr.list[0].type == Cell::Symbol &&
+             (expr.list[0].val == "rgb" || expr.list[0].val == "vec"))
+         {
+            // In pixel context, select the channel-appropriate argument.
+            // Outside pixel context (symbolic/normalize path), rebuild the
+            // expression so VectorProgram lowering can see it.
+            std::vector<Value> rgbArgs(expr.list.size() - 1, Value::nil());
+            for (size_t idx = 0; idx < rgbArgs.size(); ++idx)
+               _heap.addRoot(&rgbArgs[idx]);
+            try
+            {
+               for (size_t idx = 1; idx < expr.list.size(); ++idx)
+                  rgbArgs[idx - 1] = eval(expr.list[idx], env);
+            }
+            catch (...)
+            {
+               for (size_t idx = 0; idx < rgbArgs.size(); ++idx)
+                  _heap.removeRoot(&rgbArgs[idx]);
+               throw;
+            }
+            Value rgbResult = Value::nil();
+            if (_hasPixelContext)
+            {
+               size_t ch = static_cast<size_t>(_currentChannel);
+               if (ch < rgbArgs.size())
+                  rgbResult = Value::numberValue(requireNumber(rgbArgs[ch], expr.list[0].val));
+               else if (!rgbArgs.empty())
+                  rgbResult = Value::numberValue(requireNumber(rgbArgs[0], expr.list[0].val));
+               else
+                  rgbResult = Value::numberValue(0.0);
+            }
+            else
+            {
+               // Rebuild symbolic expression so the VectorProgram / compiled
+               // canvas channel-specialization path can process it.
+               Cell rebuilt(Cell::List);
+               rebuilt.list.push_back(expr.list[0]);
+               bool anyNonNumber = false;
+               for (size_t idx = 0; idx < rgbArgs.size(); ++idx)
+                  if (!rgbArgs[idx].isNumber()) { anyNonNumber = true; break; }
+               if (!anyNonNumber)
+               {
+                  for (size_t idx = 0; idx < rgbArgs.size(); ++idx)
+                     rebuilt.list.push_back(doubleToCell(rgbArgs[idx].number));
+               }
+               else
+               {
+                  std::vector<Cell> exprArgs = requireExprArgs(rgbArgs, expr.list[0].val);
+                  rebuilt.list.insert(rebuilt.list.end(), exprArgs.begin(), exprArgs.end());
+               }
+               rgbResult = Value::exprValue(rebuilt);
+            }
+            for (size_t idx = 0; idx < rgbArgs.size(); ++idx)
+               _heap.removeRoot(&rgbArgs[idx]);
+            return rgbResult;
+         }
+
          std::vector<Value> args(expr.list.size() - 1, Value::nil());
          for (size_t idx = 0; idx < args.size(); ++idx)
             _heap.addRoot(&args[idx]);
@@ -1959,6 +2095,155 @@ namespace gnine
             return Value::numberValue(inside ? value : 0.0);
          }
 
+         if (builtinName == "mod")
+         {
+            if (args.size() != 2)
+               throw std::runtime_error("mod expects exactly two arguments");
+            double x = requireNumber(args[0], "mod");
+            double n = requireNumber(args[1], "mod");
+            if (n == 0.0)
+               throw std::runtime_error("mod: division by zero");
+            return Value::numberValue(x - n * std::floor(x / n));
+         }
+
+         if (builtinName == "floor")
+         {
+            if (args.size() != 1)
+               throw std::runtime_error("floor expects exactly one argument");
+            return Value::numberValue(std::floor(requireNumber(args[0], "floor")));
+         }
+
+         if (builtinName == "ceil")
+         {
+            if (args.size() != 1)
+               throw std::runtime_error("ceil expects exactly one argument");
+            return Value::numberValue(std::ceil(requireNumber(args[0], "ceil")));
+         }
+
+         if (builtinName == "sqrt")
+         {
+            if (args.size() != 1)
+               throw std::runtime_error("sqrt expects exactly one argument");
+            return Value::numberValue(std::sqrt(requireNumber(args[0], "sqrt")));
+         }
+
+         if (builtinName == "sin")
+         {
+            if (args.size() != 1)
+               throw std::runtime_error("sin expects exactly one argument");
+            return Value::numberValue(std::sin(requireNumber(args[0], "sin")));
+         }
+
+         if (builtinName == "cos")
+         {
+            if (args.size() != 1)
+               throw std::runtime_error("cos expects exactly one argument");
+            return Value::numberValue(std::cos(requireNumber(args[0], "cos")));
+         }
+
+         if (builtinName == "pow")
+         {
+            if (args.size() != 2)
+               throw std::runtime_error("pow expects exactly two arguments");
+            return Value::numberValue(std::pow(requireNumber(args[0], "pow"),
+                                               requireNumber(args[1], "pow")));
+         }
+
+         if (builtinName == "atan2")
+         {
+            if (args.size() != 2)
+               throw std::runtime_error("atan2 expects exactly two arguments");
+            return Value::numberValue(std::atan2(requireNumber(args[0], "atan2"),
+                                                 requireNumber(args[1], "atan2")));
+         }
+
+         if (builtinName == "rand-of")
+         {
+            if (args.size() != 1)
+               throw std::runtime_error("rand-of expects exactly one argument");
+            uint64_t seed = static_cast<uint64_t>(static_cast<int64_t>(requireNumber(args[0], "rand-of")));
+            seed ^= seed >> 30;
+            seed *= UINT64_C(0xbf58476d1ce4e5b9);
+            seed ^= seed >> 27;
+            seed *= UINT64_C(0x94d049bb133111eb);
+            seed ^= seed >> 31;
+            return Value::numberValue(static_cast<double>(seed >> 11) / static_cast<double>(UINT64_C(1) << 53));
+         }
+
+         if (builtinName == "draw-line")
+         {
+            if (args.size() != 6)
+               throw std::runtime_error("draw-line expects exactly six arguments (x1 y1 x2 y2 thickness value)");
+            if (!_hasPixelContext)
+               throw std::runtime_error("draw-line requires pixel context (canvas, map-image, or zip-image)");
+            double x1 = requireNumber(args[0], "draw-line");
+            double y1 = requireNumber(args[1], "draw-line");
+            double x2 = requireNumber(args[2], "draw-line");
+            double y2 = requireNumber(args[3], "draw-line");
+            double thickness = requireNumber(args[4], "draw-line");
+            double value = requireNumber(args[5], "draw-line");
+            double px = static_cast<double>(_currentCol);
+            double py = static_cast<double>(_currentRow);
+            double dx = x2 - x1;
+            double dy = y2 - y1;
+            double lenSq = dx * dx + dy * dy;
+            double distSq;
+            if (lenSq < 1e-12)
+            {
+               double ex = px - x1;
+               double ey = py - y1;
+               distSq = ex * ex + ey * ey;
+            }
+            else
+            {
+               double t = ((px - x1) * dx + (py - y1) * dy) / lenSq;
+               if (t < 0.0) t = 0.0;
+               if (t > 1.0) t = 1.0;
+               double cx = x1 + t * dx;
+               double cy = y1 + t * dy;
+               double ex = px - cx;
+               double ey = py - cy;
+               distSq = ex * ex + ey * ey;
+            }
+            double halfThick = thickness * 0.5;
+            return Value::numberValue(distSq <= halfThick * halfThick ? value : 0.0);
+         }
+
+         if (builtinName == "tuple-length")
+         {
+            if (args.size() != 1)
+               throw std::runtime_error("tuple-length expects exactly one argument");
+            return Value::numberValue(static_cast<double>(requireTupleObject(args[0], "tuple-length")->values.size()));
+         }
+
+         if (builtinName == "tuple-set")
+         {
+            if (args.size() != 3)
+               throw std::runtime_error("tuple-set expects exactly three arguments (tuple idx val)");
+            TupleObject *src = requireTupleObject(args[0], "tuple-set");
+            int index = static_cast<int>(requireNumber(args[1], "tuple-set"));
+            if (index < 0 || index >= static_cast<int>(src->values.size()))
+               throw std::runtime_error("tuple-set index out of range");
+            std::vector<Value> newValues(src->values);
+            newValues[static_cast<size_t>(index)] = args[2];
+            return Value::objectValue(_heap.allocateTuple(newValues));
+         }
+
+         if (builtinName == "tuple-slice")
+         {
+            if (args.size() != 3)
+               throw std::runtime_error("tuple-slice expects exactly three arguments (tuple start end)");
+            TupleObject *src = requireTupleObject(args[0], "tuple-slice");
+            int start = static_cast<int>(requireNumber(args[1], "tuple-slice"));
+            int end = static_cast<int>(requireNumber(args[2], "tuple-slice"));
+            int sz = static_cast<int>(src->values.size());
+            if (start < 0) start = 0;
+            if (end > sz) end = sz;
+            if (start > end) start = end;
+            std::vector<Value> sliced(src->values.begin() + start, src->values.begin() + end);
+            return Value::objectValue(_heap.allocateTuple(sliced));
+         }
+
          throw std::runtime_error("Unsupported runtime builtin: " + builtinName);
       }
 
@@ -2146,7 +2431,7 @@ namespace gnine
       {
          for (EnvironmentObject *current = env; current != NULL; current = current->parent)
          {
-            std::map<std::string, Value>::const_iterator it = current->bindings.find(name);
+            auto it = current->bindings.find(name);
             if (it != current->bindings.end())
             {
                *outValue = it->second;
@@ -2164,7 +2449,12 @@ namespace gnine
                 name == "not" || name == "min" || name == "max" || name == "abs" ||
                 name == "clamp" || name == "int" || name == "tuple" || name == "get" ||
                 name == "width" || name == "height" || name == "channels" || name == "sample-image" ||
-                name == "draw-rect" || name == "draw-circle";
+                name == "draw-rect" || name == "draw-circle" ||
+                name == "mod" || name == "floor" || name == "ceil" ||
+                name == "sqrt" || name == "sin" || name == "cos" ||
+                name == "pow" || name == "atan2" ||
+                name == "rand-of" || name == "draw-line" || name == "begin" ||
+                name == "tuple-length" || name == "tuple-set" || name == "tuple-slice";
       }
 
       bool Evaluator::allNumbers(const std::vector<Value> &args) const
@@ -2268,21 +2558,12 @@ namespace gnine
             ImageArrayFunctionType *fn = kernel.fn;
             int iterValue = runtimeIterValue(closure->env);
             gnine::Image resultImage(source.width(), source.height(), source.stride(), source.channelCount());
-            if (_compiledScalarScratchWidth != source.width() ||
-                _compiledScalarScratchHeight != source.height())
-            {
-               _compiledScalarScratch.clear();
-               _compiledScalarScratchWidth = source.width();
-               _compiledScalarScratchHeight = source.height();
-            }
-            while (_compiledScalarScratch.size() < scalarInputs.size())
-               _compiledScalarScratch.push_back(gnine::Image(source.width(), source.height()));
+            while (_compiledScalarImages.size() < scalarInputs.size())
+               _compiledScalarImages.push_back(gnine::Image(1, 1));
             for (size_t idx = 0; idx < scalarInputs.size(); ++idx)
             {
-               gnine::Image &scalarImage = _compiledScalarScratch[idx];
-               std::fill(scalarImage.getChannelData(0),
-                         scalarImage.getChannelData(0) + scalarImage.planeSize(),
-                         scalarInputs[idx].value);
+               gnine::Image &scalarImage = _compiledScalarImages[idx];
+               *scalarImage.getChannelData(0) = scalarInputs[idx].value;
                inputImages.push_back(&scalarImage);
             }
             std::vector<double *> dataPtrs;
@@ -2403,21 +2684,12 @@ namespace gnine
             int iterValue = runtimeIterValue(closure->env);
             const int resultChannels = std::max(lhs.channelCount(), rhs.channelCount());
             gnine::Image resultImage(lhs.width(), lhs.height(), lhs.stride(), resultChannels);
-            if (_compiledScalarScratchWidth != lhs.width() ||
-                _compiledScalarScratchHeight != lhs.height())
-            {
-               _compiledScalarScratch.clear();
-               _compiledScalarScratchWidth = lhs.width();
-               _compiledScalarScratchHeight = lhs.height();
-            }
-            while (_compiledScalarScratch.size() < scalarInputs.size())
-               _compiledScalarScratch.push_back(gnine::Image(lhs.width(), lhs.height()));
+            while (_compiledScalarImages.size() < scalarInputs.size())
+               _compiledScalarImages.push_back(gnine::Image(1, 1));
             for (size_t idx = 0; idx < scalarInputs.size(); ++idx)
             {
-               gnine::Image &scalarImage = _compiledScalarScratch[idx];
-               std::fill(scalarImage.getChannelData(0),
-                         scalarImage.getChannelData(0) + scalarImage.planeSize(),
-                         scalarInputs[idx].value);
+               gnine::Image &scalarImage = _compiledScalarImages[idx];
+               *scalarImage.getChannelData(0) = scalarInputs[idx].value;
                inputImages.push_back(&scalarImage);
             }
             std::vector<double *> dataPtrs;
@@ -2792,11 +3064,11 @@ namespace gnine
                       cachedSymbols != NULL
                           ? appendCompiledReferencedBindings(env, specializedBody, *cachedSymbols,
                                                             excludedNames, &seenBindings,
-                                                            &scalarInputs, &inputImages, false,
+                                                            &scalarInputs, &inputImages, true,
                                                             &argsCell, &program)
                           : appendCompiledReferencedBindings(env, specializedBody, symbols,
                                                             excludedNames, &seenBindings,
-                                                            &scalarInputs, &inputImages, false,
+                                                            &scalarInputs, &inputImages, true,
                                                             &argsCell, &program);
                   if (!appendedBindings)
                   {
@@ -2820,22 +3092,13 @@ namespace gnine
                totalCompileMillis += kernel.compileMillis;
                allCacheHits = allCacheHits && kernel.cacheHit;
 
-               if (_compiledScalarScratchWidth != width ||
-                   _compiledScalarScratchHeight != height)
-               {
-                  _compiledScalarScratch.clear();
-                  _compiledScalarScratchWidth = width;
-                  _compiledScalarScratchHeight = height;
-               }
-               while (_compiledScalarScratch.size() < scalarInputs.size())
-                  _compiledScalarScratch.push_back(gnine::Image(width, height));
+               while (_compiledScalarImages.size() < scalarInputs.size())
+                  _compiledScalarImages.push_back(gnine::Image(1, 1));
 
                for (size_t idx = 0; idx < scalarInputs.size(); ++idx)
                {
-                  gnine::Image &scalarImage = _compiledScalarScratch[idx];
-                  std::fill(scalarImage.getChannelData(0),
-                            scalarImage.getChannelData(0) + scalarImage.planeSize(),
-                            scalarInputs[idx].value);
+                  gnine::Image &scalarImage = _compiledScalarImages[idx];
+                  *scalarImage.getChannelData(0) = scalarInputs[idx].value;
                   inputImages.push_back(&scalarImage);
                }
 
@@ -2910,11 +3173,11 @@ namespace gnine
                    cachedSymbols != NULL
                        ? appendCompiledReferencedBindings(env, specializedBody, *cachedSymbols,
                                                          excludedNames, &seenBindings,
-                                                         &scalarInputs, &inputImages, false,
+                                                         &scalarInputs, &inputImages, true,
                                                          &argsCell, &program)
                        : appendCompiledReferencedBindings(env, specializedBody, symbols,
                                                          excludedNames, &seenBindings,
-                                                         &scalarInputs, &inputImages, false,
+                                                         &scalarInputs, &inputImages, true,
                                                          &argsCell, &program);
                if (!appendedBindings)
                {
@@ -2936,22 +3199,13 @@ namespace gnine
                totalCompileMillis += kernel.compileMillis;
                allCacheHits = allCacheHits && kernel.cacheHit;
 
-               if (_compiledScalarScratchWidth != width ||
-                   _compiledScalarScratchHeight != height)
-               {
-                  _compiledScalarScratch.clear();
-                  _compiledScalarScratchWidth = width;
-                  _compiledScalarScratchHeight = height;
-               }
-               while (_compiledScalarScratch.size() < scalarInputs.size())
-                  _compiledScalarScratch.push_back(gnine::Image(width, height));
+               while (_compiledScalarImages.size() < scalarInputs.size())
+                  _compiledScalarImages.push_back(gnine::Image(1, 1));
 
                for (size_t idx = 0; idx < scalarInputs.size(); ++idx)
                {
-                  gnine::Image &scalarImage = _compiledScalarScratch[idx];
-                  std::fill(scalarImage.getChannelData(0),
-                            scalarImage.getChannelData(0) + scalarImage.planeSize(),
-                            scalarInputs[idx].value);
+                  gnine::Image &scalarImage = _compiledScalarImages[idx];
+                  *scalarImage.getChannelData(0) = scalarInputs[idx].value;
                   inputImages.push_back(&scalarImage);
                }
 
@@ -3072,7 +3326,7 @@ namespace gnine
             if (currentEnv == NULL || !seenEnvs.insert(currentEnv).second)
                continue;
 
-            for (std::map<std::string, Value>::const_iterator it = currentEnv->bindings.begin();
+            for (auto it = currentEnv->bindings.begin();
                  it != currentEnv->bindings.end();
                  ++it)
             {

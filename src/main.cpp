@@ -50,6 +50,20 @@ namespace
       double mouseY;
       double mouseLeft;
       double mouseRight;
+      double mouseWheelY;
+      double keyShift;
+      double keyCtrl;
+      double keyTab;
+      double key0;
+      double key1;
+      double key2;
+      double key3;
+      double key4;
+      double key5;
+      double key6;
+      double key7;
+      double key8;
+      double key9;
       bool quitRequested;
 
       RuntimeInputState()
@@ -57,6 +71,10 @@ namespace
            keyW(0.0), keyA(0.0), keyS(0.0), keyD(0.0),
            keySpace(0.0), keyReturn(0.0), keyEscape(0.0),
            mouseX(0.0), mouseY(0.0), mouseLeft(0.0), mouseRight(0.0),
+           mouseWheelY(0.0),
+           keyShift(0.0), keyCtrl(0.0), keyTab(0.0),
+           key0(0.0), key1(0.0), key2(0.0), key3(0.0), key4(0.0),
+           key5(0.0), key6(0.0), key7(0.0), key8(0.0), key9(0.0),
            quitRequested(false)
       {
       }
@@ -87,6 +105,20 @@ namespace
       (*bindings)["mouse-y"] = makeDynamicRuntimeNumber("mouse-y", input.mouseY);
       (*bindings)["mouse-left"] = makeDynamicRuntimeNumber("mouse-left", input.mouseLeft);
       (*bindings)["mouse-right"] = makeDynamicRuntimeNumber("mouse-right", input.mouseRight);
+      (*bindings)["mouse-wheel-y"] = makeDynamicRuntimeNumber("mouse-wheel-y", input.mouseWheelY);
+      (*bindings)["key-shift"] = makeDynamicRuntimeNumber("key-shift", input.keyShift);
+      (*bindings)["key-ctrl"] = makeDynamicRuntimeNumber("key-ctrl", input.keyCtrl);
+      (*bindings)["key-tab"] = makeDynamicRuntimeNumber("key-tab", input.keyTab);
+      (*bindings)["key-0"] = makeDynamicRuntimeNumber("key-0", input.key0);
+      (*bindings)["key-1"] = makeDynamicRuntimeNumber("key-1", input.key1);
+      (*bindings)["key-2"] = makeDynamicRuntimeNumber("key-2", input.key2);
+      (*bindings)["key-3"] = makeDynamicRuntimeNumber("key-3", input.key3);
+      (*bindings)["key-4"] = makeDynamicRuntimeNumber("key-4", input.key4);
+      (*bindings)["key-5"] = makeDynamicRuntimeNumber("key-5", input.key5);
+      (*bindings)["key-6"] = makeDynamicRuntimeNumber("key-6", input.key6);
+      (*bindings)["key-7"] = makeDynamicRuntimeNumber("key-7", input.key7);
+      (*bindings)["key-8"] = makeDynamicRuntimeNumber("key-8", input.key8);
+      (*bindings)["key-9"] = makeDynamicRuntimeNumber("key-9", input.key9);
       (*bindings)["preview-time-ms"] = makeDynamicRuntimeNumber("preview-time-ms", previewTimeMs);
       (*bindings)["preview-delta-ms"] = makeDynamicRuntimeNumber("preview-delta-ms", previewDeltaMs);
    }
@@ -205,6 +237,7 @@ namespace
       void pollInput(RuntimeInputState *input)
       {
          input->quitRequested = false;
+         input->mouseWheelY = 0.0;
          SDL_Event event;
          while (SDL_PollEvent(&event))
          {
@@ -213,6 +246,10 @@ namespace
                 (_windowId == 0 || event.window.windowID == _windowId))
             {
                input->quitRequested = true;
+            }
+            if (event.type == SDL_MOUSEWHEEL)
+            {
+               input->mouseWheelY += static_cast<double>(event.wheel.y);
             }
          }
 
@@ -229,6 +266,19 @@ namespace
          input->keySpace = keys[SDL_SCANCODE_SPACE] ? 1.0 : 0.0;
          input->keyReturn = keys[SDL_SCANCODE_RETURN] ? 1.0 : 0.0;
          input->keyEscape = keys[SDL_SCANCODE_ESCAPE] ? 1.0 : 0.0;
+         input->keyShift = (keys[SDL_SCANCODE_LSHIFT] || keys[SDL_SCANCODE_RSHIFT]) ? 1.0 : 0.0;
+         input->keyCtrl = (keys[SDL_SCANCODE_LCTRL] || keys[SDL_SCANCODE_RCTRL]) ? 1.0 : 0.0;
+         input->keyTab = keys[SDL_SCANCODE_TAB] ? 1.0 : 0.0;
+         input->key0 = keys[SDL_SCANCODE_0] ? 1.0 : 0.0;
+         input->key1 = keys[SDL_SCANCODE_1] ? 1.0 : 0.0;
+         input->key2 = keys[SDL_SCANCODE_2] ? 1.0 : 0.0;
+         input->key3 = keys[SDL_SCANCODE_3] ? 1.0 : 0.0;
+         input->key4 = keys[SDL_SCANCODE_4] ? 1.0 : 0.0;
+         input->key5 = keys[SDL_SCANCODE_5] ? 1.0 : 0.0;
+         input->key6 = keys[SDL_SCANCODE_6] ? 1.0 : 0.0;
+         input->key7 = keys[SDL_SCANCODE_7] ? 1.0 : 0.0;
+         input->key8 = keys[SDL_SCANCODE_8] ? 1.0 : 0.0;
+         input->key9 = keys[SDL_SCANCODE_9] ? 1.0 : 0.0;
 
          int mouseX = 0;
          int mouseY = 0;
@@ -1224,6 +1274,7 @@ int main(int argc, char *argsRaw[])
    bool benchmarkNoWrite = false;
    bool preview = false;
    bool runtimeMode = false;
+   bool traceFallback = false;
    std::string emitFramesPath;
    std::string comparePath;
    int displayScale = 1;
@@ -1247,6 +1298,8 @@ int main(int argc, char *argsRaw[])
          benchmarkNoWrite = true;
       else if (s == "--preview")
          preview = true;
+      else if (s == "--trace-fallback")
+         traceFallback = true;
       else if (s == "--compare")
          comparePath = "__AUTO__";
       else if (s.length() > 10 && s.substr(0, 10) == "--compare=")
@@ -1521,6 +1574,18 @@ int main(int argc, char *argsRaw[])
          double passExecuteMillis =
              std::chrono::duration_cast<std::chrono::microseconds>(passEnd - passStart).count() / 1000.0;
 
+         if (traceFallback)
+         {
+            const std::vector<std::string> &trace = evaluator.executionTrace();
+            for (const std::string &entry : trace)
+            {
+               if (entry.find("compiled_fallback=") != std::string::npos ||
+                   (entry.find("mode=interpreted") != std::string::npos &&
+                    entry.find("fallback=") != std::string::npos))
+                  std::cerr << "[trace-fallback] " << entry << std::endl;
+            }
+         }
+
          return std::make_pair(std::move(passState),
                                std::make_pair(traceMetrics.compileMillis, passExecuteMillis));
       };
@@ -1659,7 +1724,10 @@ int main(int argc, char *argsRaw[])
                        << " CALLUS " << std::setprecision(1) << previewDisplayedRuntimeCallUs;
                previewOverlayText = overlay.str();
 
-               previewWindow.setTitle(std::string("gnine preview - ") + previewOverlayText);
+               std::ostringstream titleStream;
+               titleStream << std::fixed << std::setprecision(2) << previewDisplayedCpuMs;
+               previewWindow.setTitle(std::string("gnine preview - ") + previewOverlayText +
+                                      " | " + titleStream.str() + " ms/frame");
             }
 
             if (!emitFramesPath.empty())

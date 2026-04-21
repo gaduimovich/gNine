@@ -6,6 +6,8 @@
  *******************************************************************************/
 
 #include "ImageArray.hpp"
+#include <cmath>
+#include <cstdint>
 #include <set>
 
 enum class FoldOp
@@ -110,6 +112,58 @@ static void printDouble(double val)
 {
 #define PRINTDOUBLE_LINE LINETOSTR(__LINE__)
    printf("%lf", val);
+}
+
+static double jit_mod(double x, double n)
+{
+   if (n == 0.0) return 0.0;
+   return x - n * std::floor(x / n);
+}
+
+static double jit_floor(double x) { return std::floor(x); }
+static double jit_ceil(double x) { return std::ceil(x); }
+static double jit_sqrt(double x) { return std::sqrt(x); }
+static double jit_sin(double x) { return std::sin(x); }
+static double jit_cos(double x) { return std::cos(x); }
+static double jit_pow(double x, double y) { return std::pow(x, y); }
+static double jit_atan2(double y, double x) { return std::atan2(y, x); }
+static double jit_rand_of(double seed)
+{
+   uint64_t s = static_cast<uint64_t>(static_cast<int64_t>(seed));
+   s ^= s >> 30;
+   s *= UINT64_C(0xbf58476d1ce4e5b9);
+   s ^= s >> 27;
+   s *= UINT64_C(0x94d049bb133111eb);
+   s ^= s >> 31;
+   return static_cast<double>(s >> 11) / static_cast<double>(UINT64_C(1) << 53);
+}
+static double jit_draw_line(double x1, double y1, double x2, double y2,
+                             double thickness, double value,
+                             double px, double py)
+{
+   double dx = x2 - x1;
+   double dy = y2 - y1;
+   double lenSq = dx * dx + dy * dy;
+   double distSq;
+   if (lenSq < 1e-12)
+   {
+      double ex = px - x1;
+      double ey = py - y1;
+      distSq = ex * ex + ey * ey;
+   }
+   else
+   {
+      double t = ((px - x1) * dx + (py - y1) * dy) / lenSq;
+      if (t < 0.0) t = 0.0;
+      if (t > 1.0) t = 1.0;
+      double cx2 = x1 + t * dx;
+      double cy2 = y1 + t * dy;
+      double ex = px - cx2;
+      double ey = py - cy2;
+      distSq = ex * ex + ey * ey;
+   }
+   double halfThick = thickness * 0.5;
+   return distSq <= halfThick * halfThick ? value : 0.0;
 }
 
 void ImageArray::Store2D(OMR::JitBuilder::IlBuilder *bldr,
@@ -311,6 +365,26 @@ ImageArray::ImageArray(OMR::JitBuilder::TypeDictionary *d, int resultChannels)
                   NoType,
                   1,
                   Double);
+   DefineFunction((char *)"jit_mod",      (char *)__FILE__, (char *)"0",
+                  (void *)&jit_mod,      Double, 2, Double, Double);
+   DefineFunction((char *)"jit_floor",    (char *)__FILE__, (char *)"0",
+                  (void *)&jit_floor,    Double, 1, Double);
+   DefineFunction((char *)"jit_ceil",     (char *)__FILE__, (char *)"0",
+                  (void *)&jit_ceil,     Double, 1, Double);
+   DefineFunction((char *)"jit_sqrt",     (char *)__FILE__, (char *)"0",
+                  (void *)&jit_sqrt,     Double, 1, Double);
+   DefineFunction((char *)"jit_sin",      (char *)__FILE__, (char *)"0",
+                  (void *)&jit_sin,      Double, 1, Double);
+   DefineFunction((char *)"jit_cos",      (char *)__FILE__, (char *)"0",
+                  (void *)&jit_cos,      Double, 1, Double);
+   DefineFunction((char *)"jit_pow",      (char *)__FILE__, (char *)"0",
+                  (void *)&jit_pow,      Double, 2, Double, Double);
+   DefineFunction((char *)"jit_atan2",    (char *)__FILE__, (char *)"0",
+                  (void *)&jit_atan2,    Double, 2, Double, Double);
+   DefineFunction((char *)"jit_rand_of",  (char *)__FILE__, (char *)"0",
+                  (void *)&jit_rand_of,  Double, 1, Double);
+   DefineFunction((char *)"jit_draw_line",(char *)__FILE__, (char *)"0",
+                  (void *)&jit_draw_line, Double, 8, Double, Double, Double, Double, Double, Double, Double, Double);
 }
 
 void ImageArray::PrintString(OMR::JitBuilder::IlBuilder *bldr, const char *s)
@@ -496,6 +570,48 @@ OMR::JitBuilder::IlValue *ImageArray::functionHandler(OMR::JitBuilder::IlBuilder
    else if (functionName == "fib")
    {
       return Fib(bldr, args[0]);
+   }
+   else if (functionName == "mod")
+   {
+      return bldr->Call("jit_mod", 2, args[0], args[1]);
+   }
+   else if (functionName == "floor")
+   {
+      return bldr->Call("jit_floor", 1, args[0]);
+   }
+   else if (functionName == "ceil")
+   {
+      return bldr->Call("jit_ceil", 1, args[0]);
+   }
+   else if (functionName == "sqrt")
+   {
+      return bldr->Call("jit_sqrt", 1, args[0]);
+   }
+   else if (functionName == "sin")
+   {
+      return bldr->Call("jit_sin", 1, args[0]);
+   }
+   else if (functionName == "cos")
+   {
+      return bldr->Call("jit_cos", 1, args[0]);
+   }
+   else if (functionName == "pow")
+   {
+      return bldr->Call("jit_pow", 2, args[0], args[1]);
+   }
+   else if (functionName == "atan2")
+   {
+      return bldr->Call("jit_atan2", 2, args[0], args[1]);
+   }
+   else if (functionName == "rand-of")
+   {
+      return bldr->Call("jit_rand_of", 1, args[0]);
+   }
+   else if (functionName == "draw-line")
+   {
+      OMR::JitBuilder::IlValue *pixX = bldr->ConvertTo(Double, j);
+      OMR::JitBuilder::IlValue *pixY = bldr->ConvertTo(Double, i);
+      return bldr->Call("jit_draw_line", 8, args[0], args[1], args[2], args[3], args[4], args[5], pixX, pixY);
    }
    else if (functionName[0] == '@')
    {

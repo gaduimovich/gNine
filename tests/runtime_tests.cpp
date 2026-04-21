@@ -64,6 +64,91 @@ int main()
               "(() (define make-adder (lambda (x) (lambda (y) (+ x y)))) ((make-adder 4) 9))",
               13.0,
           },
+          {
+              "mod_positive",
+              "(() (mod 7 3))",
+              1.0,
+          },
+          {
+              "mod_negative",
+              "(() (mod -1 3))",
+              2.0,
+          },
+          {
+              "floor_positive",
+              "(() (floor 3.7))",
+              3.0,
+          },
+          {
+              "floor_negative",
+              "(() (floor -3.2))",
+              -4.0,
+          },
+          {
+              "ceil_positive",
+              "(() (ceil 3.2))",
+              4.0,
+          },
+          {
+              "sqrt_basic",
+              "(() (sqrt 9))",
+              3.0,
+          },
+          {
+              "cond_first_branch",
+              "(() (cond (1 42) (0 99) (else 0)))",
+              42.0,
+          },
+          {
+              "cond_second_branch",
+              "(() (cond (0 1) (1 99) (else 0)))",
+              99.0,
+          },
+          {
+              "cond_else",
+              "(() (cond (0 1) (0 2) (else 7)))",
+              7.0,
+          },
+          {
+              "let_basic",
+              "(() (let ((x 3) (y 4)) (+ x y)))",
+              7.0,
+          },
+          {
+              "let_star_sequential",
+              "(() (let* ((x 3) (y (* x 2))) y))",
+              6.0,
+          },
+          {
+              "begin_last_value",
+              "(() (begin 1 2 3))",
+              3.0,
+          },
+          {
+              "tuple_length",
+              "(() (tuple-length (tuple 10 20 30)))",
+              3.0,
+          },
+          {
+              "tuple_set",
+              "(() (get (tuple-set (tuple 1 2 3) 1 99) 1))",
+              99.0,
+          },
+          {
+              "tuple_slice",
+              "(() (get (tuple-slice (tuple 10 20 30 40) 1 3) 0))",
+              20.0,
+          },
+          {
+              "rand_of_deterministic",
+              "(() (== (rand-of 42) (rand-of 42)))",
+              1.0,
+          },
+          {
+              "rand_of_different_seeds",
+              "(() (not (== (rand-of 42) (rand-of 43))))",
+              1.0,
+          },
       };
 
       for (size_t idx = 0; idx < cases.size(); ++idx)

@@ -7,6 +7,7 @@
 #include <map>
 #include <set>
 #include <string>
+#include <unordered_map>
 #include <utility>
 #include <vector>
 
@@ -81,8 +82,8 @@ namespace gnine
       struct EnvironmentObject : public Object
       {
          EnvironmentObject *parent;
-         std::map<std::string, Value> bindings;
-         std::map<std::string, Cell> sourceExprs;
+         std::unordered_map<std::string, Value> bindings;
+         std::unordered_map<std::string, Cell> sourceExprs;
 
          explicit EnvironmentObject(EnvironmentObject *parentEnv);
          void trace(class Heap &heap) override;
@@ -297,9 +298,7 @@ namespace gnine
          int _currentCol;
          int _currentChannel;
          bool _reportedNonNumericPixel;
-         int _compiledScalarScratchWidth;
-         int _compiledScalarScratchHeight;
-         std::vector<gnine::Image> _compiledScalarScratch;
+         std::vector<gnine::Image> _compiledScalarImages;
          std::map<std::string, ProgramMetadata> _programMetadataCache;
          std::map<std::pair<std::string, int>, CompiledCanvasChannelMetadata> _compiledCanvasChannelMetadataCache;
          std::vector<std::string> _executionTrace;
