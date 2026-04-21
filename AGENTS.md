@@ -28,19 +28,19 @@ cmake --build build-arm64 --target gnine_runtime_tests gnine_semantic_tests gnin
 
 ./build-arm64/gnine ./examples/sepia_vector.psm ./example_data/lena.png /tmp/sepia_vector.png
 
-./build-arm64/gnine --runtime ./examples/runtime_pong.psm /tmp/runtime_pong.png
+./build-arm64/gnine --runtime ./examples/runtime_pong_v2.psm /tmp/runtime_pong_v2.png
 
-./build-arm64/gnine --runtime --preview ./examples/runtime_snake.psm /tmp/runtime_snake.png
+./build-arm64/gnine --runtime --preview ./examples/runtime_snake_v2.psm /tmp/runtime_snake_v2.png
 
-./build-arm64/gnine --runtime --emit-frames=/tmp/runtime_pong.png ./examples/runtime_pong.psm /tmp/runtime_pong_final.png
+./build-arm64/gnine --runtime --emit-frames=/tmp/runtime_pong_v2.png ./examples/runtime_pong_v2.psm /tmp/runtime_pong_v2_final.png
 ```
 
 ## Make GIF
 
 ```bash
-./build-arm64/gnine --runtime --emit-frames=/tmp/runtime_pong.png ./examples/runtime_pong.psm /tmp/runtime_pong_final.png
+./build-arm64/gnine --runtime --emit-frames=/tmp/runtime_pong_v2.png ./examples/runtime_pong_v2.psm /tmp/runtime_pong_v2_final.png
 
-magick -delay 4 -loop 0 /tmp/runtime_pong_*.png /tmp/runtime_pong.gif
+magick -delay 4 -loop 0 /tmp/runtime_pong_v2_*.png /tmp/runtime_pong_v2.gif
 ```
 
 ## Benchmark
@@ -60,13 +60,13 @@ Single-pass runtime benchmark with warm repeats:
 Chained runtime game benchmark, Pong:
 
 ```bash
-./build-arm64/gnine --runtime --benchmark --benchmark-no-write --chain-times=300 --benchmark-repeats=3 ./examples/runtime_pong.psm /tmp/runtime_pong_bench.png
+./build-arm64/gnine --runtime --benchmark --benchmark-no-write --chain-times=300 --benchmark-repeats=3 ./examples/runtime_pong_v2.psm /tmp/runtime_pong_v2_bench.png
 ```
 
 Chained runtime game benchmark, Snake:
 
 ```bash
-./build-arm64/gnine --runtime --benchmark --benchmark-no-write --chain-times=300 --benchmark-repeats=3 ./examples/runtime_snake.psm /tmp/runtime_snake_bench.png
+./build-arm64/gnine --runtime --benchmark --benchmark-no-write --chain-times=300 --benchmark-repeats=3 ./examples/runtime_snake_v2.psm /tmp/runtime_snake_v2_bench.png
 ```
 
 For chained game benchmarks:

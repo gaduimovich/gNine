@@ -33,12 +33,12 @@ Runtime RGB Triptych
 
 Runtime Pong
 ```sh
-./build/gnine --runtime --emit-frames=runtime_pong.png ./examples/runtime_pong.psm runtime_pong_final.png
+./build/gnine --runtime --emit-frames=runtime_pong_v2.png ./examples/runtime_pong_v2.psm runtime_pong_v2_final.png
 ```
 
 Runtime Snake Preview
 ```sh
-./build/gnine --runtime --preview ./examples/runtime_snake.psm runtime_snake.png
+./build/gnine --runtime --preview ./examples/runtime_snake_v2.psm runtime_snake_v2.png
 ```
 
 ### Testing
@@ -66,8 +66,8 @@ Run the test binaries:
 * `compose.psm`, `min.psm` - compositing examples
 * `metaballs.psm`, `metaballs_binary.psm`, `metaballs_fancy.psm` - procedural image generation
 * `sepia_vector.psm`, `chroma_key_green.psm`, `rgb_triptych.psm` - RGB and vector color examples
-* `runtime_pong.psm` - stateful runtime demo built with `iterate-until`
-* `runtime_snake.psm` - interactive runtime preview demo built with `iterate-until`
+* `runtime_pong_v2.psm` - stateful runtime demo built with `iterate-until`
+* `runtime_snake_v2.psm` - interactive runtime preview demo built with `iterate-until`
 * `examples/game_of_life/game_of_life.psm` - chained cellular automata example
 
 ## Language Guide
@@ -144,7 +144,7 @@ Pong:
 ```bash
 ./build-arm64/gnine --runtime --benchmark --benchmark-no-write \
   --chain-times=300 --benchmark-repeats=3 \
-  ./examples/runtime_pong.psm /tmp/runtime_pong_bench.png
+  ./examples/runtime_pong_v2.psm /tmp/runtime_pong_v2_bench.png
 ```
 
 Snake:
@@ -152,7 +152,7 @@ Snake:
 ```bash
 ./build-arm64/gnine --runtime --benchmark --benchmark-no-write \
   --chain-times=300 --benchmark-repeats=3 \
-  ./examples/runtime_snake.psm /tmp/runtime_snake_bench.png
+  ./examples/runtime_snake_v2.psm /tmp/runtime_snake_v2_bench.png
 ```
 
 Notes:

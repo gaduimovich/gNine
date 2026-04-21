@@ -42,5 +42,5 @@ Do not delete them unless the matching benchmark/regression workflow is also rem
 - `examples/sepia_vector.psm`
 - `examples/threshold.psm`
 - `examples/rgb_triptych.psm`
-- `examples/runtime_pong.psm`
-- `examples/runtime_snake.psm`
+- `examples/runtime_pong_v2.psm`
+- `examples/runtime_snake_v2.psm`
