@@ -196,7 +196,7 @@ namespace gnine
       private:
          struct ProgramStatement
          {
-            const Cell *expr;
+            Cell expr;
             std::string defineName;
             bool isDefine;
          };
@@ -297,8 +297,8 @@ namespace gnine
          int _compiledScalarScratchWidth;
          int _compiledScalarScratchHeight;
          std::vector<gnine::Image> _compiledScalarScratch;
-         std::map<const Cell *, ProgramMetadata> _programMetadataCache;
-         std::map<std::pair<const Cell *, int>, CompiledCanvasChannelMetadata> _compiledCanvasChannelMetadataCache;
+         std::map<std::string, ProgramMetadata> _programMetadataCache;
+         std::map<std::pair<std::string, int>, CompiledCanvasChannelMetadata> _compiledCanvasChannelMetadataCache;
          std::vector<std::string> _executionTrace;
       };
    }

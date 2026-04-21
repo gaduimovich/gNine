@@ -284,15 +284,38 @@ int main()
              evaluator.evaluateExpr(gnine::cellFromString("(sample-image A 2 1)"), bindings);
          gnine::runtime::Value explicitChannel =
              evaluator.evaluateExpr(gnine::cellFromString("(sample-image A 2 1 2)"), bindings);
-         gnine::runtime::Value reflected =
+         gnine::runtime::Value reflectedNegativeCoord =
              evaluator.evaluateExpr(gnine::cellFromString("(sample-image A -1 2 1)"), bindings);
+         gnine::runtime::Value reflectedPositiveCoordAndChannel =
+             evaluator.evaluateExpr(gnine::cellFromString("(sample-image A 4 3 5)"), bindings);
 
          require(defaultChannel.isNumber() && almostEqual(defaultChannel.number, 12.1),
                  "sample-image should read absolute coordinates from channel 0 by default");
          require(explicitChannel.isNumber() && almostEqual(explicitChannel.number, 12.3),
                  "sample-image should support explicit channel reads");
-         require(reflected.isNumber() && almostEqual(reflected.number, 10.2),
-                 "sample-image should reflect out-of-bounds coordinates and channels");
+         require(reflectedNegativeCoord.isNumber() && almostEqual(reflectedNegativeCoord.number, 11.2),
+                 "sample-image should reflect negative absolute coordinates with the shared border policy");
+         require(reflectedPositiveCoordAndChannel.isNumber() &&
+                     almostEqual(reflectedPositiveCoordAndChannel.number, 1.1),
+                 "sample-image should reflect oversized coordinates and channel indices");
+      }
+
+      {
+         gnine::runtime::Evaluator evaluator;
+         gnine::Image grayscale(2, 2);
+         grayscale(0, 0) = 0.25;
+         grayscale(0, 1) = 0.50;
+         grayscale(1, 0) = 0.75;
+         grayscale(1, 1) = 1.00;
+
+         std::map<std::string, gnine::runtime::Value> bindings;
+         bindings["A"] = evaluator.imageValue(grayscale);
+
+         gnine::runtime::Value forcedChannel =
+             evaluator.evaluateExpr(gnine::cellFromString("(sample-image A 1 1 7)"), bindings);
+
+         require(forcedChannel.isNumber() && almostEqual(forcedChannel.number, 1.00),
+                 "sample-image should ignore explicit channel indices for grayscale images");
       }
 
       {
@@ -702,7 +725,7 @@ int main()
                  "runtime tuple state should evolve the image field across chained evaluations");
       }
 
-      std::cout << "Runtime tests passed (" << cases.size() + 19 << " checks)" << std::endl;
+      std::cout << "Runtime tests passed (" << cases.size() + 20 << " checks)" << std::endl;
       return 0;
    }
    catch (const std::exception &ex)

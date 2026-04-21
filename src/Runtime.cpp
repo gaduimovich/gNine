@@ -1159,7 +1159,8 @@ namespace gnine
 
       const Evaluator::ProgramMetadata &Evaluator::programMetadata(const Cell &program)
       {
-         std::map<const Cell *, ProgramMetadata>::const_iterator cached = _programMetadataCache.find(&program);
+         const std::string cacheKey = cellToString(program);
+         std::map<std::string, ProgramMetadata>::const_iterator cached = _programMetadataCache.find(cacheKey);
          if (cached != _programMetadataCache.end())
             return cached->second;
 
@@ -1189,7 +1190,7 @@ namespace gnine
             if (isDefine)
             {
                ProgramStatement statement;
-               statement.expr = &expr;
+               statement.expr = expr;
                statement.defineName = expr.list[1].val;
                statement.isDefine = true;
                metadata.statements.push_back(statement);
@@ -1200,7 +1201,7 @@ namespace gnine
                throw std::runtime_error("Runtime evaluator expects a single result expression plus defines");
 
             ProgramStatement statement;
-            statement.expr = &expr;
+            statement.expr = expr;
             statement.isDefine = false;
             metadata.statements.push_back(statement);
             sawResult = true;
@@ -1209,14 +1210,14 @@ namespace gnine
          if (!sawResult)
             throw std::runtime_error("Runtime program must contain a result expression");
 
-         return _programMetadataCache.insert(std::make_pair(&program, metadata)).first->second;
+         return _programMetadataCache.insert(std::make_pair(cacheKey, metadata)).first->second;
       }
 
       const Evaluator::CompiledCanvasChannelMetadata &
       Evaluator::compiledCanvasChannelMetadata(const Cell &body, int channel)
       {
-         std::pair<const Cell *, int> key(&body, channel);
-         std::map<std::pair<const Cell *, int>, CompiledCanvasChannelMetadata>::const_iterator cached =
+         std::pair<std::string, int> key(cellToString(body), channel);
+         std::map<std::pair<std::string, int>, CompiledCanvasChannelMetadata>::const_iterator cached =
              _compiledCanvasChannelMetadataCache.find(key);
          if (cached != _compiledCanvasChannelMetadataCache.end())
             return cached->second;
@@ -1292,7 +1293,7 @@ namespace gnine
             for (size_t idx = 0; idx < metadata.statements.size(); ++idx)
             {
                const ProgramStatement &statement = metadata.statements[idx];
-               const Cell &expr = *statement.expr;
+               const Cell &expr = statement.expr;
                if (statement.isDefine)
                {
                   Value defineValue = eval(expr.list[2], globalEnv);
@@ -1386,7 +1387,7 @@ namespace gnine
          for (size_t idx = 0; idx < metadata.statements.size(); ++idx)
          {
             const ProgramStatement &statement = metadata.statements[idx];
-            const Cell &expr = *statement.expr;
+            const Cell &expr = statement.expr;
 
             if (statement.isDefine)
             {
