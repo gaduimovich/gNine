@@ -1,0 +1,4 @@
+((A)
+  (define curve (int (+ (/ (* j j) 100) (* -4 j) 400)))
+  (define sub (- i curve))
+  (* 1 (<= sub 20) (> sub 0)))

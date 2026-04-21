@@ -1,0 +1,14 @@
+2026-04-08 First engine optimization pass
+
+- Runtime image extraction in [src/main.cpp] now borrows the `Image` from rooted runtime state instead of copying it into a new heap image on every frame.
+- Updated preview, chained runtime, and single-pass runtime execution to carry a borrowed `const Image *` through to final display/write handling.
+- Rebuilt `gnine` and reran the game benchmarks with `--runtime --benchmark --benchmark-no-write --chain-times=300 --benchmark-repeats=3`.
+- Pong improved from `benchmark.last_repeat_avg_iter_ms=67.1182` to `62.0587` (about 7.5% faster warm frames).
+- Snake improved from `benchmark.last_repeat_avg_iter_ms=32.9599` to `31.9233` (about 3.1% faster warm frames).
+
+2026-04-21 Promote v2 runtime demos to baseline
+
+- Switched the canonical runtime demo references in docs, curated keep lists, and architecture compare benchmarks from `runtime_pong.psm` and `runtime_snake.psm` to `runtime_pong_v2.psm` and `runtime_snake_v2.psm`.
+- Rebuilt `gnine` and reran the arm64 chained game benchmarks with `--runtime --benchmark --benchmark-no-write --chain-times=300 --benchmark-repeats=3`.
+- New warm baseline for `runtime_pong_v2.psm`: `benchmark.last_repeat_avg_iter_ms=6.75201`, versus `7.10974` for the previous non-v2 Pong benchmark on this branch (about 5.0% faster warm frames).
+- New warm baseline for `runtime_snake_v2.psm`: `benchmark.last_repeat_avg_iter_ms=2.35568`, versus `30.118` for the previous non-v2 Snake benchmark on this branch (about 92.2% faster warm frames).

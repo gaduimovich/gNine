@@ -1,3 +1,8 @@
 .svn
 *.swp
 *~
+.python-version
+build
+build-arm64/
+build-x86_64/
+.vscode

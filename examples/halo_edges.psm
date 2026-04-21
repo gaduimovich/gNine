@@ -1,0 +1,4 @@
+; Bright edge halo from the absolute difference to a blur.
+((A B)
+  (clamp (* 8 (abs (- A B))) 0 1)
+)

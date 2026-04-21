@@ -1,0 +1,4 @@
+; Edge glow using abs + clamp on the difference between the source and a blur.
+((A B)
+  (clamp (* 4 (abs (- A B))) 0 1)
+)

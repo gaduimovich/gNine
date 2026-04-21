@@ -1,0 +1,4 @@
+; Keep only midtones using boolean composition.
+((A)
+  (* (not (or (< A 0.25) (> A 0.75))) A)
+)
