@@ -92,6 +92,25 @@ namespace
    }
 
 #ifdef GNINE_HAVE_SDL2
+   int autoDisplayScaleForImage(int imageWidth, int imageHeight)
+   {
+      if (imageWidth <= 0 || imageHeight <= 0)
+         return 1;
+
+      if (SDL_InitSubSystem(SDL_INIT_VIDEO) != 0)
+         return 1;
+
+      SDL_Rect bounds;
+      if (SDL_GetDisplayUsableBounds(0, &bounds) != 0)
+         return 1;
+
+      const int maxWidth = std::max(1, static_cast<int>(bounds.w * 0.85));
+      const int maxHeight = std::max(1, static_cast<int>(bounds.h * 0.85));
+      const int scaleX = std::max(1, maxWidth / imageWidth);
+      const int scaleY = std::max(1, maxHeight / imageHeight);
+      return std::max(1, std::min(scaleX, scaleY));
+   }
+
    double clampPreviewChannel(double value)
    {
       if (value < 0.0)
@@ -106,7 +125,8 @@ namespace
    public:
       PreviewWindow()
          : _initialized(false), _window(NULL), _renderer(NULL), _texture(NULL),
-           _imageWidth(0), _imageHeight(0), _windowWidth(0), _windowHeight(0)
+           _imageWidth(0), _imageHeight(0), _windowWidth(0), _windowHeight(0),
+           _windowId(0)
       {
       }
 
@@ -141,6 +161,7 @@ namespace
                                        SDL_WINDOW_SHOWN);
             if (_window == NULL)
                throw std::runtime_error(std::string("SDL window creation failed: ") + SDL_GetError());
+            _windowId = SDL_GetWindowID(_window);
 
             _renderer = SDL_CreateRenderer(_window, -1, SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC);
             if (_renderer == NULL)
@@ -183,8 +204,12 @@ namespace
          SDL_Event event;
          while (SDL_PollEvent(&event))
          {
-            if (event.type == SDL_QUIT)
+            if (event.type == SDL_WINDOWEVENT &&
+                event.window.event == SDL_WINDOWEVENT_CLOSE &&
+                (_windowId == 0 || event.window.windowID == _windowId))
+            {
                input->quitRequested = true;
+            }
          }
 
          SDL_PumpEvents();
@@ -210,7 +235,10 @@ namespace
          input->mouseY = mouseY;
       }
 
-      void present(const Image &image, int targetWidth, int targetHeight)
+      void present(const Image &image,
+                   int targetWidth,
+                   int targetHeight,
+                   const std::string *overlayText = NULL)
       {
          ensureForImage(image, targetWidth, targetHeight);
          for (int row = 0; row < _imageHeight; ++row)
@@ -234,9 +262,14 @@ namespace
             SDL_UpdateTexture(_texture, NULL, _pixels.data(), _imageWidth * 4);
             SDL_RenderClear(_renderer);
             SDL_RenderCopy(_renderer, _texture, NULL, NULL);
+            if (overlayText != NULL && !overlayText->empty())
+               drawOverlayTextRenderer(*overlayText);
             SDL_RenderPresent(_renderer);
             return;
          }
+
+         if (overlayText != NULL && !overlayText->empty())
+            drawOverlayText(*overlayText);
 
          SDL_Surface *surface = SDL_GetWindowSurface(_window);
          if (surface == NULL)
@@ -256,7 +289,361 @@ namespace
             throw std::runtime_error(std::string("SDL window surface update failed: ") + SDL_GetError());
       }
 
+      void setTitle(const std::string &title)
+      {
+         if (_window != NULL)
+            SDL_SetWindowTitle(_window, title.c_str());
+      }
+
    private:
+      static const char *const *glyphRows(char ch)
+      {
+         static const char *const glyph0[7] = {
+             "01110",
+             "10001",
+             "10011",
+             "10101",
+             "11001",
+             "10001",
+             "01110"};
+         static const char *const glyph1[7] = {
+             "00100",
+             "01100",
+             "00100",
+             "00100",
+             "00100",
+             "00100",
+             "01110"};
+         static const char *const glyph2[7] = {
+             "01110",
+             "10001",
+             "00001",
+             "00010",
+             "00100",
+             "01000",
+             "11111"};
+         static const char *const glyph3[7] = {
+             "11110",
+             "00001",
+             "00001",
+             "01110",
+             "00001",
+             "00001",
+             "11110"};
+         static const char *const glyph4[7] = {
+             "00010",
+             "00110",
+             "01010",
+             "10010",
+             "11111",
+             "00010",
+             "00010"};
+         static const char *const glyph5[7] = {
+             "11111",
+             "10000",
+             "10000",
+             "11110",
+             "00001",
+             "00001",
+             "11110"};
+         static const char *const glyph6[7] = {
+             "01110",
+             "10000",
+             "10000",
+             "11110",
+             "10001",
+             "10001",
+             "01110"};
+         static const char *const glyph7[7] = {
+             "11111",
+             "00001",
+             "00010",
+             "00100",
+             "01000",
+             "01000",
+             "01000"};
+         static const char *const glyph8[7] = {
+             "01110",
+             "10001",
+             "10001",
+             "01110",
+             "10001",
+             "10001",
+             "01110"};
+         static const char *const glyph9[7] = {
+             "01110",
+             "10001",
+             "10001",
+             "01111",
+             "00001",
+             "00001",
+             "01110"};
+         static const char *const glyphDot[7] = {
+             "00000",
+             "00000",
+             "00000",
+             "00000",
+             "00000",
+             "00110",
+             "00110"};
+         static const char *const glyphDash[7] = {
+             "00000",
+             "00000",
+             "00000",
+             "01110",
+             "00000",
+             "00000",
+             "00000"};
+         static const char *const glyphSpace[7] = {
+             "00000",
+             "00000",
+             "00000",
+             "00000",
+             "00000",
+             "00000",
+             "00000"};
+         static const char *const glyphF[7] = {
+             "11111",
+             "10000",
+             "10000",
+             "11110",
+             "10000",
+             "10000",
+             "10000"};
+         static const char *const glyphI[7] = {
+             "11111",
+             "00100",
+             "00100",
+             "00100",
+             "00100",
+             "00100",
+             "11111"};
+         static const char *const glyphJ[7] = {
+             "00111",
+             "00010",
+             "00010",
+             "00010",
+             "00010",
+             "10010",
+             "01100"};
+         static const char *const glyphC[7] = {
+             "01111",
+             "10000",
+             "10000",
+             "10000",
+             "10000",
+             "10000",
+             "01111"};
+         static const char *const glyphA[7] = {
+             "01110",
+             "10001",
+             "10001",
+             "11111",
+             "10001",
+             "10001",
+             "10001"};
+         static const char *const glyphL[7] = {
+             "10000",
+             "10000",
+             "10000",
+             "10000",
+             "10000",
+             "10000",
+             "11111"};
+         static const char *const glyphP[7] = {
+             "11110",
+             "10001",
+             "10001",
+             "11110",
+             "10000",
+             "10000",
+             "10000"};
+         static const char *const glyphS[7] = {
+             "01111",
+             "10000",
+             "10000",
+             "01110",
+             "00001",
+             "00001",
+             "11110"};
+         static const char *const glyphT[7] = {
+             "11111",
+             "00100",
+             "00100",
+             "00100",
+             "00100",
+             "00100",
+             "00100"};
+         static const char *const glyphU[7] = {
+             "10001",
+             "10001",
+             "10001",
+             "10001",
+             "10001",
+             "10001",
+             "01110"};
+
+         switch (ch)
+         {
+         case 'A':
+            return glyphA;
+         case 'C':
+            return glyphC;
+         case '0':
+            return glyph0;
+         case '1':
+            return glyph1;
+         case '2':
+            return glyph2;
+         case '3':
+            return glyph3;
+         case '4':
+            return glyph4;
+         case '5':
+            return glyph5;
+         case '6':
+            return glyph6;
+         case '7':
+            return glyph7;
+         case '8':
+            return glyph8;
+         case '9':
+            return glyph9;
+         case '.':
+            return glyphDot;
+         case '-':
+            return glyphDash;
+         case ' ':
+            return glyphSpace;
+         case 'F':
+            return glyphF;
+         case 'I':
+            return glyphI;
+         case 'J':
+            return glyphJ;
+         case 'L':
+            return glyphL;
+         case 'P':
+            return glyphP;
+         case 'S':
+            return glyphS;
+         case 'T':
+            return glyphT;
+         case 'U':
+            return glyphU;
+         default:
+            return glyphSpace;
+         }
+      }
+
+      void blendPixel(int x, int y, uint8_t red, uint8_t green, uint8_t blue, uint8_t alpha)
+      {
+         if (x < 0 || y < 0 || x >= _imageWidth || y >= _imageHeight)
+            return;
+
+         const size_t pixelOffset =
+             (static_cast<size_t>(y) * static_cast<size_t>(_imageWidth) + static_cast<size_t>(x)) * 4u;
+         const int invAlpha = 255 - alpha;
+         _pixels[pixelOffset + 0u] =
+             static_cast<uint8_t>((static_cast<int>(_pixels[pixelOffset + 0u]) * invAlpha + red * alpha) / 255);
+         _pixels[pixelOffset + 1u] =
+             static_cast<uint8_t>((static_cast<int>(_pixels[pixelOffset + 1u]) * invAlpha + green * alpha) / 255);
+         _pixels[pixelOffset + 2u] =
+             static_cast<uint8_t>((static_cast<int>(_pixels[pixelOffset + 2u]) * invAlpha + blue * alpha) / 255);
+         _pixels[pixelOffset + 3u] = 255u;
+      }
+
+      void fillRect(int x, int y, int width, int height, uint8_t red, uint8_t green, uint8_t blue, uint8_t alpha)
+      {
+         for (int row = 0; row < height; ++row)
+         {
+            for (int col = 0; col < width; ++col)
+               blendPixel(x + col, y + row, red, green, blue, alpha);
+         }
+      }
+
+      void drawGlyph(int x, int y, int scale, char ch, uint8_t red, uint8_t green, uint8_t blue)
+      {
+         const char *const *rows = glyphRows(ch);
+         for (int row = 0; row < 7; ++row)
+         {
+            for (int col = 0; col < 5; ++col)
+            {
+               if (rows[row][col] != '1')
+                  continue;
+               fillRect(x + col * scale, y + row * scale, scale, scale, red, green, blue, 255);
+            }
+         }
+      }
+
+      void drawText(int x, int y, int scale, const std::string &text, uint8_t red, uint8_t green, uint8_t blue)
+      {
+         const int advance = 6 * scale;
+         for (size_t idx = 0; idx < text.size(); ++idx)
+            drawGlyph(x + static_cast<int>(idx) * advance, y, scale, text[idx], red, green, blue);
+      }
+
+      void drawOverlayText(const std::string &text)
+      {
+         const int scale = std::max(1, std::min(3, std::min(_imageWidth, _imageHeight) / 120));
+         const int padding = 2 * scale;
+         const int margin = 4 * scale;
+         const int textWidth = static_cast<int>(text.size()) * 6 * scale - scale;
+         const int textHeight = 7 * scale;
+         const int boxWidth = textWidth + padding * 2;
+         const int boxHeight = textHeight + padding * 2;
+
+         fillRect(margin, margin, boxWidth, boxHeight, 0, 0, 0, 160);
+         drawText(margin + padding, margin + padding, scale, text, 255, 255, 255);
+      }
+
+      void fillRectRenderer(int x, int y, int width, int height, uint8_t red, uint8_t green, uint8_t blue, uint8_t alpha)
+      {
+         SDL_Rect rect;
+         rect.x = x;
+         rect.y = y;
+         rect.w = width;
+         rect.h = height;
+         SDL_SetRenderDrawBlendMode(_renderer, SDL_BLENDMODE_BLEND);
+         SDL_SetRenderDrawColor(_renderer, red, green, blue, alpha);
+         SDL_RenderFillRect(_renderer, &rect);
+      }
+
+      void drawGlyphRenderer(int x, int y, int scale, char ch, uint8_t red, uint8_t green, uint8_t blue)
+      {
+         const char *const *rows = glyphRows(ch);
+         for (int row = 0; row < 7; ++row)
+         {
+            for (int col = 0; col < 5; ++col)
+            {
+               if (rows[row][col] != '1')
+                  continue;
+               fillRectRenderer(x + col * scale, y + row * scale, scale, scale, red, green, blue, 255);
+            }
+         }
+      }
+
+      void drawTextRenderer(int x, int y, int scale, const std::string &text, uint8_t red, uint8_t green, uint8_t blue)
+      {
+         const int advance = 6 * scale;
+         for (size_t idx = 0; idx < text.size(); ++idx)
+            drawGlyphRenderer(x + static_cast<int>(idx) * advance, y, scale, text[idx], red, green, blue);
+      }
+
+      void drawOverlayTextRenderer(const std::string &text)
+      {
+         const int scale = std::min(_windowWidth, _windowHeight) < 240 ? 1 : 2;
+         const int padding = 2 * scale;
+         const int margin = 4 * scale;
+         const int textWidth = static_cast<int>(text.size()) * 6 * scale - scale;
+         const int textHeight = 7 * scale;
+         const int boxWidth = textWidth + padding * 2;
+         const int boxHeight = textHeight + padding * 2;
+
+         fillRectRenderer(margin, margin, boxWidth, boxHeight, 0, 0, 0, 160);
+         drawTextRenderer(margin + padding, margin + padding, scale, text, 255, 255, 255);
+      }
+
       bool _initialized;
       SDL_Window *_window;
       SDL_Renderer *_renderer;
@@ -265,6 +652,7 @@ namespace
       int _imageHeight;
       int _windowWidth;
       int _windowHeight;
+      Uint32 _windowId;
       std::vector<uint8_t> _pixels;
    };
 #endif
@@ -672,14 +1060,25 @@ namespace
    struct RuntimeTraceMetrics
    {
       double compileMillis;
+      double executeMillis;
+      int executeCalls;
    };
 
    RuntimeTraceMetrics collectRuntimeTraceMetrics(const std::vector<std::string> &trace)
    {
       RuntimeTraceMetrics metrics;
       metrics.compileMillis = 0.0;
+      metrics.executeMillis = 0.0;
+      metrics.executeCalls = 0;
       for (const std::string &entry : trace)
+      {
          metrics.compileMillis += parseTraceMetric(entry, "compile_ms");
+         if (entry.find("execute_ms=") != std::string::npos)
+         {
+            metrics.executeMillis += parseTraceMetric(entry, "execute_ms");
+            ++metrics.executeCalls;
+         }
+      }
       return metrics;
    }
 
@@ -783,7 +1182,7 @@ int main(int argc, char *argsRaw[])
       std::cout << "--emit-frames=PATH writes chained iterations as PATH with _N suffixes.\n";
       std::cout << "--preview opens a live runtime preview window.\n";
       std::cout << "--compare[=PATH] writes a side-by-side original/result comparison image.\n";
-      std::cout << "--display-scale=N writes output frames enlarged by an integer factor.\n";
+      std::cout << "--display-scale=N|auto writes output frames enlarged by an integer factor or fits them to the current display.\n";
       std::cout << "--display-size=WIDTHxHEIGHT writes output frames at an exact size.\n";
       std::cout << "--runtime interprets managed image programs instead of compiling JIT kernels.\n";
       std::cout << "Color images are processed channel-wise and preserve RGB output.\n";
@@ -824,6 +1223,7 @@ int main(int argc, char *argsRaw[])
    std::string emitFramesPath;
    std::string comparePath;
    int displayScale = 1;
+   bool displayScaleAuto = false;
    int displayWidth = 0;
    int displayHeight = 0;
    int n_times = 1;
@@ -848,7 +1248,13 @@ int main(int argc, char *argsRaw[])
       else if (s.length() > 10 && s.substr(0, 10) == "--compare=")
          comparePath = s.substr(10);
       else if (s.length() > 16 && s.substr(0, 16) == "--display-scale=")
-         displayScale = parsePositiveInt(s.substr(16), "--display-scale");
+      {
+         std::string value = s.substr(16);
+         if (value == "auto")
+            displayScaleAuto = true;
+         else
+            displayScale = parsePositiveInt(value, "--display-scale");
+      }
       else if (s.length() > 15 && s.substr(0, 15) == "--display-size=")
       {
          std::pair<int, int> dims = parseDimensions(s.substr(15), "--display-size");
@@ -881,8 +1287,12 @@ int main(int argc, char *argsRaw[])
    if (chain_times > 0)
       n_times = chain_times;
 
-   if (displayWidth > 0 && displayScale != 1)
+   if (displayWidth > 0 && (displayScale != 1 || displayScaleAuto))
       throw std::runtime_error("Use either --display-scale or --display-size, not both");
+#ifndef GNINE_HAVE_SDL2
+   if (displayScaleAuto)
+      throw std::runtime_error("--display-scale=auto requires SDL2 support");
+#endif
    if (preview && !runtimeMode)
       throw std::runtime_error("--preview currently requires --runtime");
    if (preview && benchmark)
@@ -1008,6 +1418,9 @@ int main(int argc, char *argsRaw[])
 
    auto writeDisplayImage = [&](const Image &imageToWrite, const std::string &path)
    {
+      const int resolvedDisplayScale = displayScaleAuto
+                                           ? autoDisplayScaleForImage(imageToWrite.width(), imageToWrite.height())
+                                           : displayScale;
       if (displayWidth > 0)
       {
          Image scaled = resizeNearest(imageToWrite, displayWidth, displayHeight);
@@ -1015,11 +1428,11 @@ int main(int argc, char *argsRaw[])
          return;
       }
 
-      if (displayScale != 1)
+      if (resolvedDisplayScale != 1)
       {
          Image scaled = resizeNearest(imageToWrite,
-                                      imageToWrite.width() * displayScale,
-                                      imageToWrite.height() * displayScale);
+                                      imageToWrite.width() * resolvedDisplayScale,
+                                      imageToWrite.height() * resolvedDisplayScale);
          scaled.write(path);
          return;
       }
@@ -1029,12 +1442,15 @@ int main(int argc, char *argsRaw[])
 
    auto makeDisplayImage = [&](const Image &imageToWrite) -> Image
    {
+      const int resolvedDisplayScale = displayScaleAuto
+                                           ? autoDisplayScaleForImage(imageToWrite.width(), imageToWrite.height())
+                                           : displayScale;
       if (displayWidth > 0)
          return resizeNearest(imageToWrite, displayWidth, displayHeight);
-      if (displayScale != 1)
+      if (resolvedDisplayScale != 1)
          return resizeNearest(imageToWrite,
-                              imageToWrite.width() * displayScale,
-                              imageToWrite.height() * displayScale);
+                              imageToWrite.width() * resolvedDisplayScale,
+                              imageToWrite.height() * resolvedDisplayScale);
       return copyImage(imageToWrite);
    };
 
@@ -1113,10 +1529,19 @@ int main(int argc, char *argsRaw[])
          PreviewWindow previewWindow;
          bool statefulPreview = hasIterateState || hasIterateUntil || chain_times > 0;
          int previewFrame = 0;
+         double previewFpsAccumMs = 0.0;
+         int previewFpsAccumFrames = 0;
+         double previewCpuAccumMs = 0.0;
+         int previewRuntimeCallAccumCount = 0;
+         double previewDisplayedFps = 0.0;
+         double previewDisplayedCpuMs = 0.0;
+         double previewDisplayedRuntimeCallUs = 0.0;
+         std::string previewOverlayText("FPS -.-- CPU -.-- CALLUS -.--");
          std::chrono::steady_clock::time_point previewStart = std::chrono::steady_clock::now();
          std::chrono::steady_clock::time_point previewLast = previewStart;
          const int previewTargetWidth = displayWidth > 0 ? displayWidth : 0;
          const int previewTargetHeight = displayHeight > 0 ? displayHeight : 0;
+         int previewResolvedDisplayScale = displayScaleAuto ? 0 : displayScale;
 
          if (statefulPreview && effectiveCode.list[0].list.size() != 1)
             throw std::runtime_error("preview runtime chaining requires the step program to take exactly one state argument");
@@ -1155,6 +1580,8 @@ int main(int argc, char *argsRaw[])
                break;
 
             ++previewFrame;
+            double previewFrameExecuteMs = 0.0;
+            int previewFrameRuntimeCallCount = 0;
             if (statefulPreview)
             {
                evaluator.clearExecutionTrace();
@@ -1169,9 +1596,11 @@ int main(int argc, char *argsRaw[])
                hasRuntimeState = true;
                runtimeIterationsExecuted = previewFrame;
                RuntimeTraceMetrics traceMetrics = collectRuntimeTraceMetrics(evaluator.executionTrace());
-               runtimeBenchmarkCompileMillis += traceMetrics.compileMillis;
-               runtimeBenchmarkExecuteMillis +=
+               previewFrameRuntimeCallCount = traceMetrics.executeCalls;
+               previewFrameExecuteMs =
                    std::chrono::duration_cast<std::chrono::microseconds>(passEnd - passStart).count() / 1000.0;
+               runtimeBenchmarkCompileMillis += traceMetrics.compileMillis;
+               runtimeBenchmarkExecuteMillis += previewFrameExecuteMs;
             }
             else
             {
@@ -1181,6 +1610,9 @@ int main(int argc, char *argsRaw[])
                                         previewTimeMs,
                                         previewDeltaMs);
                runtimeState = passResult.first;
+               previewFrameExecuteMs = passResult.second.second;
+               RuntimeTraceMetrics traceMetrics = collectRuntimeTraceMetrics(evaluator.executionTrace());
+               previewFrameRuntimeCallCount = traceMetrics.executeCalls;
                hasRuntimeState = true;
                runtimeBenchmarkCompileMillis += passResult.second.first;
                runtimeBenchmarkExecuteMillis += passResult.second.second;
@@ -1194,9 +1626,37 @@ int main(int argc, char *argsRaw[])
             hasImageResult = true;
             hasScalarResult = false;
 
-            int targetWidth = previewTargetWidth > 0 ? previewTargetWidth : previewImage->width() * displayScale;
-            int targetHeight = previewTargetHeight > 0 ? previewTargetHeight : previewImage->height() * displayScale;
-            previewWindow.present(*previewImage, targetWidth, targetHeight);
+            if (displayScaleAuto && previewResolvedDisplayScale <= 0)
+               previewResolvedDisplayScale = autoDisplayScaleForImage(previewImage->width(), previewImage->height());
+            const int resolvedDisplayScale = previewResolvedDisplayScale > 0 ? previewResolvedDisplayScale : 1;
+            int targetWidth = previewTargetWidth > 0 ? previewTargetWidth : previewImage->width() * resolvedDisplayScale;
+            int targetHeight = previewTargetHeight > 0 ? previewTargetHeight : previewImage->height() * resolvedDisplayScale;
+            previewWindow.present(*previewImage, targetWidth, targetHeight, &previewOverlayText);
+
+            previewFpsAccumMs += previewDeltaMs;
+            previewCpuAccumMs += previewFrameExecuteMs;
+            previewRuntimeCallAccumCount += previewFrameRuntimeCallCount;
+            ++previewFpsAccumFrames;
+            if (previewFpsAccumMs >= 250.0)
+            {
+               previewDisplayedFps = (previewFpsAccumFrames * 1000.0) / previewFpsAccumMs;
+               previewDisplayedCpuMs = previewCpuAccumMs / previewFpsAccumFrames;
+               previewDisplayedRuntimeCallUs =
+                   previewRuntimeCallAccumCount > 0 ? ((previewCpuAccumMs * 1000.0) / previewRuntimeCallAccumCount) : 0.0;
+               previewFpsAccumMs = 0.0;
+               previewCpuAccumMs = 0.0;
+               previewRuntimeCallAccumCount = 0;
+               previewFpsAccumFrames = 0;
+
+               std::ostringstream overlay;
+               overlay << std::fixed << std::setprecision(1)
+                       << "FPS " << previewDisplayedFps
+                       << " CPU " << std::setprecision(2) << previewDisplayedCpuMs
+                       << " CALLUS " << std::setprecision(1) << previewDisplayedRuntimeCallUs;
+               previewOverlayText = overlay.str();
+
+               previewWindow.setTitle(std::string("gnine preview - ") + previewOverlayText);
+            }
 
             if (!emitFramesPath.empty())
                writeDisplayImage(*previewImage, makeChainedFramePath(emitFramesPath, previewFrame));
@@ -1214,7 +1674,7 @@ int main(int argc, char *argsRaw[])
                   break;
             }
 
-            if (chain_times > 0 && previewFrame >= chain_times)
+            if (chain_times > 0 && !hasIterateUntil && previewFrame >= chain_times)
                break;
          }
 #endif

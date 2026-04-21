@@ -11,7 +11,7 @@
 ;     /Users/gduimovi/dev/gNine/examples/runtime_snake.psm \
 ;     /tmp/runtime_snake.png
 
-(iterate-until 10000
+(iterate-until 100
   (()
     (define grid-w 24)
     (define grid-h 24)

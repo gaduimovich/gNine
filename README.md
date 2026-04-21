@@ -70,13 +70,22 @@ Run the test binaries:
 * `runtime_snake.psm` - interactive runtime preview demo built with `iterate-until`
 * `examples/game_of_life/game_of_life.psm` - chained cellular automata example
 
+## Language Guide
+
+See [docs/language-guide.md](docs/language-guide.md) for the actual language reference:
+
+* syntax and execution model
+* scalar sampling, vector/color forms, and runtime forms
+* tuples, lambdas, and chained state
+* game-oriented patterns and performance tricks
+
 ## New Features
 
 ### Language Features
 
 * Scalar arithmetic includes `+`, `-`, `*`, `/`, `min`, `max`, `abs`, `clamp`, and `int`.
 * Scalar comparison and boolean forms include `<`, `<=`, `>`, `>=`, `==`, `!=`, `and`, `or`, `not`, and `if`.
-* Image metadata forms include `width`, `height`, and `channels`.
+* Compiled scalar code exposes `width` and `height` as symbols; runtime code exposes `(width A)`, `(height A)`, and `(channels A)`.
 * Tuple forms include `tuple`, `get`, and tuple destructuring in arguments and lambda parameters.
 * Top-level chained execution forms include `iterate`, `iterate-state`, and `iterate-until`.
 * The chained runtime iterator variable `iter` exposes the current 1-based step count.

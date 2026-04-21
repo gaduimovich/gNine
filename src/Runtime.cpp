@@ -1857,6 +1857,9 @@ namespace gnine
             return Value::numberValue(requireImageObject(args[0], "channels")->image->channelCount());
          }
 
+         if (builtinName == "sample-image")
+            return applyAbsoluteImageSample(args, "sample-image");
+
          if (builtinName == "tuple")
             return Value::objectValue(_heap.allocateTuple(args));
 
@@ -2076,6 +2079,29 @@ namespace gnine
          return Value::numberValue(image->image->operator()(row, col, channel));
       }
 
+      Value Evaluator::applyAbsoluteImageSample(const std::vector<Value> &args,
+                                                const std::string &context)
+      {
+         if (args.size() != 3 && args.size() != 4)
+            throw std::runtime_error(context + " expects (sample-image image x y) or (sample-image image x y c)");
+
+         ImageObject *image = requireImageObject(args[0], context);
+         int col = static_cast<int>(requireNumber(args[1], context));
+         int row = static_cast<int>(requireNumber(args[2], context));
+         int channel = 0;
+         if (args.size() == 4)
+            channel = static_cast<int>(requireNumber(args[3], context));
+
+         row = reflectIndex(row, image->image->height());
+         col = reflectIndex(col, image->image->width());
+         if (image->image->channelCount() == 1)
+            channel = 0;
+         else
+            channel = reflectIndex(channel, image->image->channelCount());
+
+         return Value::numberValue(image->image->operator()(row, col, channel));
+      }
+
       bool Evaluator::lookup(EnvironmentObject *env,
                              const std::string &name,
                              Value *outValue) const
@@ -2099,7 +2125,7 @@ namespace gnine
                 name == "==" || name == "!=" || name == "and" || name == "or" ||
                 name == "not" || name == "min" || name == "max" || name == "abs" ||
                 name == "clamp" || name == "int" || name == "tuple" || name == "get" ||
-                name == "width" || name == "height" || name == "channels" ||
+                name == "width" || name == "height" || name == "channels" || name == "sample-image" ||
                 name == "draw-rect" || name == "draw-circle";
       }
 

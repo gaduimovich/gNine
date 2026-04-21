@@ -225,6 +225,8 @@ namespace gnine
          Value applyImageSample(ImageObject *image,
                                 const std::vector<Value> &args,
                                 const std::string &context);
+         Value applyAbsoluteImageSample(const std::vector<Value> &args,
+                                        const std::string &context);
          Value applyClosure(ClosureObject *closure,
                             const std::vector<Value> &args);
          void bindPattern(EnvironmentObject *env,

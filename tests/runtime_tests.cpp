@@ -257,6 +257,46 @@ int main()
 
       {
          gnine::runtime::Evaluator evaluator;
+         gnine::Image imageA(3, 2, 3, 3);
+         imageA(0, 0, 0) = 0.1;
+         imageA(0, 0, 1) = 0.2;
+         imageA(0, 0, 2) = 0.3;
+         imageA(0, 1, 0) = 1.1;
+         imageA(0, 1, 1) = 1.2;
+         imageA(0, 1, 2) = 1.3;
+         imageA(0, 2, 0) = 2.1;
+         imageA(0, 2, 1) = 2.2;
+         imageA(0, 2, 2) = 2.3;
+         imageA(1, 0, 0) = 10.1;
+         imageA(1, 0, 1) = 10.2;
+         imageA(1, 0, 2) = 10.3;
+         imageA(1, 1, 0) = 11.1;
+         imageA(1, 1, 1) = 11.2;
+         imageA(1, 1, 2) = 11.3;
+         imageA(1, 2, 0) = 12.1;
+         imageA(1, 2, 1) = 12.2;
+         imageA(1, 2, 2) = 12.3;
+
+         std::map<std::string, gnine::runtime::Value> bindings;
+         bindings["A"] = evaluator.imageValue(imageA);
+
+         gnine::runtime::Value defaultChannel =
+             evaluator.evaluateExpr(gnine::cellFromString("(sample-image A 2 1)"), bindings);
+         gnine::runtime::Value explicitChannel =
+             evaluator.evaluateExpr(gnine::cellFromString("(sample-image A 2 1 2)"), bindings);
+         gnine::runtime::Value reflected =
+             evaluator.evaluateExpr(gnine::cellFromString("(sample-image A -1 2 1)"), bindings);
+
+         require(defaultChannel.isNumber() && almostEqual(defaultChannel.number, 12.1),
+                 "sample-image should read absolute coordinates from channel 0 by default");
+         require(explicitChannel.isNumber() && almostEqual(explicitChannel.number, 12.3),
+                 "sample-image should support explicit channel reads");
+         require(reflected.isNumber() && almostEqual(reflected.number, 10.2),
+                 "sample-image should reflect out-of-bounds coordinates and channels");
+      }
+
+      {
+         gnine::runtime::Evaluator evaluator;
          gnine::Image imageA(2, 2);
          imageA(0, 0) = 0.25;
          imageA(0, 1) = 0.50;
