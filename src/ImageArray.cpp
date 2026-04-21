@@ -156,10 +156,10 @@ static double jit_draw_line(double x1, double y1, double x2, double y2,
       double t = ((px - x1) * dx + (py - y1) * dy) / lenSq;
       if (t < 0.0) t = 0.0;
       if (t > 1.0) t = 1.0;
-      double cx2 = x1 + t * dx;
-      double cy2 = y1 + t * dy;
-      double ex = px - cx2;
-      double ey = py - cy2;
+      double cx = x1 + t * dx;
+      double cy = y1 + t * dy;
+      double ex = px - cx;
+      double ey = py - cy;
       distSq = ex * ex + ey * ey;
    }
    double halfThick = thickness * 0.5;
