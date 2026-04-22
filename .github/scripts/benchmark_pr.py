@@ -153,7 +153,6 @@ def build_gnine(source_dir: Path, build_dir: Path) -> Path:
             "-B",
             str(build_dir),
             "-DCMAKE_POLICY_VERSION_MINIMUM=3.5",
-            "-DGNINE_ENABLE_SDL_PREVIEW=OFF",
         ],
         check=True,
     )
