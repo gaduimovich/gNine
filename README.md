@@ -234,16 +234,19 @@ These captures are rendered from scripted preview playback so they stay determin
 <table>
   <tr>
     <td align="center">
+      <strong>Pong</strong><br>
+      <code>readme_images/runtime_pong.gif</code><br><br>
       <img src="readme_images/runtime_pong.gif" alt="Runtime Pong" width="240"><br>
-      Pong
     </td>
     <td align="center">
+      <strong>Snake</strong><br>
+      <code>readme_images/runtime_snake.gif</code><br><br>
       <img src="readme_images/runtime_snake.gif" alt="Runtime Snake" width="240"><br>
-      Snake
     </td>
     <td align="center">
+      <strong>Flappy Bird</strong><br>
+      <code>readme_images/runtime_flappy.gif</code><br><br>
       <img src="readme_images/runtime_flappy.gif" alt="Runtime Flappy Bird" width="240"><br>
-      Flappy Bird
     </td>
   </tr>
 </table>
