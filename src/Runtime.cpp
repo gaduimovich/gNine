@@ -2566,34 +2566,30 @@ namespace gnine
                *scalarImage.getChannelData(0) = scalarInputs[idx].value;
                inputImages.push_back(&scalarImage);
             }
-            std::vector<double *> dataPtrs;
-            std::vector<int32_t> inputWidths;
-            std::vector<int32_t> inputHeights;
-            std::vector<int32_t> inputStrides;
-            dataPtrs.reserve(inputImages.size());
-            inputWidths.reserve(inputImages.size());
-            inputHeights.reserve(inputImages.size());
-            inputStrides.reserve(inputImages.size());
+            _scratchDataPtrs.resize(inputImages.size());
+            _scratchInputWidths.resize(inputImages.size());
+            _scratchInputHeights.resize(inputImages.size());
+            _scratchInputStrides.resize(inputImages.size());
+            for (size_t idx = 0; idx < inputImages.size(); ++idx)
+            {
+               const gnine::Image *image = inputImages[idx];
+               _scratchInputWidths[idx] = image->width();
+               _scratchInputHeights[idx] = image->height();
+               _scratchInputStrides[idx] = image->stride();
+            }
             for (int channel = 0; channel < source.channelCount(); ++channel)
             {
-               dataPtrs.clear();
-               inputWidths.clear();
-               inputHeights.clear();
-               inputStrides.clear();
                for (size_t idx = 0; idx < inputImages.size(); ++idx)
                {
                   const gnine::Image *image = inputImages[idx];
                   int sourceChannel = image->channelCount() == 1 ? 0 : channel;
-                  dataPtrs.push_back(const_cast<double *>(image->getChannelData(sourceChannel)));
-                  inputWidths.push_back(image->width());
-                  inputHeights.push_back(image->height());
-                  inputStrides.push_back(image->stride());
+                  _scratchDataPtrs[idx] = const_cast<double *>(image->getChannelData(sourceChannel));
                }
                fn(source.width(), source.height(), iterValue,
-                  dataPtrs.data(),
-                  inputWidths.data(),
-                  inputHeights.data(),
-                  inputStrides.data(),
+                  _scratchDataPtrs.data(),
+                  _scratchInputWidths.data(),
+                  _scratchInputHeights.data(),
+                  _scratchInputStrides.data(),
                   resultImage.getChannelData(channel));
             }
 
@@ -2692,34 +2688,30 @@ namespace gnine
                *scalarImage.getChannelData(0) = scalarInputs[idx].value;
                inputImages.push_back(&scalarImage);
             }
-            std::vector<double *> dataPtrs;
-            std::vector<int32_t> inputWidths;
-            std::vector<int32_t> inputHeights;
-            std::vector<int32_t> inputStrides;
-            dataPtrs.reserve(inputImages.size());
-            inputWidths.reserve(inputImages.size());
-            inputHeights.reserve(inputImages.size());
-            inputStrides.reserve(inputImages.size());
+            _scratchDataPtrs.resize(inputImages.size());
+            _scratchInputWidths.resize(inputImages.size());
+            _scratchInputHeights.resize(inputImages.size());
+            _scratchInputStrides.resize(inputImages.size());
+            for (size_t idx = 0; idx < inputImages.size(); ++idx)
+            {
+               const gnine::Image *image = inputImages[idx];
+               _scratchInputWidths[idx] = image->width();
+               _scratchInputHeights[idx] = image->height();
+               _scratchInputStrides[idx] = image->stride();
+            }
             for (int channel = 0; channel < resultChannels; ++channel)
             {
-               dataPtrs.clear();
-               inputWidths.clear();
-               inputHeights.clear();
-               inputStrides.clear();
                for (size_t idx = 0; idx < inputImages.size(); ++idx)
                {
                   const gnine::Image *image = inputImages[idx];
                   int sourceChannel = broadcastChannelIndex(*image, channel);
-                  dataPtrs.push_back(const_cast<double *>(image->getChannelData(sourceChannel)));
-                  inputWidths.push_back(image->width());
-                  inputHeights.push_back(image->height());
-                  inputStrides.push_back(image->stride());
+                  _scratchDataPtrs[idx] = const_cast<double *>(image->getChannelData(sourceChannel));
                }
                fn(lhs.width(), lhs.height(), iterValue,
-                  dataPtrs.data(),
-                  inputWidths.data(),
-                  inputHeights.data(),
-                  inputStrides.data(),
+                  _scratchDataPtrs.data(),
+                  _scratchInputWidths.data(),
+                  _scratchInputHeights.data(),
+                  _scratchInputStrides.data(),
                   resultImage.getChannelData(channel));
             }
 
@@ -3102,28 +3094,24 @@ namespace gnine
                   inputImages.push_back(&scalarImage);
                }
 
-               std::vector<double *> dataPtrs;
-               std::vector<int32_t> inputWidths;
-               std::vector<int32_t> inputHeights;
-               std::vector<int32_t> inputStrides;
-               dataPtrs.reserve(inputImages.size());
-               inputWidths.reserve(inputImages.size());
-               inputHeights.reserve(inputImages.size());
-               inputStrides.reserve(inputImages.size());
+               _scratchDataPtrs.resize(inputImages.size());
+               _scratchInputWidths.resize(inputImages.size());
+               _scratchInputHeights.resize(inputImages.size());
+               _scratchInputStrides.resize(inputImages.size());
                for (size_t idx = 0; idx < inputImages.size(); ++idx)
                {
                   const gnine::Image *image = inputImages[idx];
-                  dataPtrs.push_back(const_cast<double *>(image->getChannelData(0)));
-                  inputWidths.push_back(image->width());
-                  inputHeights.push_back(image->height());
-                  inputStrides.push_back(image->stride());
+                  _scratchDataPtrs[idx] = const_cast<double *>(image->getChannelData(0));
+                  _scratchInputWidths[idx] = image->width();
+                  _scratchInputHeights[idx] = image->height();
+                  _scratchInputStrides[idx] = image->stride();
                }
 
                kernel.fn(width, height, iterValue,
-                         dataPtrs.data(),
-                         inputWidths.data(),
-                         inputHeights.data(),
-                         inputStrides.data(),
+                         _scratchDataPtrs.data(),
+                         _scratchInputWidths.data(),
+                         _scratchInputHeights.data(),
+                         _scratchInputStrides.data(),
                          resultImage.getChannelData(0),
                          resultImage.getChannelData(1),
                          resultImage.getChannelData(2));
@@ -3209,28 +3197,24 @@ namespace gnine
                   inputImages.push_back(&scalarImage);
                }
 
-               std::vector<double *> dataPtrs;
-               std::vector<int32_t> inputWidths;
-               std::vector<int32_t> inputHeights;
-               std::vector<int32_t> inputStrides;
-               dataPtrs.reserve(inputImages.size());
-               inputWidths.reserve(inputImages.size());
-               inputHeights.reserve(inputImages.size());
-               inputStrides.reserve(inputImages.size());
+               _scratchDataPtrs.resize(inputImages.size());
+               _scratchInputWidths.resize(inputImages.size());
+               _scratchInputHeights.resize(inputImages.size());
+               _scratchInputStrides.resize(inputImages.size());
                for (size_t idx = 0; idx < inputImages.size(); ++idx)
                {
                   const gnine::Image *image = inputImages[idx];
                   int sourceChannel = image->channelCount() == 1 ? 0 : channel;
-                  dataPtrs.push_back(const_cast<double *>(image->getChannelData(sourceChannel)));
-                  inputWidths.push_back(image->width());
-                  inputHeights.push_back(image->height());
-                  inputStrides.push_back(image->stride());
+                  _scratchDataPtrs[idx] = const_cast<double *>(image->getChannelData(sourceChannel));
+                  _scratchInputWidths[idx] = image->width();
+                  _scratchInputHeights[idx] = image->height();
+                  _scratchInputStrides[idx] = image->stride();
                }
                kernel.fn(width, height, iterValue,
-                         dataPtrs.data(),
-                         inputWidths.data(),
-                         inputHeights.data(),
-                         inputStrides.data(),
+                         _scratchDataPtrs.data(),
+                         _scratchInputWidths.data(),
+                         _scratchInputHeights.data(),
+                         _scratchInputStrides.data(),
                          resultImage.getChannelData(channel));
             }
 

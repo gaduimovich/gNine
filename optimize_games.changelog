@@ -1,3 +1,10 @@
+2026-04-22 Runtime kernel argument-buffer reuse pass
+
+- Reworked compiled runtime `map-image`, `zip-image`, and `canvas` execution paths to reuse evaluator-owned scratch buffers for input data pointers and input geometry arrays instead of allocating temporary vectors on each invocation.
+- Hoisted invariant input width/height/stride array population out of per-channel loops in compiled `map-image` and `zip-image`.
+- Kept runtime behavior unchanged while reducing per-frame setup overhead in chained game loops (targeting warm `benchmark.last_repeat_avg_iter_ms` improvements for `runtime_pong_v2.psm` and `runtime_snake_v2.psm`).
+- Added Codex-friendly `run_runtime_perf_x86.sh` submodule bootstrap options (`--omr-submodule-url` / `OMR_SUBMODULE_URL`) so locked-down proxy environments can fetch `libs/omr` from an internal mirror.
+
 2026-04-08 First engine optimization pass
 
 - Runtime image extraction in [src/main.cpp] now borrows the `Image` from rooted runtime state instead of copying it into a new heap image on every frame.
