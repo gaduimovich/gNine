@@ -169,7 +169,9 @@ jobs:
             --output-dir "$GITHUB_WORKSPACE/gameplay-captures" \
             --output-json "$GITHUB_WORKSPACE/gameplay-captures/gameplay-captures.json" \
             --output-markdown "$GITHUB_WORKSPACE/gameplay-captures/gameplay-captures.md" \
-            --run-url "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+            --run-url "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" \
+            --repository "${{ github.event.pull_request.head.repo.full_name }}" \
+            --head-sha "${{ github.event.pull_request.head.sha }}"
 
       - name: Upload gameplay artifacts
         id: upload-gameplay-bundle
@@ -202,25 +204,16 @@ jobs:
 
       - name: Publish gameplay summary
         run: |
+          cat "$GITHUB_WORKSPACE/gameplay-captures/gameplay-captures.md" >> "$GITHUB_STEP_SUMMARY"
           {
             echo ""
             echo "## Direct artifact links"
             echo ""
-            echo "### Snake"
-            echo "![Snake](${{ steps.upload-snake-gif.outputs.artifact-url }})"
-            echo "- GIF: [download](${{ steps.upload-snake-gif.outputs.artifact-url }})"
-            echo ""
-            echo "### Pong"
-            echo "![Pong](${{ steps.upload-pong-gif.outputs.artifact-url }})"
-            echo "- GIF: [download](${{ steps.upload-pong-gif.outputs.artifact-url }})"
-            echo ""
-            echo "### Flappy Bird"
-            echo "![Flappy Bird](${{ steps.upload-flappy-gif.outputs.artifact-url }})"
-            echo "- GIF: [download](${{ steps.upload-flappy-gif.outputs.artifact-url }})"
-            echo ""
+            echo "- Snake GIF: [download](${{ steps.upload-snake-gif.outputs.artifact-url }})"
+            echo "- Pong GIF: [download](${{ steps.upload-pong-gif.outputs.artifact-url }})"
+            echo "- Flappy Bird GIF: [download](${{ steps.upload-flappy-gif.outputs.artifact-url }})"
             echo "- Full capture bundle: [download artifacts](${{ steps.upload-gameplay-bundle.outputs.artifact-url }})"
-          } >> "$GITHUB_WORKSPACE/gameplay-captures/gameplay-captures.md"
-          cat "$GITHUB_WORKSPACE/gameplay-captures/gameplay-captures.md" >> "$GITHUB_STEP_SUMMARY"
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Comment gameplay captures on PR
         if: github.event.pull_request.head.repo.fork == false
