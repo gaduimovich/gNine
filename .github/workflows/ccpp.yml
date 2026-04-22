@@ -137,7 +137,7 @@ jobs:
     needs: build-and-test
     runs-on: ubuntu-latest
     permissions:
-      contents: read
+      contents: write
       pull-requests: write
 
     steps:
@@ -163,13 +163,15 @@ jobs:
 
       - name: Generate gameplay captures
         run: |
+          inline_base_url="https://raw.githubusercontent.com/${{ github.repository }}/gnine-gameplay-pr-${{ github.event.pull_request.number }}/readme_images"
           python3 .github/scripts/playback_pr.py \
             --repo-root "$GITHUB_WORKSPACE" \
             --binary "$GITHUB_WORKSPACE/gnine-head/gnine" \
             --output-dir "$GITHUB_WORKSPACE/gameplay-captures" \
             --output-json "$GITHUB_WORKSPACE/gameplay-captures/gameplay-captures.json" \
             --output-markdown "$GITHUB_WORKSPACE/gameplay-captures/gameplay-captures.md" \
-            --run-url "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+            --run-url "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" \
+            --inline-base-url "$inline_base_url"
 
       - name: Upload gameplay artifacts
         id: upload-gameplay-bundle
@@ -200,27 +202,36 @@ jobs:
           path: gameplay-captures/flappy/flappy.gif
           archive: false
 
+      - name: Publish gameplay GIFs
+        if: github.event.pull_request.head.repo.fork == false
+        run: |
+          set -euo pipefail
+          asset_branch="gnine-gameplay-pr-${{ github.event.pull_request.number }}"
+          publish_dir="${RUNNER_TEMP}/gnine-gameplay-assets"
+          git worktree add --force -b "$asset_branch" "$publish_dir" origin/main
+          mkdir -p "$publish_dir/readme_images"
+          cp "$GITHUB_WORKSPACE/gameplay-captures/snake/snake.gif" "$publish_dir/readme_images/runtime_snake.gif"
+          cp "$GITHUB_WORKSPACE/gameplay-captures/pong/pong.gif" "$publish_dir/readme_images/runtime_pong.gif"
+          cp "$GITHUB_WORKSPACE/gameplay-captures/flappy/flappy.gif" "$publish_dir/readme_images/runtime_flappy.gif"
+          git -C "$publish_dir" add readme_images/runtime_snake.gif readme_images/runtime_pong.gif readme_images/runtime_flappy.gif
+          if ! git -C "$publish_dir" diff --cached --quiet; then
+            git -C "$publish_dir" -c user.name="github-actions[bot]" -c user.email="41898282+github-actions[bot]@users.noreply.github.com" commit -m "Update gameplay captures for PR #${{ github.event.pull_request.number }}"
+          fi
+          git -C "$publish_dir" push --force origin "HEAD:refs/heads/$asset_branch"
+          git worktree remove --force "$publish_dir"
+
       - name: Publish gameplay summary
         run: |
+          cat "$GITHUB_WORKSPACE/gameplay-captures/gameplay-captures.md" >> "$GITHUB_STEP_SUMMARY"
           {
             echo ""
             echo "## Direct artifact links"
             echo ""
-            echo "### Snake"
-            echo "![Snake](${{ steps.upload-snake-gif.outputs.artifact-url }})"
-            echo "- GIF: [download](${{ steps.upload-snake-gif.outputs.artifact-url }})"
-            echo ""
-            echo "### Pong"
-            echo "![Pong](${{ steps.upload-pong-gif.outputs.artifact-url }})"
-            echo "- GIF: [download](${{ steps.upload-pong-gif.outputs.artifact-url }})"
-            echo ""
-            echo "### Flappy Bird"
-            echo "![Flappy Bird](${{ steps.upload-flappy-gif.outputs.artifact-url }})"
-            echo "- GIF: [download](${{ steps.upload-flappy-gif.outputs.artifact-url }})"
-            echo ""
+            echo "- Snake GIF: [download](${{ steps.upload-snake-gif.outputs.artifact-url }})"
+            echo "- Pong GIF: [download](${{ steps.upload-pong-gif.outputs.artifact-url }})"
+            echo "- Flappy Bird GIF: [download](${{ steps.upload-flappy-gif.outputs.artifact-url }})"
             echo "- Full capture bundle: [download artifacts](${{ steps.upload-gameplay-bundle.outputs.artifact-url }})"
-          } >> "$GITHUB_WORKSPACE/gameplay-captures/gameplay-captures.md"
-          cat "$GITHUB_WORKSPACE/gameplay-captures/gameplay-captures.md" >> "$GITHUB_STEP_SUMMARY"
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Comment gameplay captures on PR
         if: github.event.pull_request.head.repo.fork == false

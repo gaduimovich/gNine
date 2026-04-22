@@ -151,6 +151,7 @@ def main() -> None:
     parser.add_argument("--output-json", required=True)
     parser.add_argument("--output-markdown", required=True)
     parser.add_argument("--run-url", required=True)
+    parser.add_argument("--inline-base-url", required=True)
     args = parser.parse_args()
 
     repo_root = Path(args.repo_root).resolve()
@@ -184,10 +185,13 @@ def main() -> None:
         lines.append(f"- Frames: `{capture['frame_count']}`")
         if capture["gif"] is not None:
             lines.append(f"- GIF: `{capture['gif']}`")
+            inline_url = f"{args.inline_base_url}/runtime_{capture['name']}.gif"
+            lines.append(f"![{capture['name'].title()}]({inline_url})")
         else:
             lines.append(f"- Frames: `{capture['frames_dir']}`")
         lines.append(f"- Cover: `{capture['output_image']}`")
         lines.append("")
+    lines.append("Artifacts are attached to this workflow run.")
     output_markdown.write_text("\n".join(lines) + "\n")
 
 
