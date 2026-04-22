@@ -64,6 +64,11 @@ jobs:
           name: gnine-linux-x64
           path: gnine-head
 
+      - name: Install ffmpeg
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg
+
       - name: Make gnine binary executable
         run: chmod +x gnine-head/gnine
 
