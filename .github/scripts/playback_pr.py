@@ -70,8 +70,8 @@ def run_capture(binary: Path, repo_root: Path, case: CaptureCase, output_dir: Pa
         raise RuntimeError(f"no frames were produced for {case.name}")
 
     mp4_path = case_dir / f"{case.name}.mp4"
-    has_ffmpeg = shutil.which("ffmpeg") is not None
-    if has_ffmpeg:
+    gif_path = case_dir / f"{case.name}.gif"
+    if shutil.which("ffmpeg") is not None:
         run(
             [
                 "ffmpeg",
@@ -90,6 +90,19 @@ def run_capture(binary: Path, repo_root: Path, case: CaptureCase, output_dir: Pa
             ],
             cwd=case_dir,
         )
+    elif shutil.which("magick") is not None:
+        run(
+            [
+                "magick",
+                "-delay",
+                str(max(1, int(round(100.0 / FRAME_RATE)))),
+                "-loop",
+                "0",
+                *[str(frame) for frame in frame_files],
+                str(gif_path),
+            ],
+            cwd=case_dir,
+        )
 
     return {
         "name": case.name,
@@ -99,7 +112,8 @@ def run_capture(binary: Path, repo_root: Path, case: CaptureCase, output_dir: Pa
         "frame_count": len(frame_files),
         "frames_dir": str(frames_dir.relative_to(output_dir)),
         "output_image": str(output_image.relative_to(output_dir)),
-        "mp4": str(mp4_path.relative_to(output_dir)) if mp4_path.exists() else None,
+        "gif": str(gif_path.relative_to(output_dir)) if gif_path.exists() else None,
+        "mp4": str(mp4_path.relative_to(output_dir)) if "mp4_path" in locals() and mp4_path.exists() else None,
     }
 
 
@@ -142,7 +156,9 @@ def main() -> None:
         lines.append(f"- Scenario: `{capture['scenario']}`")
         lines.append(f"- Duration: `{capture['duration_ms']} ms`")
         lines.append(f"- Frames: `{capture['frame_count']}`")
-        if capture["mp4"] is not None:
+        if capture["gif"] is not None:
+            lines.append(f"- GIF: `{capture['gif']}`")
+        elif capture["mp4"] is not None:
             lines.append(f"- Video: `{capture['mp4']}`")
         else:
             lines.append(f"- Frames: `{capture['frames_dir']}`")
