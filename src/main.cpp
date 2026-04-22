@@ -91,12 +91,12 @@ namespace
       (*bindings)["preview-delta-ms"] = makeDynamicRuntimeNumber("preview-delta-ms", previewDeltaMs);
    }
 
-#ifdef GNINE_HAVE_SDL2
    int autoDisplayScaleForImage(int imageWidth, int imageHeight)
    {
       if (imageWidth <= 0 || imageHeight <= 0)
          return 1;
 
+#ifdef GNINE_HAVE_SDL2
       if (SDL_InitSubSystem(SDL_INIT_VIDEO) != 0)
          return 1;
 
@@ -109,8 +109,12 @@ namespace
       const int scaleX = std::max(1, maxWidth / imageWidth);
       const int scaleY = std::max(1, maxHeight / imageHeight);
       return std::max(1, std::min(scaleX, scaleY));
+#else
+      return 1;
+#endif
    }
 
+#ifdef GNINE_HAVE_SDL2
    double clampPreviewChannel(double value)
    {
       if (value < 0.0)
