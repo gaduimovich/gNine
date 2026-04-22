@@ -22,6 +22,7 @@
 #include <iostream>
 #include <limits>
 #include <map>
+#include <unordered_map>
 #include <set>
 #include <sstream>
 #include <stdexcept>
@@ -390,15 +391,15 @@ namespace gnine
             }
          };
 
-        std::map<std::string, CompiledRuntimeKernel> &runtimeKernelCache()
+        std::unordered_map<std::string, CompiledRuntimeKernel> &runtimeKernelCache()
         {
-            static std::map<std::string, CompiledRuntimeKernel> cache;
+            static std::unordered_map<std::string, CompiledRuntimeKernel> cache;
             return cache;
         }
 
-         std::map<std::string, CompiledRuntimeRGBKernel> &runtimeRGBKernelCache()
+         std::unordered_map<std::string, CompiledRuntimeRGBKernel> &runtimeRGBKernelCache()
          {
-            static std::map<std::string, CompiledRuntimeRGBKernel> cache;
+            static std::unordered_map<std::string, CompiledRuntimeRGBKernel> cache;
             return cache;
          }
 
@@ -453,22 +454,22 @@ namespace gnine
          bool lookupOrCompileRuntimeKernel(const Cell &program,
                                            CompiledKernelLookup *result)
         {
-            LoweredProgram lowered = lowerProgram(program);
-            if (lowered.usesVectorFeatures || lowered.channelPrograms.size() != 1)
-            {
-               result->fallbackReason = lowered.usesVectorFeatures ? "vector_features" : "lowered_shape";
-               return false;
-            }
-
             const std::string cacheKey = cellToString(program);
-            std::map<std::string, CompiledRuntimeKernel> &cache = runtimeKernelCache();
-            std::map<std::string, CompiledRuntimeKernel>::const_iterator it = cache.find(cacheKey);
+            std::unordered_map<std::string, CompiledRuntimeKernel> &cache = runtimeKernelCache();
+            std::unordered_map<std::string, CompiledRuntimeKernel>::const_iterator it = cache.find(cacheKey);
             if (it != cache.end())
             {
                result->ok = true;
                result->cacheHit = true;
                result->fn = it->second.fn;
                return true;
+            }
+
+            LoweredProgram lowered = lowerProgram(program);
+            if (lowered.usesVectorFeatures || lowered.channelPrograms.size() != 1)
+            {
+               result->fallbackReason = lowered.usesVectorFeatures ? "vector_features" : "lowered_shape";
+               return false;
             }
 
             OMR::JitBuilder::TypeDictionary types;
@@ -500,8 +501,8 @@ namespace gnine
                                               CompiledRGBKernelLookup *result)
          {
             const std::string cacheKey = cellToString(program);
-            std::map<std::string, CompiledRuntimeRGBKernel> &cache = runtimeRGBKernelCache();
-            std::map<std::string, CompiledRuntimeRGBKernel>::const_iterator it = cache.find(cacheKey);
+            std::unordered_map<std::string, CompiledRuntimeRGBKernel> &cache = runtimeRGBKernelCache();
+            std::unordered_map<std::string, CompiledRuntimeRGBKernel>::const_iterator it = cache.find(cacheKey);
             if (it != cache.end())
             {
                result->ok = true;
