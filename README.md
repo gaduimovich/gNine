@@ -229,9 +229,24 @@ The script prints per-example timings for both architectures and a total at the 
 
 ## Runtime Demo
 
-![Runtime Pong](readme_images/runtime_pong.gif)
+These captures are rendered from scripted preview playback so they stay deterministic and easy to review.
 
-![Runtime Snake](readme_images/runtime_snake.gif)
+<table>
+  <tr>
+    <td align="center">
+      <img src="readme_images/runtime_pong.gif" alt="Runtime Pong" width="240"><br>
+      Pong
+    </td>
+    <td align="center">
+      <img src="readme_images/runtime_snake.gif" alt="Runtime Snake" width="240"><br>
+      Snake
+    </td>
+    <td align="center">
+      <img src="readme_images/runtime_flappy.gif" alt="Runtime Flappy Bird" width="240"><br>
+      Flappy Bird
+    </td>
+  </tr>
+</table>
 
 ## Performance
 
