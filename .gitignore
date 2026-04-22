@@ -2,6 +2,8 @@
 *.swp
 *~
 .python-version
+__pycache__/
+*.pyc
 build
 build-arm64/
 build-x86_64/
