@@ -6,6 +6,7 @@
 #include <vector>
 
 #include "Parser.h"
+#include "PreviewPlayback.hpp"
 #include "Runtime.hpp"
 
 namespace
@@ -864,7 +865,36 @@ int main()
                  "runtime tuple state should evolve the image field across chained evaluations");
       }
 
-      std::cout << "Runtime tests passed (" << cases.size() + 20 << " checks)" << std::endl;
+      {
+         gnine::PreviewPlaybackScenario scenario = gnine::PreviewPlaybackScenario::None;
+         require(gnine::parsePreviewPlaybackScenario("snake", &scenario) &&
+                     scenario == gnine::PreviewPlaybackScenario::Snake,
+                 "snake playback scenario should parse");
+         require(gnine::parsePreviewPlaybackScenario("pong", &scenario) &&
+                     scenario == gnine::PreviewPlaybackScenario::Pong,
+                 "pong playback scenario should parse");
+         require(!gnine::parsePreviewPlaybackScenario("nope", &scenario),
+                 "invalid playback scenarios should be rejected");
+         require(gnine::previewPlaybackFrameBudget(10000.0, 1000.0 / 60.0) == 600,
+                 "10 second playback should map to 600 frames at 60fps");
+
+         gnine::RuntimeInputState snakeFrame0 = gnine::makePreviewPlaybackInput(gnine::PreviewPlaybackScenario::Snake, 0);
+         gnine::RuntimeInputState snakeFrame33 = gnine::makePreviewPlaybackInput(gnine::PreviewPlaybackScenario::Snake, 33);
+         gnine::RuntimeInputState snakeFrame60 = gnine::makePreviewPlaybackInput(gnine::PreviewPlaybackScenario::Snake, 60);
+         gnine::RuntimeInputState pongFrame0 = gnine::makePreviewPlaybackInput(gnine::PreviewPlaybackScenario::Pong, 0);
+         gnine::RuntimeInputState pongFrame46 = gnine::makePreviewPlaybackInput(gnine::PreviewPlaybackScenario::Pong, 46);
+
+         require(snakeFrame0.keyRight == 1.0 && snakeFrame0.keyD == 1.0,
+                 "snake playback should start by steering right");
+         require(snakeFrame33.keyUp == 1.0 && snakeFrame33.keyW == 1.0,
+                 "snake playback should turn upward in the scripted path");
+         require(snakeFrame60.keyLeft == 1.0 && snakeFrame60.keyA == 1.0,
+                 "snake playback should turn left in the scripted path");
+         require(pongFrame0.keyUp == 1.0, "pong playback should start with an upward paddle move");
+         require(pongFrame46.keyDown == 1.0, "pong playback should alternate to downward paddle motion");
+      }
+
+      std::cout << "Runtime tests passed" << std::endl;
       return 0;
    }
    catch (const std::exception &ex)

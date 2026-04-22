@@ -41,6 +41,11 @@ Runtime Snake Preview
 ./build/gnine --runtime --preview ./examples/runtime_snake_v2.psm runtime_snake_v2.png
 ```
 
+Runtime Flappy Bird Preview
+```sh
+./build/gnine --runtime --preview --display-scale=auto ./examples/runtime_flappy_bird_v2.psm runtime_flappy_bird_v2.png
+```
+
 ### Testing
 
 Build the test targets:
@@ -68,6 +73,7 @@ Run the test binaries:
 * `sepia_vector.psm`, `chroma_key_green.psm`, `rgb_triptych.psm` - RGB and vector color examples
 * `runtime_pong_v2.psm` - stateful runtime demo built with `iterate-until`
 * `runtime_snake_v2.psm` - interactive runtime preview demo built with `iterate-until`
+* `runtime_flappy_bird_v2.psm` - Flappy Bird style runtime game built with `iterate-until`
 * `examples/game_of_life/game_of_life.psm` - chained cellular automata example
 
 ## Language Guide
@@ -137,7 +143,7 @@ Use this for runtime programs that execute once per invocation and do not depend
 
 ### 3. Chained runtime game benchmarks
 
-Use this for `iterate`, `iterate-state`, and `iterate-until` programs such as Pong and Snake. Supply a fixed frame budget with `--chain-times=N`.
+Use this for `iterate`, `iterate-state`, and `iterate-until` programs such as Pong, Snake, and Flappy Bird. Supply a fixed frame budget with `--chain-times=N`.
 
 Pong:
 
@@ -153,6 +159,14 @@ Snake:
 ./build-arm64/gnine --runtime --benchmark --benchmark-no-write \
   --chain-times=300 --benchmark-repeats=3 \
   ./examples/runtime_snake_v2.psm /tmp/runtime_snake_v2_bench.png
+```
+
+Flappy Bird:
+
+```bash
+./build-arm64/gnine --runtime --benchmark --benchmark-no-write \
+  --chain-times=300 --benchmark-repeats=3 \
+  ./examples/runtime_flappy_bird_v2.psm /tmp/runtime_flappy_bird_v2_bench.png
 ```
 
 Notes:
@@ -215,9 +229,27 @@ The script prints per-example timings for both architectures and a total at the 
 
 ## Runtime Demo
 
-![Runtime Pong](readme_images/runtime_pong.gif)
+These captures are rendered from scripted preview playback so they stay deterministic and easy to review.
 
-![Runtime Snake](readme_images/runtime_snake.gif)
+<table>
+  <tr>
+    <td align="center">
+      <strong>Pong</strong><br>
+      <code>readme_images/runtime_pong.gif</code><br><br>
+      <img src="readme_images/runtime_pong.gif" alt="Runtime Pong" width="240"><br>
+    </td>
+    <td align="center">
+      <strong>Snake</strong><br>
+      <code>readme_images/runtime_snake.gif</code><br><br>
+      <img src="readme_images/runtime_snake.gif" alt="Runtime Snake" width="240"><br>
+    </td>
+    <td align="center">
+      <strong>Flappy Bird</strong><br>
+      <code>readme_images/runtime_flappy.gif</code><br><br>
+      <img src="readme_images/runtime_flappy.gif" alt="Runtime Flappy Bird" width="240"><br>
+    </td>
+  </tr>
+</table>
 
 ## Performance
 

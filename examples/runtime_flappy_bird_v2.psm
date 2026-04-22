@@ -1,0 +1,378 @@
+; Runtime Flappy Bird demo, low-resolution render variant.
+; Use preview/display scaling to enlarge it cheaply.
+;
+; Preview controls:
+;   flap: Space / Up / W
+;   restart after crash: Return
+;
+; Suggested preview command:
+;   ./build-arm64/gnine --runtime --preview --display-scale=auto \
+;     ./examples/runtime_flappy_bird_v2.psm /tmp/runtime_flappy_bird_v2.png
+
+(()
+  (define W 128)
+  (define H 96)
+  (define ground-h 12)
+  (define ground-top (- H ground-h))
+  (define ground-center (+ ground-top (/ ground-h 2)))
+  (define bird-x 34)
+  (define bird-half 3)
+  (define pipe-half-w 5)
+  (define pipe-cap-half-w 7)
+  (define pipe-gap-half 11)
+  (define safe-gap-half (- pipe-gap-half bird-half 0.5))
+  (define pipe-spacing 40)
+  (define pipe-speed 1.15)
+  (define gravity 0.16)
+  (define flap-impulse -1.85)
+  (define min-vy flap-impulse)
+  (define max-vy 2.70)
+  (define bird-min-y (+ bird-half 4))
+  (define bird-max-y (- ground-top bird-half 1))
+  (define start-bird-y 44)
+  (define start-pipe0-x (+ W 12))
+  (define start-pipe1-x (+ start-pipe0-x pipe-spacing))
+  (define start-pipe2-x (+ start-pipe1-x pipe-spacing))
+
+  (define gap-center-of
+    (lambda (idx)
+      ((lambda (phase)
+         (if (== phase 0) 42
+           (if (== phase 1) 34
+             (if (== phase 2) 48
+               (if (== phase 3) 30
+                 (if (== phase 4) 52
+                   (if (== phase 5) 38
+                     (if (== phase 6) 56
+                       (if (== phase 7) 32
+                         (if (== phase 8) 46
+                           (if (== phase 9) 40
+                             (if (== phase 10) 50 36))))))))))))
+        (mod idx 12))))
+
+  (iterate-until 100
+    (()
+      (define start-gap0 (gap-center-of 0))
+      (define start-gap1 (gap-center-of 1))
+      (define start-gap2 (gap-center-of 2))
+      (define start-flap-held (or key-space key-up key-w))
+      (define start-frame
+        (canvas W H 3
+          (clamp
+            (max
+              (+ (if (== c 0) 0.18
+                   (if (== c 1) 0.38 0.62))
+                 (* (/ (- H i) H)
+                    (if (== c 0) 0.12
+                      (if (== c 1) 0.18 0.10))))
+              (* (draw-rect (/ W 2) ground-center W (/ ground-h 2) 1.0)
+                 (if (== c 0) 0.74
+                   (if (== c 1) 0.58 0.22)))
+              (* (draw-circle bird-x start-bird-y bird-half 1.0)
+                 (if (== c 0) 0.98
+                   (if (== c 1) 0.90 0.24))))
+            0 1)))
+      (tuple start-frame 0 start-bird-y 0
+             start-pipe0-x start-pipe1-x start-pipe2-x
+             start-gap0 start-gap1 start-gap2
+             3 0 1 start-flap-held))
+
+    (((frame tick bird-y bird-vy
+             pipe0-x pipe1-x pipe2-x
+             pipe0-gap pipe1-gap pipe2-gap
+             next-gap-index score alive flap-held))
+
+      (define flap-key (or key-space key-up key-w))
+      (define flap-pressed
+        (and (> alive 0)
+             (> flap-key 0)
+             (== flap-held 0)))
+      (define restart-pressed
+        (and (== alive 0)
+             (> key-return 0)))
+
+      (define next-tick-base (+ tick 1))
+
+      (define accelerated-vy
+        (if (> alive 0)
+          (clamp (+ bird-vy gravity) min-vy max-vy)
+          bird-vy))
+
+      (define next-bird-vy-base
+        (if flap-pressed
+          flap-impulse
+          accelerated-vy))
+
+      (define trial-bird-y
+        (if (> alive 0)
+          (+ bird-y next-bird-vy-base)
+          bird-y))
+
+      (define pipe0-trial-x
+        (if (> alive 0)
+          (- pipe0-x pipe-speed)
+          pipe0-x))
+      (define pipe1-trial-x
+        (if (> alive 0)
+          (- pipe1-x pipe-speed)
+          pipe1-x))
+      (define pipe2-trial-x
+        (if (> alive 0)
+          (- pipe2-x pipe-speed)
+          pipe2-x))
+
+      (define pipe0-wrap
+        (and (> alive 0)
+             (< (+ pipe0-trial-x pipe-cap-half-w) 0)))
+      (define pipe0-next-gap
+        (if pipe0-wrap
+          (gap-center-of next-gap-index)
+          pipe0-gap))
+      (define pipe0-next-x
+        (if pipe0-wrap
+          (+ (max pipe1-trial-x pipe2-trial-x) pipe-spacing)
+          pipe0-trial-x))
+      (define gap-index-1
+        (+ next-gap-index (if pipe0-wrap 1 0)))
+
+      (define pipe1-wrap
+        (and (> alive 0)
+             (< (+ pipe1-trial-x pipe-cap-half-w) 0)))
+      (define pipe1-next-gap
+        (if pipe1-wrap
+          (gap-center-of gap-index-1)
+          pipe1-gap))
+      (define pipe1-next-x
+        (if pipe1-wrap
+          (+ (max pipe0-next-x pipe2-trial-x) pipe-spacing)
+          pipe1-trial-x))
+      (define gap-index-2
+        (+ gap-index-1 (if pipe1-wrap 1 0)))
+
+      (define pipe2-wrap
+        (and (> alive 0)
+             (< (+ pipe2-trial-x pipe-cap-half-w) 0)))
+      (define pipe2-next-gap
+        (if pipe2-wrap
+          (gap-center-of gap-index-2)
+          pipe2-gap))
+      (define pipe2-next-x
+        (if pipe2-wrap
+          (+ (max pipe0-next-x pipe1-next-x) pipe-spacing)
+          pipe2-trial-x))
+      (define gap-index-3
+        (+ gap-index-2 (if pipe2-wrap 1 0)))
+
+      (define passed0
+        (and (> alive 0)
+             (> pipe0-x bird-x)
+             (<= pipe0-next-x bird-x)))
+      (define passed1
+        (and (> alive 0)
+             (> pipe1-x bird-x)
+             (<= pipe1-next-x bird-x)))
+      (define passed2
+        (and (> alive 0)
+             (> pipe2-x bird-x)
+             (<= pipe2-next-x bird-x)))
+
+      (define next-score-base
+        (+ score
+           (if passed0 1 0)
+           (if passed1 1 0)
+           (if passed2 1 0)))
+
+      (define hit-bounds
+        (or (< trial-bird-y bird-min-y)
+            (> trial-bird-y bird-max-y)))
+
+      (define hit-pipe0
+        (and (> alive 0)
+             (<= (abs (- pipe0-next-x bird-x)) (+ pipe-half-w bird-half))
+             (or (< trial-bird-y (- pipe0-next-gap safe-gap-half))
+                 (> trial-bird-y (+ pipe0-next-gap safe-gap-half)))))
+      (define hit-pipe1
+        (and (> alive 0)
+             (<= (abs (- pipe1-next-x bird-x)) (+ pipe-half-w bird-half))
+             (or (< trial-bird-y (- pipe1-next-gap safe-gap-half))
+                 (> trial-bird-y (+ pipe1-next-gap safe-gap-half)))))
+      (define hit-pipe2
+        (and (> alive 0)
+             (<= (abs (- pipe2-next-x bird-x)) (+ pipe-half-w bird-half))
+             (or (< trial-bird-y (- pipe2-next-gap safe-gap-half))
+                 (> trial-bird-y (+ pipe2-next-gap safe-gap-half)))))
+
+      (define next-alive-base
+        (if (or hit-bounds hit-pipe0 hit-pipe1 hit-pipe2)
+          0
+          alive))
+
+      (define shown-bird-y-base
+        (clamp trial-bird-y bird-min-y bird-max-y))
+
+      (define final-tick
+        (if restart-pressed 0 next-tick-base))
+      (define final-bird-y
+        (if restart-pressed start-bird-y shown-bird-y-base))
+      (define final-bird-vy
+        (if restart-pressed 0 next-bird-vy-base))
+      (define final-pipe0-x
+        (if restart-pressed start-pipe0-x pipe0-next-x))
+      (define final-pipe1-x
+        (if restart-pressed start-pipe1-x pipe1-next-x))
+      (define final-pipe2-x
+        (if restart-pressed start-pipe2-x pipe2-next-x))
+      (define final-pipe0-gap
+        (if restart-pressed (gap-center-of 0) pipe0-next-gap))
+      (define final-pipe1-gap
+        (if restart-pressed (gap-center-of 1) pipe1-next-gap))
+      (define final-pipe2-gap
+        (if restart-pressed (gap-center-of 2) pipe2-next-gap))
+      (define final-next-gap-index
+        (if restart-pressed 3 gap-index-3))
+      (define final-score
+        (if restart-pressed 0 next-score-base))
+      (define final-alive
+        (if restart-pressed 1 next-alive-base))
+      (define final-flap-held
+        (if restart-pressed 0 flap-key))
+
+      (define final-cloud-a
+        (- (+ W 20) (mod (+ 12 (* 0.25 final-tick)) (+ W 40))))
+      (define final-cloud-b
+        (- (+ W 36) (mod (+ 47 (* 0.16 final-tick)) (+ W 60))))
+      (define final-ground-shift
+        (mod (* 0.9 final-tick) 14))
+
+      (define next-frame
+        (canvas W H 3
+          (clamp
+            (max
+              (+ (if (== c 0) 0.18
+                   (if (== c 1) 0.38 0.62))
+                 (* (/ (- H i) H)
+                    (if (== c 0) 0.12
+                      (if (== c 1) 0.18 0.10))))
+
+              (* (draw-circle (* 0.78 W) (* 0.24 H) 9 1.0)
+                 (if (== c 0) 1.00
+                   (if (== c 1) 0.84 0.24)))
+
+              (* (max
+                   (draw-circle final-cloud-a 20 5 1.0)
+                   (draw-circle (+ final-cloud-a 7) 18 6 1.0)
+                   (draw-circle (+ final-cloud-a 14) 20 5 1.0))
+                 (if (== c 0) 0.93
+                   (if (== c 1) 0.97 1.00)))
+
+              (* (max
+                   (draw-circle final-cloud-b 28 4 1.0)
+                   (draw-circle (+ final-cloud-b 6) 26 5 1.0)
+                   (draw-circle (+ final-cloud-b 13) 28 4 1.0))
+                 (if (== c 0) 0.90
+                   (if (== c 1) 0.95 0.99)))
+
+              (* (max
+                   (if (and (<= (abs (- j final-pipe0-x)) pipe-half-w)
+                            (< i (- final-pipe0-gap pipe-gap-half)))
+                     1 0)
+                   (if (and (<= (abs (- j final-pipe0-x)) pipe-half-w)
+                            (> i (+ final-pipe0-gap pipe-gap-half)))
+                     1 0)
+                   (draw-rect final-pipe0-x (- final-pipe0-gap pipe-gap-half) pipe-cap-half-w 1.5 1.0)
+                   (draw-rect final-pipe0-x (+ final-pipe0-gap pipe-gap-half) pipe-cap-half-w 1.5 1.0))
+                 (if (== c 0) 0.16
+                   (if (== c 1) 0.84 0.24)))
+
+              (* (max
+                   (if (and (<= (abs (- j final-pipe1-x)) pipe-half-w)
+                            (< i (- final-pipe1-gap pipe-gap-half)))
+                     1 0)
+                   (if (and (<= (abs (- j final-pipe1-x)) pipe-half-w)
+                            (> i (+ final-pipe1-gap pipe-gap-half)))
+                     1 0)
+                   (draw-rect final-pipe1-x (- final-pipe1-gap pipe-gap-half) pipe-cap-half-w 1.5 1.0)
+                   (draw-rect final-pipe1-x (+ final-pipe1-gap pipe-gap-half) pipe-cap-half-w 1.5 1.0))
+                 (if (== c 0) 0.16
+                   (if (== c 1) 0.84 0.24)))
+
+              (* (max
+                   (if (and (<= (abs (- j final-pipe2-x)) pipe-half-w)
+                            (< i (- final-pipe2-gap pipe-gap-half)))
+                     1 0)
+                   (if (and (<= (abs (- j final-pipe2-x)) pipe-half-w)
+                            (> i (+ final-pipe2-gap pipe-gap-half)))
+                     1 0)
+                   (draw-rect final-pipe2-x (- final-pipe2-gap pipe-gap-half) pipe-cap-half-w 1.5 1.0)
+                   (draw-rect final-pipe2-x (+ final-pipe2-gap pipe-gap-half) pipe-cap-half-w 1.5 1.0))
+                 (if (== c 0) 0.16
+                   (if (== c 1) 0.84 0.24)))
+
+              (* (draw-rect (/ W 2) ground-center W (/ ground-h 2) 1.0)
+                 (if (== c 0) 0.74
+                   (if (== c 1) 0.58 0.22)))
+
+              (if (and (>= i ground-top)
+                       (< (mod (+ j final-ground-shift) 14) 6))
+                (if (== c 0) 0.82
+                  (if (== c 1) 0.66 0.26))
+                0)
+
+              (* (draw-circle bird-x final-bird-y bird-half 1.0)
+                 (if (== final-alive 0)
+                   (if (== c 0) 0.96
+                     (if (== c 1) 0.20 0.16))
+                   (if (== c 0) 0.98
+                     (if (== c 1) 0.90 0.24))))
+
+              (* (draw-line (- bird-x 2) (+ final-bird-y 0.5)
+                            (+ bird-x 2.5) (+ final-bird-y (* 0.6 (clamp final-bird-vy -2.2 2.2)))
+                            1.0 1.0)
+                 (if (== c 0) 0.82
+                   (if (== c 1) 0.62 0.14)))
+
+              (* (draw-rect (+ bird-x 4) final-bird-y 1.2 0.8 1.0)
+                 (if (== c 0) 1.00
+                   (if (== c 1) 0.52 0.12)))
+
+              (* (draw-circle (+ bird-x 1.0) (- final-bird-y 1.0) 0.9 1.0)
+                 (if (== c 0) 0.98
+                   (if (== c 1) 0.98 0.98)))
+
+              (* (draw-circle (+ bird-x 1.4) (- final-bird-y 1.0) 0.35 1.0)
+                 (if (== c 0) 0.08
+                   (if (== c 1) 0.08 0.08)))
+
+              (* (draw-rect 18 10 14 2 1.0)
+                 (if (== c 0) 0.12
+                   (if (== c 1) 0.16 0.24)))
+
+              (if (> final-score 0)
+                (* (draw-rect (+ 4 (* (clamp final-score 0 7) 2)) 10 (* (clamp final-score 0 7) 2) 2 1.0)
+                   (if (== c 0) 1.00
+                     (if (== c 1) 0.94 0.30)))
+                0)
+
+              (if (== final-alive 0)
+                (* (draw-rect (/ W 2) (/ H 2) 24 8 1.0)
+                   (if (== c 0) 0.84
+                     (if (== c 1) 0.18 0.18)))
+                0)
+
+              (if (== final-alive 0)
+                (* (draw-rect (/ W 2) (/ H 2) 18 3 1.0)
+                   (if (== c 0) 0.16
+                     (if (== c 1) 0.10 0.12)))
+                0))
+            0 1)))
+
+      (tuple next-frame final-tick final-bird-y final-bird-vy
+             final-pipe0-x final-pipe1-x final-pipe2-x
+             final-pipe0-gap final-pipe1-gap final-pipe2-gap
+             final-next-gap-index final-score final-alive final-flap-held))
+
+    (((frame tick bird-y bird-vy
+             pipe0-x pipe1-x pipe2-x
+             pipe0-gap pipe1-gap pipe2-gap
+             next-gap-index score alive flap-held))
+      0)))
