@@ -232,21 +232,24 @@ def main() -> None:
             builds = {"base": temp_root / "build-base"}
             binaries = {"base": build_gnine(worktrees["base"], builds["base"])}
 
-            # Always create the head worktree for source assets (examples, example_data).
-            worktrees["head"] = make_worktree(repo_root, args.head_ref, "head", temp_root)
-            builds["head"] = temp_root / "build-head"
             if args.head_binary is not None:
                 # Re-use the pre-built head binary; skip compilation.
-                builds["head"].mkdir(parents=True, exist_ok=True)
                 binaries["head"] = Path(args.head_binary).resolve()
+                head_source_dir = repo_root
             else:
+                # When a pre-built binary is not provided, build the head revision too.
+                worktrees["head"] = make_worktree(repo_root, args.head_ref, "head", temp_root)
+                builds["head"] = temp_root / "build-head"
                 binaries["head"] = build_gnine(worktrees["head"], builds["head"])
+                head_source_dir = worktrees["head"]
 
             for case in BENCHMARKS:
                 base_log = logs_dir / f"base-{case.name}.log"
                 head_log = logs_dir / f"head-{case.name}.log"
                 base_metrics = benchmark_case(binaries["base"], worktrees["base"], builds["base"], case, base_log)
-                head_metrics = benchmark_case(binaries["head"], worktrees["head"], builds["head"], case, head_log)
+                head_build_dir = builds.get("head", temp_root / "build-head")
+                head_build_dir.mkdir(parents=True, exist_ok=True)
+                head_metrics = benchmark_case(binaries["head"], head_source_dir, head_build_dir, case, head_log)
                 base_value = float(base_metrics[case.tracked_metric])
                 head_value = float(head_metrics[case.tracked_metric])
                 delta_percent = ((head_value - base_value) / base_value) * 100.0 if base_value else 0.0

@@ -72,7 +72,7 @@ jobs:
           python3 .github/scripts/benchmark_pr.py \
             --repo-root "$GITHUB_WORKSPACE" \
             --base-ref "${{ github.event.pull_request.base.sha }}" \
-            --head-ref "${{ github.sha }}" \
+            --head-ref "${{ github.event.pull_request.head.sha }}" \
             --head-binary "$GITHUB_WORKSPACE/gnine-head/gnine" \
             --output-json "$GITHUB_WORKSPACE/benchmark-results.json" \
             --output-markdown "$GITHUB_WORKSPACE/benchmark-comment.md" \
@@ -142,28 +142,24 @@ jobs:
           fetch-depth: 0
           submodules: recursive
 
-      - name: Install SDL and media tooling
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libsdl2-dev ffmpeg
+      - name: Download gnine binary (head)
+        uses: actions/download-artifact@v8.0.1
+        with:
+          name: gnine-linux-x64
+          path: gnine-head
 
-      - name: Configure
-        run: cmake -S . -B build-sdl -DCMAKE_POLICY_VERSION_MINIMUM=3.5 -DGNINE_ENABLE_SDL_PREVIEW=ON
-
-      - name: Build
-        run: cmake --build build-sdl --target gnine -j4
+      - name: Make gnine binary executable
+        run: chmod +x gnine-head/gnine
 
       - name: Generate gameplay captures
         run: |
           python3 .github/scripts/playback_pr.py \
             --repo-root "$GITHUB_WORKSPACE" \
-            --binary "$GITHUB_WORKSPACE/build-sdl/gnine" \
+            --binary "$GITHUB_WORKSPACE/gnine-head/gnine" \
             --output-dir "$GITHUB_WORKSPACE/gameplay-captures" \
             --output-json "$GITHUB_WORKSPACE/gameplay-captures/gameplay-captures.json" \
             --output-markdown "$GITHUB_WORKSPACE/gameplay-captures/gameplay-captures.md" \
-            --run-url "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" \
-            --repository "${{ github.event.pull_request.head.repo.full_name }}" \
-            --head-sha "${{ github.event.pull_request.head.sha }}"
+            --run-url "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
 
       - name: Upload gameplay artifacts
         id: upload-gameplay-bundle
@@ -173,15 +169,48 @@ jobs:
           path: gameplay-captures
           if-no-files-found: error
 
+      - name: Upload snake gif
+        id: upload-snake-gif
+        uses: actions/upload-artifact@v7.0.1
+        with:
+          path: gameplay-captures/snake/snake.gif
+          archive: false
+
+      - name: Upload pong gif
+        id: upload-pong-gif
+        uses: actions/upload-artifact@v7.0.1
+        with:
+          path: gameplay-captures/pong/pong.gif
+          archive: false
+
+      - name: Upload flappy gif
+        id: upload-flappy-gif
+        uses: actions/upload-artifact@v7.0.1
+        with:
+          path: gameplay-captures/flappy/flappy.gif
+          archive: false
+
       - name: Publish gameplay summary
         run: |
-          cat "$GITHUB_WORKSPACE/gameplay-captures/gameplay-captures.md" >> "$GITHUB_STEP_SUMMARY"
           {
             echo ""
-            echo "## Direct artifact link"
+            echo "## Direct artifact links"
+            echo ""
+            echo "### Snake"
+            echo "![Snake](${{ steps.upload-snake-gif.outputs.artifact-url }})"
+            echo "- GIF: [download](${{ steps.upload-snake-gif.outputs.artifact-url }})"
+            echo ""
+            echo "### Pong"
+            echo "![Pong](${{ steps.upload-pong-gif.outputs.artifact-url }})"
+            echo "- GIF: [download](${{ steps.upload-pong-gif.outputs.artifact-url }})"
+            echo ""
+            echo "### Flappy Bird"
+            echo "![Flappy Bird](${{ steps.upload-flappy-gif.outputs.artifact-url }})"
+            echo "- GIF: [download](${{ steps.upload-flappy-gif.outputs.artifact-url }})"
             echo ""
             echo "- Full capture bundle: [download artifacts](${{ steps.upload-gameplay-bundle.outputs.artifact-url }})"
-          } >> "$GITHUB_STEP_SUMMARY"
+          } >> "$GITHUB_WORKSPACE/gameplay-captures/gameplay-captures.md"
+          cat "$GITHUB_WORKSPACE/gameplay-captures/gameplay-captures.md" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Comment gameplay captures on PR
         if: github.event.pull_request.head.repo.fork == false
@@ -189,7 +218,7 @@ jobs:
         with:
           script: |
             const fs = require('fs');
-            const body = fs.readFileSync(`${process.env.GITHUB_WORKSPACE}/gameplay-captures/gameplay-captures.md`, 'utf8');
+            let body = fs.readFileSync(`${process.env.GITHUB_WORKSPACE}/gameplay-captures/gameplay-captures.md`, 'utf8');
             const marker = '<!-- gnine-gameplay-comment -->';
             const issue_number = context.payload.pull_request.number;
             const { owner, repo } = context.repo;
