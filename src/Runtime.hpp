@@ -299,6 +299,10 @@ namespace gnine
          int _currentChannel;
          bool _reportedNonNumericPixel;
          std::vector<gnine::Image> _compiledScalarImages;
+         std::vector<double *> _scratchDataPtrs;
+         std::vector<int32_t> _scratchInputWidths;
+         std::vector<int32_t> _scratchInputHeights;
+         std::vector<int32_t> _scratchInputStrides;
          std::map<std::string, ProgramMetadata> _programMetadataCache;
          std::map<std::pair<std::string, int>, CompiledCanvasChannelMetadata> _compiledCanvasChannelMetadataCache;
          std::vector<std::string> _executionTrace;
