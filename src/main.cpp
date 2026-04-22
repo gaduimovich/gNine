@@ -1863,15 +1863,21 @@ int main(int argc, char *argsRaw[])
                hasRuntimeState = true;
             }
 
+            std::map<std::string, runtime::Value> stepBindings = sharedRuntimeBindings;
+            std::map<std::string, runtime::Value> doneBindings = sharedRuntimeBindings;
+            const std::string stateBindingName = runtimeArgumentBindingName(stateArgsCell.list[0], 0);
+            const std::string doneBindingName = hasIterateUntil
+                                                    ? runtimeArgumentBindingName(iterateUntilDone.list[0].list[0], 0)
+                                                    : std::string();
+
             for (int iter = 1; iter <= chain_times; ++iter)
             {
                evaluator.clearExecutionTrace();
-               std::map<std::string, runtime::Value> bindings = sharedRuntimeBindings;
-               bindings[runtimeArgumentBindingName(stateArgsCell.list[0], 0)] = runtimeState;
-               bindings["iter"] = runtime::Value::numberValue(static_cast<double>(iter));
-               addRuntimeInputBindings(&bindings, runtimeInputState, 0.0, 0.0);
+               stepBindings[stateBindingName] = runtimeState;
+               stepBindings["iter"] = runtime::Value::numberValue(static_cast<double>(iter));
+               addRuntimeInputBindings(&stepBindings, runtimeInputState, 0.0, 0.0);
                auto passStart = std::chrono::steady_clock::now();
-               runtimeState = runRuntimeProgram(evaluator, effectiveCode, bindings);
+               runtimeState = runRuntimeProgram(evaluator, effectiveCode, stepBindings);
                auto passEnd = std::chrono::steady_clock::now();
                hasRuntimeState = true;
                runtimeIterationsExecuted = iter;
@@ -1897,8 +1903,7 @@ int main(int argc, char *argsRaw[])
 
                if (hasIterateUntil)
                {
-                  std::map<std::string, runtime::Value> doneBindings = sharedRuntimeBindings;
-                  doneBindings[runtimeArgumentBindingName(iterateUntilDone.list[0].list[0], 0)] = runtimeState;
+                  doneBindings[doneBindingName] = runtimeState;
                   doneBindings["iter"] = runtime::Value::numberValue(static_cast<double>(iter));
                   addRuntimeInputBindings(&doneBindings, runtimeInputState, 0.0, 0.0);
                   runtime::Value doneValue = runRuntimeProgram(evaluator, iterateUntilDone, doneBindings);
