@@ -152,7 +152,7 @@ def main() -> None:
     parser.add_argument("--output-markdown", required=True)
     parser.add_argument("--run-url", required=True)
     parser.add_argument("--repository", required=True)
-    parser.add_argument("--head-sha", required=True)
+    parser.add_argument("--asset-ref", required=True)
     args = parser.parse_args()
 
     repo_root = Path(args.repo_root).resolve()
@@ -187,7 +187,7 @@ def main() -> None:
         if capture["gif"] is not None:
             lines.append(f"- GIF: `{capture['gif']}`")
             repo_gif = f"readme_images/runtime_{capture['name']}.gif"
-            inline_url = f"https://raw.githubusercontent.com/{args.repository}/{args.head_sha}/{repo_gif}"
+            inline_url = f"https://raw.githubusercontent.com/{args.repository}/{args.asset_ref}/{repo_gif}"
             lines.append(f"![{capture['name'].title()}]({inline_url})")
         else:
             lines.append(f"- Frames: `{capture['frames_dir']}`")
