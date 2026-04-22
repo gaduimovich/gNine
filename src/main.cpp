@@ -24,6 +24,8 @@
 #include "VectorProgram.hpp"
 #include "JitBuilder.hpp"
 #include "Runtime.hpp"
+#include "RuntimeInputState.hpp"
+#include "PreviewPlayback.hpp"
 
 #ifdef GNINE_HAVE_SDL2
 #include <SDL.h>
@@ -33,53 +35,6 @@ using namespace gnine;
 
 namespace
 {
-   struct RuntimeInputState
-   {
-      double keyUp;
-      double keyDown;
-      double keyLeft;
-      double keyRight;
-      double keyW;
-      double keyA;
-      double keyS;
-      double keyD;
-      double keySpace;
-      double keyReturn;
-      double keyEscape;
-      double mouseX;
-      double mouseY;
-      double mouseLeft;
-      double mouseRight;
-      double mouseWheelY;
-      double keyShift;
-      double keyCtrl;
-      double keyTab;
-      double key0;
-      double key1;
-      double key2;
-      double key3;
-      double key4;
-      double key5;
-      double key6;
-      double key7;
-      double key8;
-      double key9;
-      bool quitRequested;
-
-      RuntimeInputState()
-         : keyUp(0.0), keyDown(0.0), keyLeft(0.0), keyRight(0.0),
-           keyW(0.0), keyA(0.0), keyS(0.0), keyD(0.0),
-           keySpace(0.0), keyReturn(0.0), keyEscape(0.0),
-           mouseX(0.0), mouseY(0.0), mouseLeft(0.0), mouseRight(0.0),
-           mouseWheelY(0.0),
-           keyShift(0.0), keyCtrl(0.0), keyTab(0.0),
-           key0(0.0), key1(0.0), key2(0.0), key3(0.0), key4(0.0),
-           key5(0.0), key6(0.0), key7(0.0), key8(0.0), key9(0.0),
-           quitRequested(false)
-      {
-      }
-   };
-
    runtime::Value makeDynamicRuntimeNumber(const std::string &name, double value)
    {
       return runtime::Value::numberValue(value, Cell(Cell::Symbol, name));
@@ -722,6 +677,17 @@ namespace
       return value;
    }
 
+   double parsePositiveDouble(const std::string &text, const std::string &flagName)
+   {
+      std::stringstream ss(text);
+      double value = 0.0;
+      char trailing = '\0';
+      ss >> value;
+      if (!ss || (ss >> trailing) || value <= 0.0)
+         throw std::runtime_error(flagName + " expects a positive number");
+      return value;
+   }
+
    std::pair<int, int> parseDimensions(const std::string &text, const std::string &flagName)
    {
       size_t xPos = text.find('x');
@@ -1235,6 +1201,8 @@ int main(int argc, char *argsRaw[])
       std::cout << "--benchmark-repeats=N reruns runtime benchmarks in one process to expose warm-cache timings, including chained runtime games.\n";
       std::cout << "--emit-frames=PATH writes chained iterations as PATH with _N suffixes.\n";
       std::cout << "--preview opens a live runtime preview window.\n";
+      std::cout << "--preview-playback=snake|pong runs scripted runtime preview playback without live input.\n";
+      std::cout << "--preview-duration-ms=N sets the scripted playback duration in milliseconds.\n";
       std::cout << "--compare[=PATH] writes a side-by-side original/result comparison image.\n";
       std::cout << "--display-scale=N|auto writes output frames enlarged by an integer factor or fits them to the current display.\n";
       std::cout << "--display-size=WIDTHxHEIGHT writes output frames at an exact size.\n";
@@ -1273,8 +1241,11 @@ int main(int argc, char *argsRaw[])
    bool benchmark = false;
    bool benchmarkNoWrite = false;
    bool preview = false;
+   bool previewPlayback = false;
    bool runtimeMode = false;
    bool traceFallback = false;
+   PreviewPlaybackScenario previewPlaybackScenario = PreviewPlaybackScenario::None;
+   double previewPlaybackDurationMs = 10000.0;
    std::string emitFramesPath;
    std::string comparePath;
    int displayScale = 1;
@@ -1298,6 +1269,15 @@ int main(int argc, char *argsRaw[])
          benchmarkNoWrite = true;
       else if (s == "--preview")
          preview = true;
+      else if (s.length() > 19 && s.substr(0, 19) == "--preview-playback=")
+      {
+         std::string value = s.substr(19);
+         if (!parsePreviewPlaybackScenario(value, &previewPlaybackScenario))
+            throw std::runtime_error("--preview-playback expects snake or pong");
+         previewPlayback = true;
+      }
+      else if (s.length() > 22 && s.substr(0, 22) == "--preview-duration-ms=")
+         previewPlaybackDurationMs = parsePositiveDouble(s.substr(22), "--preview-duration-ms");
       else if (s == "--trace-fallback")
          traceFallback = true;
       else if (s == "--compare")
@@ -1354,6 +1334,12 @@ int main(int argc, char *argsRaw[])
       throw std::runtime_error("--preview currently requires --runtime");
    if (preview && benchmark)
       throw std::runtime_error("--preview does not support --benchmark");
+   if (previewPlayback && !runtimeMode)
+      throw std::runtime_error("--preview-playback currently requires --runtime");
+   if (previewPlayback && preview)
+      throw std::runtime_error("--preview-playback cannot be combined with --preview");
+   if (previewPlayback && benchmark)
+      throw std::runtime_error("--preview-playback does not support --benchmark");
    if (benchmarkRepeats > 1 && !runtimeMode)
       throw std::runtime_error("--benchmark-repeats currently requires --runtime");
    if (benchmarkRepeats > 1 && !emitFramesPath.empty())
@@ -1617,7 +1603,7 @@ int main(int argc, char *argsRaw[])
          if (hasIterateUntil && iterateUntilDone.list[0].list.size() != 1)
             throw std::runtime_error("iterate-until done program must take exactly one state argument");
 
-         if (hasIterateState)
+         if (hasIterateState || hasIterateUntil)
          {
             const Cell &initArgsCell = iterateStateInit.list[0];
             std::map<std::string, runtime::Value> initBindings = sharedRuntimeBindings;
@@ -1751,6 +1737,90 @@ int main(int argc, char *argsRaw[])
          }
 #endif
       }
+      else if (previewPlayback)
+      {
+         const double previewFrameDeltaMs = 1000.0 / 60.0;
+         const int previewFrameBudget = previewPlaybackFrameBudget(previewPlaybackDurationMs, previewFrameDeltaMs);
+         int previewFrame = 0;
+         bool statefulPreview = hasIterateState || hasIterateUntil || chain_times > 0;
+
+         if (statefulPreview && effectiveCode.list[0].list.size() != 1)
+            throw std::runtime_error("preview playback requires the step program to take exactly one state argument");
+         if (hasIterateUntil && iterateUntilDone.list[0].list.size() != 1)
+            throw std::runtime_error("iterate-until done program must take exactly one state argument");
+
+         if (hasIterateState || hasIterateUntil)
+         {
+            const Cell &initArgsCell = iterateStateInit.list[0];
+            std::map<std::string, runtime::Value> initBindings = sharedRuntimeBindings;
+            addRuntimeImageBindings(evaluator, initArgsCell, inputImages, &initBindings);
+            initBindings["iter"] = runtime::Value::numberValue(0.0);
+            addRuntimeInputBindings(&initBindings,
+                                    makePreviewPlaybackInput(previewPlaybackScenario, 0),
+                                    0.0,
+                                    0.0);
+            runtimeState = runRuntimeProgram(evaluator, iterateStateInit, initBindings);
+            hasRuntimeState = true;
+         }
+         else if (statefulPreview)
+         {
+            if (inputImages.size() != 1)
+               throw std::runtime_error("--preview-playback requires a single input image unless you use iterate-state");
+            runtimeState = evaluator.imageValue(inputImages[0]);
+            hasRuntimeState = true;
+         }
+
+         while (previewFrame < previewFrameBudget)
+         {
+            RuntimeInputState playbackInput = makePreviewPlaybackInput(previewPlaybackScenario, previewFrame);
+            double previewTimeMs = static_cast<double>(previewFrame) * previewFrameDeltaMs;
+            double previewDeltaMs = previewFrameDeltaMs;
+            ++previewFrame;
+
+            if (statefulPreview)
+            {
+               evaluator.clearExecutionTrace();
+               std::map<std::string, runtime::Value> bindings = sharedRuntimeBindings;
+               bindings[runtimeArgumentBindingName(effectiveCode.list[0].list[0], 0)] = runtimeState;
+               bindings["iter"] = runtime::Value::numberValue(static_cast<double>(previewFrame));
+               addRuntimeInputBindings(&bindings, playbackInput, previewTimeMs, previewDeltaMs);
+
+               auto passStart = std::chrono::steady_clock::now();
+               runtimeState = runRuntimeProgram(evaluator, effectiveCode, bindings);
+               auto passEnd = std::chrono::steady_clock::now();
+               hasRuntimeState = true;
+               runtimeIterationsExecuted = previewFrame;
+               RuntimeTraceMetrics traceMetrics = collectRuntimeTraceMetrics(evaluator.executionTrace());
+               double previewFrameExecuteMs =
+                   std::chrono::duration_cast<std::chrono::microseconds>(passEnd - passStart).count() / 1000.0;
+               runtimeBenchmarkCompileMillis += traceMetrics.compileMillis;
+               runtimeBenchmarkExecuteMillis += previewFrameExecuteMs;
+            }
+            else
+            {
+               std::pair<runtime::Value, std::pair<double, double> > passResult =
+                   runSingleRuntimePass(static_cast<double>(previewFrame),
+                                        playbackInput,
+                                        previewTimeMs,
+                                        previewDeltaMs);
+               runtimeState = passResult.first;
+               hasRuntimeState = true;
+               runtimeBenchmarkCompileMillis += passResult.second.first;
+               runtimeBenchmarkExecuteMillis += passResult.second.second;
+            }
+
+            const Image *previewImage = tryGetRuntimeImage(runtimeState);
+            if (!previewImage)
+               throw std::runtime_error("--preview-playback requires the runtime program to return an image or a tuple whose first element is an image");
+
+            runtimeImageResult = previewImage;
+            hasImageResult = true;
+            hasScalarResult = false;
+
+            if (!emitFramesPath.empty())
+               writeDisplayImage(*previewImage, makeChainedFramePath(emitFramesPath, previewFrame));
+         }
+      }
       else if (chain_times > 0)
       {
          const int runtimeChainRepeats = benchmark ? benchmarkRepeats : 1;
@@ -1771,7 +1841,7 @@ int main(int argc, char *argsRaw[])
             double repeatExecuteMillis = 0.0;
             int repeatIterationsExecuted = 0;
 
-            if (hasIterateState)
+            if (hasIterateState || hasIterateUntil)
             {
                const Cell &initArgsCell = iterateStateInit.list[0];
                std::map<std::string, runtime::Value> initBindings = sharedRuntimeBindings;
