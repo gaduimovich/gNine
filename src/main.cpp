@@ -17,6 +17,7 @@
 #include <memory>
 #include <limits>
 #include <utility>
+#include <unordered_map>
 
 #include "Image.h"
 #include "Parser.h"
@@ -33,6 +34,16 @@ using namespace gnine;
 
 namespace
 {
+   const char *const kRuntimeInputBindingNames[] = {
+       "key-up", "key-down", "key-left", "key-right",
+       "key-w", "key-a", "key-s", "key-d",
+       "key-space", "key-return", "key-escape",
+       "mouse-x", "mouse-y", "mouse-left", "mouse-right", "mouse-wheel-y",
+       "key-shift", "key-ctrl", "key-tab",
+       "key-0", "key-1", "key-2", "key-3", "key-4",
+       "key-5", "key-6", "key-7", "key-8", "key-9",
+       "preview-time-ms", "preview-delta-ms"};
+
    struct RuntimeInputState
    {
       double keyUp;
@@ -85,6 +96,42 @@ namespace
       return runtime::Value::numberValue(value, Cell(Cell::Symbol, name));
    }
 
+   struct RuntimeBindingBuffer
+   {
+      runtime::Evaluator::FlatBindings values;
+      std::unordered_map<std::string, size_t> indices;
+
+      void assignStaticBindings(const std::map<std::string, runtime::Value> &bindings)
+      {
+         values.clear();
+         indices.clear();
+         values.reserve(bindings.size() + 48);
+         indices.reserve(bindings.size() + 48);
+         for (std::map<std::string, runtime::Value>::const_iterator it = bindings.begin(); it != bindings.end(); ++it)
+            setValue(it->first, it->second);
+      }
+
+      void ensureSlot(const std::string &name)
+      {
+         if (indices.find(name) != indices.end())
+            return;
+         indices[name] = values.size();
+         values.push_back(std::make_pair(name, runtime::Value::nil()));
+      }
+
+      void setValue(const std::string &name, const runtime::Value &value)
+      {
+         std::unordered_map<std::string, size_t>::const_iterator it = indices.find(name);
+         if (it == indices.end())
+         {
+            indices[name] = values.size();
+            values.push_back(std::make_pair(name, value));
+            return;
+         }
+         values[it->second].second = value;
+      }
+   };
+
    void addRuntimeInputBindings(std::map<std::string, runtime::Value> *bindings,
                                 const RuntimeInputState &input,
                                 double previewTimeMs,
@@ -121,6 +168,44 @@ namespace
       (*bindings)["key-9"] = makeDynamicRuntimeNumber("key-9", input.key9);
       (*bindings)["preview-time-ms"] = makeDynamicRuntimeNumber("preview-time-ms", previewTimeMs);
       (*bindings)["preview-delta-ms"] = makeDynamicRuntimeNumber("preview-delta-ms", previewDeltaMs);
+   }
+
+   void addRuntimeInputBindings(RuntimeBindingBuffer *bindings,
+                                const RuntimeInputState &input,
+                                double previewTimeMs,
+                                double previewDeltaMs)
+   {
+      bindings->setValue("key-up", makeDynamicRuntimeNumber("key-up", input.keyUp));
+      bindings->setValue("key-down", makeDynamicRuntimeNumber("key-down", input.keyDown));
+      bindings->setValue("key-left", makeDynamicRuntimeNumber("key-left", input.keyLeft));
+      bindings->setValue("key-right", makeDynamicRuntimeNumber("key-right", input.keyRight));
+      bindings->setValue("key-w", makeDynamicRuntimeNumber("key-w", input.keyW));
+      bindings->setValue("key-a", makeDynamicRuntimeNumber("key-a", input.keyA));
+      bindings->setValue("key-s", makeDynamicRuntimeNumber("key-s", input.keyS));
+      bindings->setValue("key-d", makeDynamicRuntimeNumber("key-d", input.keyD));
+      bindings->setValue("key-space", makeDynamicRuntimeNumber("key-space", input.keySpace));
+      bindings->setValue("key-return", makeDynamicRuntimeNumber("key-return", input.keyReturn));
+      bindings->setValue("key-escape", makeDynamicRuntimeNumber("key-escape", input.keyEscape));
+      bindings->setValue("mouse-x", makeDynamicRuntimeNumber("mouse-x", input.mouseX));
+      bindings->setValue("mouse-y", makeDynamicRuntimeNumber("mouse-y", input.mouseY));
+      bindings->setValue("mouse-left", makeDynamicRuntimeNumber("mouse-left", input.mouseLeft));
+      bindings->setValue("mouse-right", makeDynamicRuntimeNumber("mouse-right", input.mouseRight));
+      bindings->setValue("mouse-wheel-y", makeDynamicRuntimeNumber("mouse-wheel-y", input.mouseWheelY));
+      bindings->setValue("key-shift", makeDynamicRuntimeNumber("key-shift", input.keyShift));
+      bindings->setValue("key-ctrl", makeDynamicRuntimeNumber("key-ctrl", input.keyCtrl));
+      bindings->setValue("key-tab", makeDynamicRuntimeNumber("key-tab", input.keyTab));
+      bindings->setValue("key-0", makeDynamicRuntimeNumber("key-0", input.key0));
+      bindings->setValue("key-1", makeDynamicRuntimeNumber("key-1", input.key1));
+      bindings->setValue("key-2", makeDynamicRuntimeNumber("key-2", input.key2));
+      bindings->setValue("key-3", makeDynamicRuntimeNumber("key-3", input.key3));
+      bindings->setValue("key-4", makeDynamicRuntimeNumber("key-4", input.key4));
+      bindings->setValue("key-5", makeDynamicRuntimeNumber("key-5", input.key5));
+      bindings->setValue("key-6", makeDynamicRuntimeNumber("key-6", input.key6));
+      bindings->setValue("key-7", makeDynamicRuntimeNumber("key-7", input.key7));
+      bindings->setValue("key-8", makeDynamicRuntimeNumber("key-8", input.key8));
+      bindings->setValue("key-9", makeDynamicRuntimeNumber("key-9", input.key9));
+      bindings->setValue("preview-time-ms", makeDynamicRuntimeNumber("preview-time-ms", previewTimeMs));
+      bindings->setValue("preview-delta-ms", makeDynamicRuntimeNumber("preview-delta-ms", previewDeltaMs));
    }
 
    int autoDisplayScaleForImage(int imageWidth, int imageHeight)

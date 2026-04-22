@@ -390,17 +390,17 @@ namespace gnine
             }
          };
 
-        std::map<std::string, CompiledRuntimeKernel> &runtimeKernelCache()
-        {
-            static std::map<std::string, CompiledRuntimeKernel> cache;
-            return cache;
-        }
-
-         std::map<std::string, CompiledRuntimeRGBKernel> &runtimeRGBKernelCache()
+        std::unordered_map<std::string, CompiledRuntimeKernel> &runtimeKernelCache()
          {
-            static std::map<std::string, CompiledRuntimeRGBKernel> cache;
+            static std::unordered_map<std::string, CompiledRuntimeKernel> cache;
             return cache;
          }
+
+         std::unordered_map<std::string, CompiledRuntimeRGBKernel> &runtimeRGBKernelCache()
+          {
+             static std::unordered_map<std::string, CompiledRuntimeRGBKernel> cache;
+             return cache;
+          }
 
          double elapsedMillis(const std::chrono::steady_clock::time_point &start,
                               const std::chrono::steady_clock::time_point &end)
@@ -461,8 +461,8 @@ namespace gnine
             }
 
             const std::string cacheKey = cellToString(program);
-            std::map<std::string, CompiledRuntimeKernel> &cache = runtimeKernelCache();
-            std::map<std::string, CompiledRuntimeKernel>::const_iterator it = cache.find(cacheKey);
+            std::unordered_map<std::string, CompiledRuntimeKernel> &cache = runtimeKernelCache();
+            std::unordered_map<std::string, CompiledRuntimeKernel>::const_iterator it = cache.find(cacheKey);
             if (it != cache.end())
             {
                result->ok = true;
@@ -500,8 +500,8 @@ namespace gnine
                                               CompiledRGBKernelLookup *result)
          {
             const std::string cacheKey = cellToString(program);
-            std::map<std::string, CompiledRuntimeRGBKernel> &cache = runtimeRGBKernelCache();
-            std::map<std::string, CompiledRuntimeRGBKernel>::const_iterator it = cache.find(cacheKey);
+             std::unordered_map<std::string, CompiledRuntimeRGBKernel> &cache = runtimeRGBKernelCache();
+             std::unordered_map<std::string, CompiledRuntimeRGBKernel>::const_iterator it = cache.find(cacheKey);
             if (it != cache.end())
             {
                result->ok = true;
@@ -1060,12 +1060,12 @@ namespace gnine
       }
 
       Heap::Heap()
-         : _objects(NULL),
-           _liveObjects(0),
-           _collectionCount(0),
-           _nextCollectionThreshold(16)
-      {
-      }
+          : _objects(NULL),
+            _liveObjects(0),
+            _collectionCount(0),
+            _nextCollectionThreshold(256)
+       {
+       }
 
       Heap::~Heap()
       {
@@ -1197,7 +1197,7 @@ namespace gnine
       const Evaluator::ProgramMetadata &Evaluator::programMetadata(const Cell &program)
       {
          const std::string cacheKey = cellToString(program);
-         std::map<std::string, ProgramMetadata>::const_iterator cached = _programMetadataCache.find(cacheKey);
+         std::unordered_map<std::string, ProgramMetadata>::const_iterator cached = _programMetadataCache.find(cacheKey);
          if (cached != _programMetadataCache.end())
             return cached->second;
 
@@ -1253,8 +1253,8 @@ namespace gnine
       const Evaluator::CompiledCanvasChannelMetadata &
       Evaluator::compiledCanvasChannelMetadata(const Cell &body, int channel)
       {
-         std::pair<std::string, int> key(cellToString(body), channel);
-         std::map<std::pair<std::string, int>, CompiledCanvasChannelMetadata>::const_iterator cached =
+         const std::string key = cellToString(body) + "#" + std::to_string(channel);
+         std::unordered_map<std::string, CompiledCanvasChannelMetadata>::const_iterator cached =
              _compiledCanvasChannelMetadataCache.find(key);
          if (cached != _compiledCanvasChannelMetadataCache.end())
             return cached->second;
@@ -1278,51 +1278,123 @@ namespace gnine
          return evaluateProgram(program, bindings, NULL);
       }
 
+      Value Evaluator::evaluateProgram(const Cell &program, const FlatBindings &bindings)
+      {
+         return evaluateProgramInternal(program, NULL, &bindings, NULL, true);
+      }
+
+      Value Evaluator::evaluateProgramFast(const Cell &program, const FlatBindings &bindings)
+      {
+         return evaluateProgramInternal(program, NULL, &bindings, NULL, false);
+      }
+
       Value Evaluator::evaluateProgram(const Cell &program,
                                        const std::map<std::string, Value> &bindings,
                                        std::map<std::string, Value> *outBindings)
       {
+         return evaluateProgramInternal(program, &bindings, NULL, outBindings, true);
+      }
+
+      Value Evaluator::evaluateProgramInternal(const Cell &program,
+                                               const std::map<std::string, Value> *bindings,
+                                               const FlatBindings *flatBindings,
+                                               std::map<std::string, Value> *outBindings,
+                                               bool buildSymbolicBindings)
+      {
          const ProgramMetadata &metadata = programMetadata(program);
          const Cell &argsCell = program.list[0];
+         const size_t bindingCount = bindings != NULL ? bindings->size() : flatBindings->size();
 
          std::vector<Value> rootedBindings;
-         rootedBindings.reserve(bindings.size());
-         for (std::map<std::string, Value>::const_iterator it = bindings.begin(); it != bindings.end(); ++it)
-            rootedBindings.push_back(it->second);
+         rootedBindings.reserve(bindingCount);
+         if (bindings != NULL)
+         {
+            for (std::map<std::string, Value>::const_iterator it = bindings->begin(); it != bindings->end(); ++it)
+               rootedBindings.push_back(it->second);
+         }
+         else
+         {
+            for (FlatBindings::const_iterator it = flatBindings->begin(); it != flatBindings->end(); ++it)
+               rootedBindings.push_back(it->second);
+         }
          for (size_t idx = 0; idx < rootedBindings.size(); ++idx)
             _heap.addRoot(&rootedBindings[idx]);
 
          Value globalEnvValue = Value::objectValue(_heap.allocateEnvironment(NULL));
          Heap::Root globalRoot(_heap, globalEnvValue);
          EnvironmentObject *globalEnv = static_cast<EnvironmentObject *>(globalEnvValue.object);
-         Value symbolicEnvValue = Value::objectValue(_heap.allocateEnvironment(NULL));
-         Heap::Root symbolicRoot(_heap, symbolicEnvValue);
-         EnvironmentObject *symbolicEnv = static_cast<EnvironmentObject *>(symbolicEnvValue.object);
+         Value symbolicEnvValue = Value::nil();
+         EnvironmentObject *symbolicEnv = NULL;
+         if (buildSymbolicBindings)
+         {
+            symbolicEnvValue = Value::objectValue(_heap.allocateEnvironment(NULL));
+            _heap.addRoot(&symbolicEnvValue);
+            symbolicEnv = static_cast<EnvironmentObject *>(symbolicEnvValue.object);
+         }
+
+         auto isArgumentBinding = [&](const std::string &name) {
+            return std::find(metadata.argBindingNames.begin(), metadata.argBindingNames.end(), name) != metadata.argBindingNames.end();
+         };
+
+         auto addCapturedBinding = [&](const std::string &name, const Value &value) {
+            if (isArgumentBinding(name))
+               return;
+            globalEnv->bindings[name] = value;
+            if (buildSymbolicBindings)
+            {
+               if (value.isNumber())
+                  symbolicEnv->bindings[name] = Value::exprValue(makeSymbolCell(name));
+               else
+                  symbolicEnv->bindings[name] = value;
+            }
+         };
+
+         auto lookupBinding = [&](const std::string &name, Value *outValue) -> bool {
+            if (bindings != NULL)
+            {
+               std::map<std::string, Value>::const_iterator it = bindings->find(name);
+               if (it == bindings->end())
+                  return false;
+               *outValue = it->second;
+               return true;
+            }
+
+            for (FlatBindings::const_iterator it = flatBindings->begin(); it != flatBindings->end(); ++it)
+            {
+               if (it->first == name)
+               {
+                  *outValue = it->second;
+                  return true;
+               }
+            }
+            return false;
+         };
 
          try
          {
-            for (std::map<std::string, Value>::const_iterator it = bindings.begin(); it != bindings.end(); ++it)
+            if (bindings != NULL)
             {
-               if (std::find(metadata.argBindingNames.begin(),
-                             metadata.argBindingNames.end(),
-                             it->first) != metadata.argBindingNames.end())
-                  continue;
-               globalEnv->bindings[it->first] = it->second;
-               if (it->second.isNumber())
-                  symbolicEnv->bindings[it->first] = Value::exprValue(makeSymbolCell(it->first));
-               else
-                  symbolicEnv->bindings[it->first] = it->second;
+               for (std::map<std::string, Value>::const_iterator it = bindings->begin(); it != bindings->end(); ++it)
+                  addCapturedBinding(it->first, it->second);
+            }
+            else
+            {
+               for (FlatBindings::const_iterator it = flatBindings->begin(); it != flatBindings->end(); ++it)
+                  addCapturedBinding(it->first, it->second);
             }
 
             for (size_t idx = 0; idx < argsCell.list.size(); ++idx)
             {
                const std::string &bindingName = metadata.argBindingNames[idx];
-               std::map<std::string, Value>::const_iterator it = bindings.find(bindingName);
-               if (it == bindings.end())
+               Value boundValue = Value::nil();
+               if (!lookupBinding(bindingName, &boundValue))
                   throw std::runtime_error("Missing runtime binding for program argument: " + bindingName);
-               Value symbolicValue = Value::exprValue(makeSymbolCell(bindingName));
-               bindPattern(globalEnv, argsCell.list[idx], it->second);
-               bindPattern(globalEnv, argsCell.list[idx], it->second, symbolicValue, symbolicEnv);
+               bindPattern(globalEnv, argsCell.list[idx], boundValue);
+               if (buildSymbolicBindings)
+               {
+                  Value symbolicValue = Value::exprValue(makeSymbolCell(bindingName));
+                  bindPattern(globalEnv, argsCell.list[idx], boundValue, symbolicValue, symbolicEnv);
+               }
             }
 
             Value result = Value::nil();
@@ -1337,17 +1409,22 @@ namespace gnine
                   Heap::Root defineRoot(_heap, defineValue);
                   globalEnv->bindings[statement.defineName] = defineValue;
                   globalEnv->sourceExprs.erase(statement.defineName);
-                  if (defineValue.isNumber())
+                  if (buildSymbolicBindings)
                   {
-                     Value symbolicValue = eval(expr.list[2], symbolicEnv);
-                     Heap::Root symbolicDefineRoot(_heap, symbolicValue);
-                     Cell sourceExpr = requireExpr(symbolicValue, "define");
-                     if (!containsMetadataBuiltinCall(sourceExpr))
-                        globalEnv->sourceExprs[statement.defineName] = sourceExpr;
-                     symbolicEnv->bindings[statement.defineName] = Value::exprValue(expr.list[1]);
+                     if (defineValue.isNumber())
+                     {
+                        Value symbolicValue = eval(expr.list[2], symbolicEnv);
+                        Heap::Root symbolicDefineRoot(_heap, symbolicValue);
+                        Cell sourceExpr = requireExpr(symbolicValue, "define");
+                        if (!containsMetadataBuiltinCall(sourceExpr))
+                           globalEnv->sourceExprs[statement.defineName] = sourceExpr;
+                        symbolicEnv->bindings[statement.defineName] = Value::exprValue(expr.list[1]);
+                     }
+                     else
+                     {
+                        symbolicEnv->bindings[statement.defineName] = defineValue;
+                     }
                   }
-                  else
-                     symbolicEnv->bindings[statement.defineName] = defineValue;
                   continue;
                }
 
@@ -1356,6 +1433,8 @@ namespace gnine
 
             for (size_t idx = 0; idx < rootedBindings.size(); ++idx)
                _heap.removeRoot(&rootedBindings[idx]);
+            if (buildSymbolicBindings)
+               _heap.removeRoot(&symbolicEnvValue);
             if (outBindings != NULL)
                outBindings->insert(globalEnv->bindings.begin(), globalEnv->bindings.end());
             return result;
@@ -1364,6 +1443,8 @@ namespace gnine
          {
             for (size_t idx = 0; idx < rootedBindings.size(); ++idx)
                _heap.removeRoot(&rootedBindings[idx]);
+            if (buildSymbolicBindings)
+               _heap.removeRoot(&symbolicEnvValue);
             throw;
          }
       }
@@ -2566,34 +2647,30 @@ namespace gnine
                *scalarImage.getChannelData(0) = scalarInputs[idx].value;
                inputImages.push_back(&scalarImage);
             }
-            std::vector<double *> dataPtrs;
-            std::vector<int32_t> inputWidths;
-            std::vector<int32_t> inputHeights;
-            std::vector<int32_t> inputStrides;
-            dataPtrs.reserve(inputImages.size());
-            inputWidths.reserve(inputImages.size());
-            inputHeights.reserve(inputImages.size());
-            inputStrides.reserve(inputImages.size());
+            _dispatchDataPtrs.reserve(inputImages.size());
+            _dispatchInputWidths.reserve(inputImages.size());
+            _dispatchInputHeights.reserve(inputImages.size());
+            _dispatchInputStrides.reserve(inputImages.size());
             for (int channel = 0; channel < source.channelCount(); ++channel)
             {
-               dataPtrs.clear();
-               inputWidths.clear();
-               inputHeights.clear();
-               inputStrides.clear();
+               _dispatchDataPtrs.clear();
+               _dispatchInputWidths.clear();
+               _dispatchInputHeights.clear();
+               _dispatchInputStrides.clear();
                for (size_t idx = 0; idx < inputImages.size(); ++idx)
                {
                   const gnine::Image *image = inputImages[idx];
                   int sourceChannel = image->channelCount() == 1 ? 0 : channel;
-                  dataPtrs.push_back(const_cast<double *>(image->getChannelData(sourceChannel)));
-                  inputWidths.push_back(image->width());
-                  inputHeights.push_back(image->height());
-                  inputStrides.push_back(image->stride());
+                  _dispatchDataPtrs.push_back(const_cast<double *>(image->getChannelData(sourceChannel)));
+                  _dispatchInputWidths.push_back(image->width());
+                  _dispatchInputHeights.push_back(image->height());
+                  _dispatchInputStrides.push_back(image->stride());
                }
                fn(source.width(), source.height(), iterValue,
-                  dataPtrs.data(),
-                  inputWidths.data(),
-                  inputHeights.data(),
-                  inputStrides.data(),
+                  _dispatchDataPtrs.data(),
+                  _dispatchInputWidths.data(),
+                  _dispatchInputHeights.data(),
+                  _dispatchInputStrides.data(),
                   resultImage.getChannelData(channel));
             }
 
@@ -2692,34 +2769,30 @@ namespace gnine
                *scalarImage.getChannelData(0) = scalarInputs[idx].value;
                inputImages.push_back(&scalarImage);
             }
-            std::vector<double *> dataPtrs;
-            std::vector<int32_t> inputWidths;
-            std::vector<int32_t> inputHeights;
-            std::vector<int32_t> inputStrides;
-            dataPtrs.reserve(inputImages.size());
-            inputWidths.reserve(inputImages.size());
-            inputHeights.reserve(inputImages.size());
-            inputStrides.reserve(inputImages.size());
+            _dispatchDataPtrs.reserve(inputImages.size());
+            _dispatchInputWidths.reserve(inputImages.size());
+            _dispatchInputHeights.reserve(inputImages.size());
+            _dispatchInputStrides.reserve(inputImages.size());
             for (int channel = 0; channel < resultChannels; ++channel)
             {
-               dataPtrs.clear();
-               inputWidths.clear();
-               inputHeights.clear();
-               inputStrides.clear();
+               _dispatchDataPtrs.clear();
+               _dispatchInputWidths.clear();
+               _dispatchInputHeights.clear();
+               _dispatchInputStrides.clear();
                for (size_t idx = 0; idx < inputImages.size(); ++idx)
                {
                   const gnine::Image *image = inputImages[idx];
                   int sourceChannel = broadcastChannelIndex(*image, channel);
-                  dataPtrs.push_back(const_cast<double *>(image->getChannelData(sourceChannel)));
-                  inputWidths.push_back(image->width());
-                  inputHeights.push_back(image->height());
-                  inputStrides.push_back(image->stride());
+                  _dispatchDataPtrs.push_back(const_cast<double *>(image->getChannelData(sourceChannel)));
+                  _dispatchInputWidths.push_back(image->width());
+                  _dispatchInputHeights.push_back(image->height());
+                  _dispatchInputStrides.push_back(image->stride());
                }
                fn(lhs.width(), lhs.height(), iterValue,
-                  dataPtrs.data(),
-                  inputWidths.data(),
-                  inputHeights.data(),
-                  inputStrides.data(),
+                  _dispatchDataPtrs.data(),
+                  _dispatchInputWidths.data(),
+                  _dispatchInputHeights.data(),
+                  _dispatchInputStrides.data(),
                   resultImage.getChannelData(channel));
             }
 
@@ -3102,28 +3175,28 @@ namespace gnine
                   inputImages.push_back(&scalarImage);
                }
 
-               std::vector<double *> dataPtrs;
-               std::vector<int32_t> inputWidths;
-               std::vector<int32_t> inputHeights;
-               std::vector<int32_t> inputStrides;
-               dataPtrs.reserve(inputImages.size());
-               inputWidths.reserve(inputImages.size());
-               inputHeights.reserve(inputImages.size());
-               inputStrides.reserve(inputImages.size());
+               _dispatchDataPtrs.clear();
+               _dispatchInputWidths.clear();
+               _dispatchInputHeights.clear();
+               _dispatchInputStrides.clear();
+               _dispatchDataPtrs.reserve(inputImages.size());
+               _dispatchInputWidths.reserve(inputImages.size());
+               _dispatchInputHeights.reserve(inputImages.size());
+               _dispatchInputStrides.reserve(inputImages.size());
                for (size_t idx = 0; idx < inputImages.size(); ++idx)
                {
                   const gnine::Image *image = inputImages[idx];
-                  dataPtrs.push_back(const_cast<double *>(image->getChannelData(0)));
-                  inputWidths.push_back(image->width());
-                  inputHeights.push_back(image->height());
-                  inputStrides.push_back(image->stride());
+                  _dispatchDataPtrs.push_back(const_cast<double *>(image->getChannelData(0)));
+                  _dispatchInputWidths.push_back(image->width());
+                  _dispatchInputHeights.push_back(image->height());
+                  _dispatchInputStrides.push_back(image->stride());
                }
 
                kernel.fn(width, height, iterValue,
-                         dataPtrs.data(),
-                         inputWidths.data(),
-                         inputHeights.data(),
-                         inputStrides.data(),
+                         _dispatchDataPtrs.data(),
+                         _dispatchInputWidths.data(),
+                         _dispatchInputHeights.data(),
+                         _dispatchInputStrides.data(),
                          resultImage.getChannelData(0),
                          resultImage.getChannelData(1),
                          resultImage.getChannelData(2));
@@ -3209,28 +3282,28 @@ namespace gnine
                   inputImages.push_back(&scalarImage);
                }
 
-               std::vector<double *> dataPtrs;
-               std::vector<int32_t> inputWidths;
-               std::vector<int32_t> inputHeights;
-               std::vector<int32_t> inputStrides;
-               dataPtrs.reserve(inputImages.size());
-               inputWidths.reserve(inputImages.size());
-               inputHeights.reserve(inputImages.size());
-               inputStrides.reserve(inputImages.size());
+               _dispatchDataPtrs.clear();
+               _dispatchInputWidths.clear();
+               _dispatchInputHeights.clear();
+               _dispatchInputStrides.clear();
+               _dispatchDataPtrs.reserve(inputImages.size());
+               _dispatchInputWidths.reserve(inputImages.size());
+               _dispatchInputHeights.reserve(inputImages.size());
+               _dispatchInputStrides.reserve(inputImages.size());
                for (size_t idx = 0; idx < inputImages.size(); ++idx)
                {
                   const gnine::Image *image = inputImages[idx];
                   int sourceChannel = image->channelCount() == 1 ? 0 : channel;
-                  dataPtrs.push_back(const_cast<double *>(image->getChannelData(sourceChannel)));
-                  inputWidths.push_back(image->width());
-                  inputHeights.push_back(image->height());
-                  inputStrides.push_back(image->stride());
+                  _dispatchDataPtrs.push_back(const_cast<double *>(image->getChannelData(sourceChannel)));
+                  _dispatchInputWidths.push_back(image->width());
+                  _dispatchInputHeights.push_back(image->height());
+                  _dispatchInputStrides.push_back(image->stride());
                }
                kernel.fn(width, height, iterValue,
-                         dataPtrs.data(),
-                         inputWidths.data(),
-                         inputHeights.data(),
-                         inputStrides.data(),
+                         _dispatchDataPtrs.data(),
+                         _dispatchInputWidths.data(),
+                         _dispatchInputHeights.data(),
+                         _dispatchInputStrides.data(),
                          resultImage.getChannelData(channel));
             }
 

@@ -179,10 +179,14 @@ namespace gnine
       class Evaluator
       {
       public:
+         typedef std::vector<std::pair<std::string, Value> > FlatBindings;
+
          Evaluator();
 
          Value evaluateProgram(const Cell &program);
          Value evaluateProgram(const Cell &program, const std::map<std::string, Value> &bindings);
+         Value evaluateProgram(const Cell &program, const FlatBindings &bindings);
+         Value evaluateProgramFast(const Cell &program, const FlatBindings &bindings);
          Value evaluateProgram(const Cell &program,
                                const std::map<std::string, Value> &bindings,
                                std::map<std::string, Value> *outBindings);
@@ -211,15 +215,20 @@ namespace gnine
             std::vector<ProgramStatement> statements;
          };
 
-         struct CompiledCanvasChannelMetadata
-         {
-            Cell specializedBody;
-            std::vector<std::string> referencedSymbols;
-         };
+          struct CompiledCanvasChannelMetadata
+          {
+             Cell specializedBody;
+             std::vector<std::string> referencedSymbols;
+          };
 
-         const ProgramMetadata &programMetadata(const Cell &program);
-         const CompiledCanvasChannelMetadata &compiledCanvasChannelMetadata(const Cell &body,
-                                                                           int channel);
+          const ProgramMetadata &programMetadata(const Cell &program);
+          const CompiledCanvasChannelMetadata &compiledCanvasChannelMetadata(const Cell &body,
+                                                                            int channel);
+         Value evaluateProgramInternal(const Cell &program,
+                                       const std::map<std::string, Value> *bindings,
+                                       const FlatBindings *flatBindings,
+                                       std::map<std::string, Value> *outBindings,
+                                       bool buildSymbolicBindings);
          Value eval(const Cell &expr, EnvironmentObject *env);
          Value applyBuiltin(const std::string &builtinName,
                             const std::vector<Value> &args);
@@ -294,14 +303,18 @@ namespace gnine
 
          Heap _heap;
          bool _hasPixelContext;
-         int _currentRow;
-         int _currentCol;
-         int _currentChannel;
-         bool _reportedNonNumericPixel;
-         std::vector<gnine::Image> _compiledScalarImages;
-         std::map<std::string, ProgramMetadata> _programMetadataCache;
-         std::map<std::pair<std::string, int>, CompiledCanvasChannelMetadata> _compiledCanvasChannelMetadataCache;
-         std::vector<std::string> _executionTrace;
+          int _currentRow;
+          int _currentCol;
+          int _currentChannel;
+          bool _reportedNonNumericPixel;
+          std::vector<gnine::Image> _compiledScalarImages;
+          std::vector<double *> _dispatchDataPtrs;
+          std::vector<int32_t> _dispatchInputWidths;
+          std::vector<int32_t> _dispatchInputHeights;
+          std::vector<int32_t> _dispatchInputStrides;
+          std::unordered_map<std::string, ProgramMetadata> _programMetadataCache;
+          std::unordered_map<std::string, CompiledCanvasChannelMetadata> _compiledCanvasChannelMetadataCache;
+          std::vector<std::string> _executionTrace;
       };
    }
 }
