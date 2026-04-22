@@ -36,6 +36,13 @@ CAPTURES = (
         display_scale=4,
         duration_ms=10000,
     ),
+    CaptureCase(
+        name="flappy",
+        scenario="flappy",
+        example_path="examples/runtime_flappy_bird_v2.psm",
+        display_scale=4,
+        duration_ms=10000,
+    ),
 )
 
 
@@ -69,9 +76,9 @@ def run_capture(binary: Path, repo_root: Path, case: CaptureCase, output_dir: Pa
     if not frame_files:
         raise RuntimeError(f"no frames were produced for {case.name}")
 
-    mp4_path = case_dir / f"{case.name}.mp4"
     gif_path = case_dir / f"{case.name}.gif"
     if shutil.which("ffmpeg") is not None:
+        palette_path = case_dir / "palette.png"
         run(
             [
                 "ffmpeg",
@@ -80,13 +87,31 @@ def run_capture(binary: Path, repo_root: Path, case: CaptureCase, output_dir: Pa
                 str(FRAME_RATE),
                 "-i",
                 str(frames_dir / "frame_%04d.png"),
-                "-c:v",
-                "libx264",
-                "-pix_fmt",
-                "yuv420p",
-                "-movflags",
-                "+faststart",
-                str(mp4_path),
+                "-vf",
+                "fps=20,scale=iw:-1:flags=lanczos,palettegen",
+                "-frames:v",
+                "1",
+                "-update",
+                "1",
+                str(palette_path),
+            ],
+            cwd=case_dir,
+        )
+        run(
+            [
+                "ffmpeg",
+                "-y",
+                "-framerate",
+                str(FRAME_RATE),
+                "-i",
+                str(frames_dir / "frame_%04d.png"),
+                "-i",
+                str(palette_path),
+                "-lavfi",
+                "fps=20,scale=iw:-1:flags=lanczos[x];[x][1:v]paletteuse",
+                "-loop",
+                "0",
+                str(gif_path),
             ],
             cwd=case_dir,
         )
@@ -103,6 +128,8 @@ def run_capture(binary: Path, repo_root: Path, case: CaptureCase, output_dir: Pa
             ],
             cwd=case_dir,
         )
+    else:
+        raise RuntimeError("ffmpeg or magick is required to generate GIF captures")
 
     return {
         "name": case.name,
@@ -113,7 +140,6 @@ def run_capture(binary: Path, repo_root: Path, case: CaptureCase, output_dir: Pa
         "frames_dir": str(frames_dir.relative_to(output_dir)),
         "output_image": str(output_image.relative_to(output_dir)),
         "gif": str(gif_path.relative_to(output_dir)) if gif_path.exists() else None,
-        "mp4": str(mp4_path.relative_to(output_dir)) if "mp4_path" in locals() and mp4_path.exists() else None,
     }
 
 
@@ -125,6 +151,8 @@ def main() -> None:
     parser.add_argument("--output-json", required=True)
     parser.add_argument("--output-markdown", required=True)
     parser.add_argument("--run-url", required=True)
+    parser.add_argument("--repository", required=True)
+    parser.add_argument("--head-sha", required=True)
     args = parser.parse_args()
 
     repo_root = Path(args.repo_root).resolve()
@@ -158,8 +186,9 @@ def main() -> None:
         lines.append(f"- Frames: `{capture['frame_count']}`")
         if capture["gif"] is not None:
             lines.append(f"- GIF: `{capture['gif']}`")
-        elif capture["mp4"] is not None:
-            lines.append(f"- Video: `{capture['mp4']}`")
+            repo_gif = f"readme_images/runtime_{capture['name']}.gif"
+            inline_url = f"https://raw.githubusercontent.com/{args.repository}/{args.head_sha}/{repo_gif}"
+            lines.append(f"![{capture['name'].title()}]({inline_url})")
         else:
             lines.append(f"- Frames: `{capture['frames_dir']}`")
         lines.append(f"- Cover: `{capture['output_image']}`")

@@ -161,7 +161,9 @@ jobs:
             --output-dir "$GITHUB_WORKSPACE/gameplay-captures" \
             --output-json "$GITHUB_WORKSPACE/gameplay-captures/gameplay-captures.json" \
             --output-markdown "$GITHUB_WORKSPACE/gameplay-captures/gameplay-captures.md" \
-            --run-url "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+            --run-url "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" \
+            --repository "${{ github.event.pull_request.head.repo.full_name }}" \
+            --head-sha "${{ github.event.pull_request.head.sha }}"
 
       - name: Upload gameplay artifacts
         id: upload-gameplay-bundle
@@ -171,44 +173,15 @@ jobs:
           path: gameplay-captures
           if-no-files-found: error
 
-      - name: Upload snake video
-        id: upload-snake-video
-        uses: actions/upload-artifact@v7.0.1
-        with:
-          name: gameplay-snake-video-pr-${{ github.event.pull_request.number }}
-          path: gameplay-captures/snake/snake.mp4
-          if-no-files-found: error
-
-      - name: Upload pong video
-        id: upload-pong-video
-        uses: actions/upload-artifact@v7.0.1
-        with:
-          name: gameplay-pong-video-pr-${{ github.event.pull_request.number }}
-          path: gameplay-captures/pong/pong.mp4
-          if-no-files-found: error
-
       - name: Publish gameplay summary
         run: |
           cat "$GITHUB_WORKSPACE/gameplay-captures/gameplay-captures.md" >> "$GITHUB_STEP_SUMMARY"
           {
             echo ""
-            echo "## Direct video links"
+            echo "## Direct artifact link"
             echo ""
-            echo "- Snake: [download video](${{ steps.upload-snake-video.outputs.artifact-url }})"
-            echo "- Pong: [download video](${{ steps.upload-pong-video.outputs.artifact-url }})"
             echo "- Full capture bundle: [download artifacts](${{ steps.upload-gameplay-bundle.outputs.artifact-url }})"
           } >> "$GITHUB_STEP_SUMMARY"
-
-      - name: Add artifact links to gameplay markdown
-        run: |
-          {
-            echo ""
-            echo "## Direct video links"
-            echo ""
-            echo "- Snake: [download video](${{ steps.upload-snake-video.outputs.artifact-url }})"
-            echo "- Pong: [download video](${{ steps.upload-pong-video.outputs.artifact-url }})"
-            echo "- Full capture bundle: [download artifacts](${{ steps.upload-gameplay-bundle.outputs.artifact-url }})"
-          } >> "$GITHUB_WORKSPACE/gameplay-captures/gameplay-captures.md"
 
       - name: Comment gameplay captures on PR
         if: github.event.pull_request.head.repo.fork == false
