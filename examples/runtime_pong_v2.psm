@@ -6,8 +6,8 @@
 ; The right paddle remains AI-controlled.
 
 (()
-  (define W 160)
-  (define H 90)
+  (define W 128)
+  (define H 72)
   (define mid-x (/ W 2))
   (define paddle-half-h (max 5 (int (/ H 9))))
   (define paddle-half-w (max 2 (int (/ W 90))))

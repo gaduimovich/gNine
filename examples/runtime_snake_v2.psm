@@ -30,7 +30,7 @@
                   (if (== idx 6) 3
                     (if (== idx 7) 3 -10))))))))))
 
-  (iterate-until 100
+  (iterate-until 10000
     (()
       (define len 3)
       (define head-x 6)
@@ -107,10 +107,11 @@
 
       (define move-now
         (and (> alive 0)
-             (== (int (/ next-tick 4)) (/ next-tick 4))))
+             (== (int (/ next-tick 5)) (/ next-tick 5))))
 
       (define food-phase
         (- food-index (* 8 (int (/ food-index 8)))))
+      (define food-active 1)
       (define food-x (food-x-of food-phase))
       (define food-y (food-y-of food-phase))
 
@@ -123,6 +124,7 @@
 
       (define ate
         (and move-now
+             food-active
              (== next-head-x food-x)
              (== next-head-y food-y)))
 
