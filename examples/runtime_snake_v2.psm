@@ -30,7 +30,7 @@
                   (if (== idx 6) 3
                     (if (== idx 7) 3 -10))))))))))
 
-  (iterate-until 100
+  (iterate-state 100
     (()
       (define len 3)
       (define head-x 6)
@@ -195,7 +195,4 @@
 
       (tuple next-frame next-tick next-alive next-len
              next-head-x next-head-y step-dx step-dy next-move-count next-trail
-             next-food-index))
-
-    (((frame tick alive len head-x head-y dx dy move-count trail food-index))
-      0)))
+             next-food-index))))

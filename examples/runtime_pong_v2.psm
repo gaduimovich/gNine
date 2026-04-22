@@ -44,9 +44,10 @@
         (/ H 2)
         (/ H 2)
         0
+        0
         0))
 
-    (((frame ball-x ball-y vx vy left-y right-y left-score right-score))
+    (((frame ball-x ball-y vx vy left-y right-y left-score right-score done))
 
       (define left-input (- key-down key-up))
 
@@ -254,8 +255,10 @@
           vy
           stabilized-vy))
 
-      (tuple next-frame next-ball-x next-ball-y next-vx next-vy
-             next-left-y next-right-y next-left-score next-right-score))
+      (define next-done (or (>= next-left-score 5) (>= next-right-score 5)))
 
-    (((frame ball-x ball-y vx vy left-y right-y left-score right-score))
-      (or (>= left-score 5) (>= right-score 5)))))
+      (tuple next-frame next-ball-x next-ball-y next-vx next-vy
+             next-left-y next-right-y next-left-score next-right-score next-done))
+
+    (((frame ball-x ball-y vx vy left-y right-y left-score right-score done))
+      done)))

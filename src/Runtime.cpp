@@ -341,7 +341,7 @@ namespace gnine
                    name == "mod" || name == "floor" || name == "ceil" ||
                    name == "sqrt" || name == "sin" || name == "cos" ||
                    name == "pow" || name == "atan2" || name == "rand-of" ||
-                   name == "draw-line" ||
+                   name == "draw-line" || name == "draw-rect" || name == "draw-circle" ||
                    name == "cond" || name == "let" || name == "let*" ||
                    name == "begin" || name == "rgb" || name == "vec";
          }
@@ -1196,7 +1196,10 @@ namespace gnine
 
       const Evaluator::ProgramMetadata &Evaluator::programMetadata(const Cell &program)
       {
-         const std::string cacheKey = cellToString(program);
+         auto ptrIt = _cellPtrStringCache.find(&program);
+         if (ptrIt == _cellPtrStringCache.end())
+            ptrIt = _cellPtrStringCache.emplace(&program, cellToString(program)).first;
+         const std::string &cacheKey = ptrIt->second;
          std::map<std::string, ProgramMetadata>::const_iterator cached = _programMetadataCache.find(cacheKey);
          if (cached != _programMetadataCache.end())
             return cached->second;
@@ -1253,7 +1256,11 @@ namespace gnine
       const Evaluator::CompiledCanvasChannelMetadata &
       Evaluator::compiledCanvasChannelMetadata(const Cell &body, int channel)
       {
-         std::pair<std::string, int> key(cellToString(body), channel);
+         auto ptrIt = _cellPtrStringCache.find(&body);
+         if (ptrIt == _cellPtrStringCache.end())
+            ptrIt = _cellPtrStringCache.emplace(&body, cellToString(body)).first;
+         const std::string &bodyString = ptrIt->second;
+         std::pair<std::string, int> key(bodyString, channel);
          std::map<std::pair<std::string, int>, CompiledCanvasChannelMetadata>::const_iterator cached =
              _compiledCanvasChannelMetadataCache.find(key);
          if (cached != _compiledCanvasChannelMetadataCache.end())

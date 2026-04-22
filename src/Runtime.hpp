@@ -300,6 +300,7 @@ namespace gnine
          bool _reportedNonNumericPixel;
          std::vector<gnine::Image> _compiledScalarImages;
          std::map<std::string, ProgramMetadata> _programMetadataCache;
+         std::unordered_map<const Cell *, std::string> _cellPtrStringCache;
          std::map<std::pair<std::string, int>, CompiledCanvasChannelMetadata> _compiledCanvasChannelMetadataCache;
          std::vector<std::string> _executionTrace;
       };
