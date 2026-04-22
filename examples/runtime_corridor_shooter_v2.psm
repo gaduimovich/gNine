@@ -1,0 +1,328 @@
+; Pseudo-3D corridor shooter demo for gNine (fixed runtime-stable version).
+;
+; Controls (runtime preview):
+;   Move left  : Left arrow / A
+;   Move right : Right arrow / D
+;   Fire       : Space bar
+;   Restart    : Return/Enter (only after crash)
+
+(()
+  (define W 128)
+  (define H 96)
+  (define horizon 28)
+  (define z-max 8.0)
+  (define spawn-z z-max)
+  (define speed 0.12)
+  (define bullet-speed 0.55)
+
+  (define corridor-half-min 8.0)
+  (define corridor-half-max 55.0)
+
+  (define object-base-size 0.20)
+  (define object-aspect 1.4)
+  (define bullet-base-size 0.04)
+  (define bullet-aspect 0.6)
+
+  (define collision-x-thresh 0.35)
+  (define collision-z-thresh 0.50)
+
+  (define ceil0 0.021)
+  (define ceil1 0.0224)
+  (define ceil2 0.0252)
+  (define wall0 0.098)
+  (define wall1 0.098)
+  (define wall2 0.1064)
+
+  (define cross-y (+ horizon (* 0.55 (- H horizon))))
+  (define cross-size 5.0)
+
+  (define obstacle-x-of
+    (lambda (idx)
+      ((lambda (phase)
+         (if (== phase 0) -0.8
+           (if (== phase 1) 0.8
+             (if (== phase 2) -0.4
+               (if (== phase 3) 0.4
+                 (if (== phase 4) 0.0
+                   (if (== phase 5) -0.7
+                     (if (== phase 6) 0.7
+                       (if (== phase 7) -0.2
+                         (if (== phase 8) 0.2
+                           0.0))))))))))
+       (mod idx 10))))
+
+  (iterate-until 100
+    (()
+      (tuple
+        (canvas W H 3
+          (if (< i horizon) 0 (if (== c 0) 0.05 (if (== c 1) 0.05 0.07))))
+        0
+        0.0
+        1
+        0
+        0.0
+        0.0
+        2.0 (obstacle-x-of 0)
+        4.0 (obstacle-x-of 1)
+        6.0 (obstacle-x-of 2)
+        7.5 (obstacle-x-of 3)
+        4
+        0))
+
+    (((frame tick player-x alive
+       bullet-active bullet-z bullet-x
+       o0-z o0-x o1-z o1-x o2-z o2-x o3-z o3-x
+       next-obs-index score))
+
+      (define key-left-p (if (or key-left key-a) 1 0))
+      (define key-right-p (if (or key-right key-d) 1 0))
+      (define fire-p (if (> key-space 0) 1 0))
+      (define restart-p (if (> key-return 0) 1 0))
+
+      (define can-restart (and (== alive 0) (> restart-p 0)))
+      (define moving (if (> alive 0) 1 0))
+
+      (define input-dx (- key-right-p key-left-p))
+      (define raw-player-x (+ player-x (* input-dx 0.18)))
+      (define next-player-x
+        (if (> moving 0)
+          (clamp raw-player-x -1.0 1.0)
+          player-x))
+
+      (define bullet-just-fired (and (> moving 0) (== bullet-active 0) (> fire-p 0)))
+      (define tmp-bullet-active (if bullet-just-fired 1 bullet-active))
+      (define tmp-bullet-z
+        (if bullet-just-fired
+          0.0
+          (if (and (> moving 0) (> bullet-active 0))
+            (+ bullet-z bullet-speed)
+            bullet-z)))
+      (define tmp-bullet-x (if bullet-just-fired next-player-x bullet-x))
+
+      (define o0-trial-z (if (> moving 0) (- o0-z speed) o0-z))
+      (define o1-trial-z (if (> moving 0) (- o1-z speed) o1-z))
+      (define o2-trial-z (if (> moving 0) (- o2-z speed) o2-z))
+      (define o3-trial-z (if (> moving 0) (- o3-z speed) o3-z))
+
+      (define wrap0 (and (> moving 0) (<= o0-trial-z 0.0)))
+      (define wrap1 (and (> moving 0) (<= o1-trial-z 0.0)))
+      (define wrap2 (and (> moving 0) (<= o2-trial-z 0.0)))
+      (define wrap3 (and (> moving 0) (<= o3-trial-z 0.0)))
+
+      (define w0 (if wrap0 1 0))
+      (define w1 (if wrap1 1 0))
+      (define w2 (if wrap2 1 0))
+      (define w3 (if wrap3 1 0))
+      (define wrap-cum-1 w0)
+      (define wrap-cum-2 (+ w0 w1))
+      (define wrap-cum-3 (+ w0 w1 w2))
+      (define wrap-total (+ w0 w1 w2 w3))
+
+      (define o0-wrap-z (if wrap0 spawn-z o0-trial-z))
+      (define o1-wrap-z (if wrap1 spawn-z o1-trial-z))
+      (define o2-wrap-z (if wrap2 spawn-z o2-trial-z))
+      (define o3-wrap-z (if wrap3 spawn-z o3-trial-z))
+
+      (define o0-wrap-x (if wrap0 (obstacle-x-of next-obs-index) o0-x))
+      (define o1-wrap-x (if wrap1 (obstacle-x-of (+ next-obs-index wrap-cum-1)) o1-x))
+      (define o2-wrap-x (if wrap2 (obstacle-x-of (+ next-obs-index wrap-cum-2)) o2-x))
+      (define o3-wrap-x (if wrap3 (obstacle-x-of (+ next-obs-index wrap-cum-3)) o3-x))
+
+      (define bullet-active-int (if (> tmp-bullet-active 0) 1 0))
+      (define bx0 (abs (- tmp-bullet-x o0-wrap-x)))
+      (define bx1 (abs (- tmp-bullet-x o1-wrap-x)))
+      (define bx2 (abs (- tmp-bullet-x o2-wrap-x)))
+      (define bx3 (abs (- tmp-bullet-x o3-wrap-x)))
+      (define bz0 (abs (- tmp-bullet-z o0-wrap-z)))
+      (define bz1 (abs (- tmp-bullet-z o1-wrap-z)))
+      (define bz2 (abs (- tmp-bullet-z o2-wrap-z)))
+      (define bz3 (abs (- tmp-bullet-z o3-wrap-z)))
+
+      (define hit0 (and (> bullet-active-int 0) (<= bx0 collision-x-thresh) (<= bz0 collision-z-thresh)))
+      (define hit1 (and (> bullet-active-int 0) (<= bx1 collision-x-thresh) (<= bz1 collision-z-thresh)))
+      (define hit2 (and (> bullet-active-int 0) (<= bx2 collision-x-thresh) (<= bz2 collision-z-thresh)))
+      (define hit3 (and (> bullet-active-int 0) (<= bx3 collision-x-thresh) (<= bz3 collision-z-thresh)))
+
+      (define h0 (if hit0 1 0))
+      (define h1 (if hit1 1 0))
+      (define h2 (if hit2 1 0))
+      (define h3 (if hit3 1 0))
+      (define hit-cum-1 (+ h0 h1))
+      (define hit-cum-2 (+ h0 h1 h2))
+      (define hit-cum-3 (+ h0 h1 h2 h3))
+      (define hit-total (+ h0 h1 h2 h3))
+
+      (define o0-final-z (if hit0 spawn-z o0-wrap-z))
+      (define o1-final-z (if hit1 spawn-z o1-wrap-z))
+      (define o2-final-z (if hit2 spawn-z o2-wrap-z))
+      (define o3-final-z (if hit3 spawn-z o3-wrap-z))
+
+      (define o0-final-x (if hit0 (obstacle-x-of (+ next-obs-index wrap-total 0)) o0-wrap-x))
+      (define o1-final-x (if hit1 (obstacle-x-of (+ next-obs-index wrap-total (- hit-cum-1 1))) o1-wrap-x))
+      (define o2-final-x (if hit2 (obstacle-x-of (+ next-obs-index wrap-total (- hit-cum-2 1))) o2-wrap-x))
+      (define o3-final-x (if hit3 (obstacle-x-of (+ next-obs-index wrap-total (- hit-cum-3 1))) o3-wrap-x))
+
+      (define next-obs-index-2 (+ next-obs-index wrap-total hit-total))
+      (define next-score (+ score wrap-total hit-total))
+
+      (define bullet-reset (or (> hit-total 0) (>= tmp-bullet-z spawn-z)))
+      (define final-bullet-active (if bullet-reset 0 tmp-bullet-active))
+      (define final-bullet-z (if bullet-reset 0.0 tmp-bullet-z))
+      (define final-bullet-x tmp-bullet-x)
+
+      (define px0 (abs (- next-player-x o0-final-x)))
+      (define px1 (abs (- next-player-x o1-final-x)))
+      (define px2 (abs (- next-player-x o2-final-x)))
+      (define px3 (abs (- next-player-x o3-final-x)))
+      (define player-hit0 (and (> alive 0) (<= o0-final-z 0.30) (<= px0 object-base-size)))
+      (define player-hit1 (and (> alive 0) (<= o1-final-z 0.30) (<= px1 object-base-size)))
+      (define player-hit2 (and (> alive 0) (<= o2-final-z 0.30) (<= px2 object-base-size)))
+      (define player-hit3 (and (> alive 0) (<= o3-final-z 0.30) (<= px3 object-base-size)))
+      (define player-hit (or player-hit0 player-hit1 player-hit2 player-hit3))
+      (define next-alive (if player-hit 0 alive))
+
+      (define o0-t (clamp (/ (- z-max o0-final-z) z-max) 0 1))
+      (define o1-t (clamp (/ (- z-max o1-final-z) z-max) 0 1))
+      (define o2-t (clamp (/ (- z-max o2-final-z) z-max) 0 1))
+      (define o3-t (clamp (/ (- z-max o3-final-z) z-max) 0 1))
+
+      (define o0-half (+ corridor-half-min (* (- corridor-half-max corridor-half-min) o0-t)))
+      (define o1-half (+ corridor-half-min (* (- corridor-half-max corridor-half-min) o1-t)))
+      (define o2-half (+ corridor-half-min (* (- corridor-half-max corridor-half-min) o2-t)))
+      (define o3-half (+ corridor-half-min (* (- corridor-half-max corridor-half-min) o3-t)))
+
+      (define o0-hw (* object-base-size o0-half))
+      (define o1-hw (* object-base-size o1-half))
+      (define o2-hw (* object-base-size o2-half))
+      (define o3-hw (* object-base-size o3-half))
+      (define o0-hh (* o0-hw object-aspect))
+      (define o1-hh (* o1-hw object-aspect))
+      (define o2-hh (* o2-hw object-aspect))
+      (define o3-hh (* o3-hw object-aspect))
+
+      (define o0-x-screen (+ (/ W 2) (* o0-final-x o0-half)))
+      (define o1-x-screen (+ (/ W 2) (* o1-final-x o1-half)))
+      (define o2-x-screen (+ (/ W 2) (* o2-final-x o2-half)))
+      (define o3-x-screen (+ (/ W 2) (* o3-final-x o3-half)))
+      (define o0-y-screen (+ horizon (* o0-t (- H horizon))))
+      (define o1-y-screen (+ horizon (* o1-t (- H horizon))))
+      (define o2-y-screen (+ horizon (* o2-t (- H horizon))))
+      (define o3-y-screen (+ horizon (* o3-t (- H horizon))))
+
+      (define bullet-t (clamp (/ (- z-max final-bullet-z) z-max) 0 1))
+      (define bullet-half (+ corridor-half-min (* (- corridor-half-max corridor-half-min) bullet-t)))
+      (define bullet-hw (* bullet-base-size bullet-half))
+      (define bullet-hh (* bullet-hw bullet-aspect))
+      (define bullet-x-screen (+ (/ W 2) (* final-bullet-x bullet-half)))
+      (define bullet-y-screen (+ horizon (* bullet-t (- H horizon))))
+
+      ; Player ship (screen-space) so movement is visible in preview.
+      (define player-half-bottom corridor-half-max)
+      (define player-x-screen (+ (/ W 2) (* next-player-x player-half-bottom)))
+      (define player-y-screen (- H 8))
+      (define player-hw 4.0)
+      (define player-hh 3.0)
+
+      (define s (clamp next-score 0 99))
+      (define bar-len (mod s 10))
+      (define bar-w (* bar-len 3.0))
+
+      (define next-frame
+        (canvas W H 3
+          (clamp
+            (max
+              (if (< i horizon)
+                (if (== c 0) ceil0 (if (== c 1) ceil1 ceil2))
+                (if (<= (abs (- j (/ W 2)))
+                        (+ corridor-half-min
+                           (* (- corridor-half-max corridor-half-min)
+                              (clamp (/ (- i horizon) (- H horizon)) 0 1))))
+                  (if (== c 0)
+                    (* (+ 0.15 (* 0.50 (clamp (/ (- i horizon) (- H horizon)) 0 1))) 0.6)
+                    (if (== c 1)
+                      (* (+ 0.15 (* 0.50 (clamp (/ (- i horizon) (- H horizon)) 0 1))) 0.6)
+                      (* (+ 0.15 (* 0.50 (clamp (/ (- i horizon) (- H horizon)) 0 1))) 0.65)))
+                  (if (== c 0) wall0 (if (== c 1) wall1 wall2))))
+
+              (max
+                (* (draw-rect o0-x-screen o0-y-screen o0-hw o0-hh 1.0)
+                   (if (== c 0) 0.80 (if (== c 1) 0.25 0.25)))
+                (max
+                  (* (draw-rect o1-x-screen o1-y-screen o1-hw o1-hh 1.0)
+                     (if (== c 0) 0.80 (if (== c 1) 0.25 0.25)))
+                  (max
+                    (* (draw-rect o2-x-screen o2-y-screen o2-hw o2-hh 1.0)
+                       (if (== c 0) 0.80 (if (== c 1) 0.25 0.25)))
+                    (* (draw-rect o3-x-screen o3-y-screen o3-hw o3-hh 1.0)
+                       (if (== c 0) 0.80 (if (== c 1) 0.25 0.25))))))
+
+              (if (> final-bullet-active 0)
+                (* (draw-rect bullet-x-screen bullet-y-screen bullet-hw bullet-hh 1.0)
+                   (if (== c 0) 1.00 (if (== c 1) 0.90 0.20)))
+                0)
+
+              (* (draw-line player-x-screen (- cross-y cross-size) player-x-screen (+ cross-y cross-size) 0.7 1.0)
+                 (if (== c 0) 0.95 (if (== c 1) 0.95 1.0)))
+              (* (draw-line (- player-x-screen cross-size) cross-y (+ player-x-screen cross-size) cross-y 0.7 1.0)
+                 (if (== c 0) 0.95 (if (== c 1) 0.95 1.0)))
+
+              ; Player ship (always visible while alive).
+              (if (> next-alive 0)
+                (* (draw-rect player-x-screen player-y-screen player-hw player-hh 1.0)
+                   (if (== c 0) 0.15 (if (== c 1) 0.95 0.20)))
+                0)
+              ; Small cockpit highlight.
+              (if (> next-alive 0)
+                (* (draw-rect player-x-screen (- player-y-screen 1.0) 1.2 1.0 1.0)
+                   (if (== c 0) 0.95 (if (== c 1) 0.95 1.00)))
+                0)
+
+              (* (draw-rect 19.5 8.0 15.0 3.0 1.0)
+                 (if (== c 0) 0.10 (if (== c 1) 0.12 0.14)))
+              (if (> bar-w 0)
+                (* (draw-rect (+ 4.0 (* bar-w 0.5)) 8.0 bar-w 2.0 1.0)
+                   (if (== c 0) 0.90 (if (== c 1) 0.90 0.25)))
+                0)
+
+              (if (== next-alive 0)
+                (max
+                  (* (draw-rect (/ W 2) (/ H 2) (/ W 2) (/ H 2) 1.0)
+                     (if (== c 0) 0.35 (if (== c 1) 0.08 0.08)))
+                  (* (draw-rect (/ W 2) (/ H 2) 18.0 2.5 1.0)
+                     (if (== c 0) 0.90 (if (== c 1) 0.95 0.20))))
+                0))
+            0 1)))
+
+      (if can-restart
+        (tuple
+          next-frame
+          0
+          0.0
+          1
+          0
+          0.0
+          0.0
+          2.0 (obstacle-x-of 0)
+          4.0 (obstacle-x-of 1)
+          6.0 (obstacle-x-of 2)
+          7.5 (obstacle-x-of 3)
+          4
+          0)
+        (tuple
+          next-frame
+          (+ tick 1)
+          next-player-x
+          next-alive
+          final-bullet-active
+          final-bullet-z
+          final-bullet-x
+          o0-final-z o0-final-x
+          o1-final-z o1-final-x
+          o2-final-z o2-final-x
+          o3-final-z o3-final-x
+          next-obs-index-2
+          next-score)))
+
+    (((frame tick player-x alive bullet-active bullet-z bullet-x
+       o0-z o0-x o1-z o1-x o2-z o2-x o3-z o3-x next-obs-index score))
+      0)))
