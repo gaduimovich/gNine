@@ -49,3 +49,4 @@ endfunction()
 
 run_capture_case("snake" "examples/runtime_snake_v2.psm" 4)
 run_capture_case("pong" "examples/runtime_pong_v2.psm" 4)
+run_capture_case("flappy" "examples/runtime_flappy_bird_v2.psm" 4)

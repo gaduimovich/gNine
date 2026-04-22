@@ -14,7 +14,8 @@ namespace gnine
    {
       None,
       Snake,
-      Pong
+      Pong,
+      Flappy
    };
 
    inline bool parsePreviewPlaybackScenario(const std::string &text, PreviewPlaybackScenario *outScenario)
@@ -31,6 +32,12 @@ namespace gnine
          return true;
       }
 
+      if (text == "flappy")
+      {
+         *outScenario = PreviewPlaybackScenario::Flappy;
+         return true;
+      }
+
       return false;
    }
 
@@ -42,6 +49,8 @@ namespace gnine
          return "snake";
       case PreviewPlaybackScenario::Pong:
          return "pong";
+      case PreviewPlaybackScenario::Flappy:
+         return "flappy";
       case PreviewPlaybackScenario::None:
       default:
          return "none";
@@ -99,6 +108,10 @@ namespace gnine
             input.keyUp = 1.0;
          else
             input.keyDown = 1.0;
+         break;
+      case PreviewPlaybackScenario::Flappy:
+         if (frameIndex == 12 || (frameIndex > 12 && ((frameIndex - 12) % 24) == 0))
+            input.keySpace = 1.0;
          break;
       case PreviewPlaybackScenario::None:
       default:
