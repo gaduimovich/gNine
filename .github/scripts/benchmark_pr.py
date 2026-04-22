@@ -153,6 +153,7 @@ def build_gnine(source_dir: Path, build_dir: Path) -> Path:
             "-B",
             str(build_dir),
             "-DCMAKE_POLICY_VERSION_MINIMUM=3.5",
+            "-DGNINE_ENABLE_SDL_PREVIEW=OFF",
         ],
         check=True,
     )
@@ -202,6 +203,12 @@ def main() -> None:
     parser.add_argument("--repo-root", required=True)
     parser.add_argument("--base-ref", required=True)
     parser.add_argument("--head-ref", required=True)
+    parser.add_argument(
+        "--head-binary",
+        default=None,
+        help="Path to a pre-built gnine binary for the head revision. "
+             "When provided the head worktree and build are skipped.",
+    )
     parser.add_argument("--output-json", required=True)
     parser.add_argument("--output-markdown", required=True)
     parser.add_argument("--logs-dir", required=True)
@@ -220,17 +227,20 @@ def main() -> None:
         temp_root = Path(temp_dir)
         worktrees: dict[str, Path] = {}
         try:
-            for name, ref in (("base", args.base_ref), ("head", args.head_ref)):
-                worktrees[name] = make_worktree(repo_root, ref, name, temp_root)
+            # Always build the base revision from its own worktree.
+            worktrees["base"] = make_worktree(repo_root, args.base_ref, "base", temp_root)
+            builds = {"base": temp_root / "build-base"}
+            binaries = {"base": build_gnine(worktrees["base"], builds["base"])}
 
-            builds = {
-                "base": temp_root / "build-base",
-                "head": temp_root / "build-head",
-            }
-            binaries = {
-                name: build_gnine(worktrees[name], builds[name])
-                for name in ("base", "head")
-            }
+            # Always create the head worktree for source assets (examples, example_data).
+            worktrees["head"] = make_worktree(repo_root, args.head_ref, "head", temp_root)
+            builds["head"] = temp_root / "build-head"
+            if args.head_binary is not None:
+                # Re-use the pre-built head binary; skip compilation.
+                builds["head"].mkdir(parents=True, exist_ok=True)
+                binaries["head"] = Path(args.head_binary).resolve()
+            else:
+                binaries["head"] = build_gnine(worktrees["head"], builds["head"])
 
             for case in BENCHMARKS:
                 base_log = logs_dir / f"base-{case.name}.log"
