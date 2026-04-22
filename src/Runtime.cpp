@@ -352,10 +352,10 @@ namespace gnine
             double value;
          };
 
-        struct CompiledRuntimeKernel
-        {
+         struct CompiledRuntimeKernel
+         {
             ImageArrayFunctionType *fn;
-        };
+         };
 
          struct CompiledRuntimeRGBKernel
          {
@@ -390,11 +390,17 @@ namespace gnine
             }
          };
 
-        std::map<std::string, CompiledRuntimeKernel> &runtimeKernelCache()
-        {
+         std::map<std::string, CompiledRuntimeKernel> &runtimeKernelCache()
+         {
             static std::map<std::string, CompiledRuntimeKernel> cache;
             return cache;
-        }
+         }
+
+         std::map<std::string, std::string> &runtimeKernelNonCompiledReasonCache()
+         {
+            static std::map<std::string, std::string> cache;
+            return cache;
+         }
 
          std::map<std::string, CompiledRuntimeRGBKernel> &runtimeRGBKernelCache()
          {
@@ -452,14 +458,7 @@ namespace gnine
 
          bool lookupOrCompileRuntimeKernel(const Cell &program,
                                            CompiledKernelLookup *result)
-        {
-            LoweredProgram lowered = lowerProgram(program);
-            if (lowered.usesVectorFeatures || lowered.channelPrograms.size() != 1)
-            {
-               result->fallbackReason = lowered.usesVectorFeatures ? "vector_features" : "lowered_shape";
-               return false;
-            }
-
+         {
             const std::string cacheKey = cellToString(program);
             std::map<std::string, CompiledRuntimeKernel> &cache = runtimeKernelCache();
             std::map<std::string, CompiledRuntimeKernel>::const_iterator it = cache.find(cacheKey);
@@ -469,6 +468,22 @@ namespace gnine
                result->cacheHit = true;
                result->fn = it->second.fn;
                return true;
+            }
+
+            std::map<std::string, std::string> &nonCompiledCache = runtimeKernelNonCompiledReasonCache();
+            std::map<std::string, std::string>::const_iterator nonCompiled = nonCompiledCache.find(cacheKey);
+            if (nonCompiled != nonCompiledCache.end())
+            {
+               result->fallbackReason = nonCompiled->second;
+               return false;
+            }
+
+            LoweredProgram lowered = lowerProgram(program);
+            if (lowered.usesVectorFeatures || lowered.channelPrograms.size() != 1)
+            {
+               result->fallbackReason = lowered.usesVectorFeatures ? "vector_features" : "lowered_shape";
+               nonCompiledCache.insert(std::make_pair(cacheKey, result->fallbackReason));
+               return false;
             }
 
             OMR::JitBuilder::TypeDictionary types;
@@ -485,6 +500,7 @@ namespace gnine
                result->fallbackReason = "jit_compile_failed rc=" + std::to_string(rc) +
                                         " dump=" + dumpPath +
                                         " program=" + summarizeProgram(program, 800);
+               nonCompiledCache.insert(std::make_pair(cacheKey, result->fallbackReason));
                return false;
             }
 
@@ -492,9 +508,9 @@ namespace gnine
             result->ok = true;
             result->cacheHit = false;
             result->fn = reinterpret_cast<ImageArrayFunctionType *>(entry);
-           cache[cacheKey].fn = result->fn;
-           return true;
-        }
+            cache[cacheKey].fn = result->fn;
+            return true;
+         }
 
          bool lookupOrCompileRuntimeRGBKernel(const Cell &program,
                                               CompiledRGBKernelLookup *result)
