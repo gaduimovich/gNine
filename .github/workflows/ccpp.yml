@@ -163,6 +163,7 @@ jobs:
 
       - name: Generate gameplay captures
         run: |
+          inline_base_url="https://raw.githubusercontent.com/${{ github.repository }}/gnine-gameplay-pr-${{ github.event.pull_request.number }}/readme_images"
           python3 .github/scripts/playback_pr.py \
             --repo-root "$GITHUB_WORKSPACE" \
             --binary "$GITHUB_WORKSPACE/gnine-head/gnine" \
@@ -170,8 +171,7 @@ jobs:
             --output-json "$GITHUB_WORKSPACE/gameplay-captures/gameplay-captures.json" \
             --output-markdown "$GITHUB_WORKSPACE/gameplay-captures/gameplay-captures.md" \
             --run-url "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" \
-            --repository "${{ github.repository }}" \
-            --asset-ref "gnine-gameplay-pr-${{ github.event.pull_request.number }}"
+            --inline-base-url "$inline_base_url"
 
       - name: Upload gameplay artifacts
         id: upload-gameplay-bundle
