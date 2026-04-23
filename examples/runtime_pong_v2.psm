@@ -144,13 +144,13 @@
                 0)
                (if (and (> next-left-score 0)
                         (<= (abs (- i score-y)) score-bar-half-h)
-                        (<= (abs (- j left-score-base)) (/ (* next-left-score score-step) 2)))
+                        (<= (abs (- j left-score-base)) (* 0.5 next-left-score score-step)))
                  (if (== c 0) 0.12
                    (if (== c 1) 0.96 0.22))
                  0)
                (if (and (> next-right-score 0)
                         (<= (abs (- i score-y)) score-bar-half-h)
-                        (<= (abs (- j right-score-base)) (/ (* next-right-score score-step) 2)))
+                        (<= (abs (- j right-score-base)) (* 0.5 next-right-score score-step)))
                  (if (== c 0) 0.18
                    (if (== c 1) 0.52 1.00))
                  0)
