@@ -41,8 +41,7 @@
   (define wall0 0.098)
   (define wall1 0.098)
   (define wall2 0.1064)
-  (define atari-scan 0.09)
-  (define atari-bloom 0.14)
+  (define atari-scan 0.04)
 
   (define cross-size 5.0)
 
@@ -296,11 +295,10 @@
       (define bar-w (* bar-len 3.0))
       (define lvl (clamp level 0 9))
       (define lvl-w (* lvl 2.0))
-      (define color-cycle (mod tick 18))
-      (define enemy-r (if (<= color-cycle 5) 0.95 (if (<= color-cycle 11) 0.75 0.55)))
-      (define enemy-g (if (<= color-cycle 5) 0.25 (if (<= color-cycle 11) 0.85 0.45)))
-      (define enemy-b (if (<= color-cycle 5) 0.25 (if (<= color-cycle 11) 0.35 0.95)))
-      (define scanline-on (if (== (mod i 2) 0) 1 0))
+      (define color-cycle (mod tick 12))
+      (define enemy-r (if (<= color-cycle 5) 0.88 0.72))
+      (define enemy-g (if (<= color-cycle 5) 0.28 0.62))
+      (define enemy-b (if (<= color-cycle 5) 0.30 0.78))
 
       (define next-frame
         (canvas W H 3
@@ -313,10 +311,10 @@
                            (* (- corridor-half-max corridor-half-min)
                               (clamp (/ (- i horizon) (- H horizon)) 0 1))))
                   (if (== c 0)
-                    (+ (* (+ 0.15 (* 0.50 (clamp (/ (- i horizon) (- H horizon)) 0 1))) 0.6) (* scanline-on atari-bloom 0.20))
+                    (* (+ 0.15 (* 0.50 (clamp (/ (- i horizon) (- H horizon)) 0 1))) 0.6)
                     (if (== c 1)
-                      (+ (* (+ 0.15 (* 0.50 (clamp (/ (- i horizon) (- H horizon)) 0 1))) 0.6) (* scanline-on atari-bloom 0.18))
-                      (+ (* (+ 0.15 (* 0.50 (clamp (/ (- i horizon) (- H horizon)) 0 1))) 0.65) (* scanline-on atari-bloom 0.12))))
+                      (* (+ 0.15 (* 0.50 (clamp (/ (- i horizon) (- H horizon)) 0 1))) 0.6)
+                      (* (+ 0.15 (* 0.50 (clamp (/ (- i horizon) (- H horizon)) 0 1))) 0.65)))
                   (if (== c 0) wall0 (if (== c 1) wall1 wall2))))
 
               (max
@@ -357,14 +355,7 @@
                               (max
                                 (* (draw-rect o2-x-screen (+ o2-y-screen (* o2-hh mouth-y)) (* o2-hw 0.35) (* o2-hh 0.08) 1.0)
                                    (if (== c 0) 0.90 (if (== c 1) 0.08 0.08)))
-                                (max
-                                  (* (draw-rect (+ o3-x-screen (* o3-hw (- eye-gap))) (+ o3-y-screen (* o3-hh eye-y)) (* o3-hw 0.15) (* o3-hh eye-open) 1.0)
-                                     (if (== c 0) 0.95 (if (== c 1) 0.95 0.95)))
-                                  (max
-                                    (* (draw-rect (+ o3-x-screen (* o3-hw eye-gap)) (+ o3-y-screen (* o3-hh eye-y)) (* o3-hw 0.15) (* o3-hh eye-open) 1.0)
-                                       (if (== c 0) 0.95 (if (== c 1) 0.95 0.95)))
-                                    (* (draw-rect o3-x-screen (+ o3-y-screen (* o3-hh mouth-y)) (* o3-hw 0.35) (* o3-hh 0.08) 1.0)
-                                       (if (== c 0) 0.90 (if (== c 1) 0.08 0.08))))))))))))))
+                                0)))))))))
 
               (if (> final-bullet-active 0)
                 (* (draw-rect bullet-x-screen bullet-y-screen bullet-hw bullet-hh 1.0)
@@ -386,7 +377,7 @@
                 0)
               (* (draw-rect (/ W 2) 3.0 26.0 2.0 1.0)
                  (if (== c 0) 0.10 (if (== c 1) 0.22 0.14)))
-              (* (draw-rect (+ 7.0 (* (mod tick 6) 3.0)) 3.0 1.0 1.0 1.0)
+              (* (draw-rect (+ 7.0 (* (mod tick 4) 3.0)) 3.0 1.0 1.0 1.0)
                  (if (== c 0) 0.95 (if (== c 1) 0.35 0.10)))
 
               (* (draw-rect 19.5 8.0 15.0 3.0 1.0)
@@ -410,8 +401,9 @@
                   (* (draw-rect (/ W 2) (/ H 2) 18.0 2.5 1.0)
                      (if (== c 0) 0.90 (if (== c 1) 0.95 0.20))))
                 0)
-              (* (draw-rect (/ W 2) (/ H 2) (/ W 2) (/ H 2) 1.0)
-                 (* scanline-on atari-scan)))
+              (if (== (mod i 3) 0)
+                (* (draw-line 0 i W i 0.22 1.0) atari-scan)
+                0))
             0 1)))
 
       (if can-restart
