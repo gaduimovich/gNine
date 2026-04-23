@@ -9,6 +9,7 @@
 
 #include <vector>
 #include <string>
+#include <cstdint>
 
 namespace gnine
 {
@@ -26,12 +27,17 @@ namespace gnine
         Type type;
         std::string val;
         std::vector<Cell> list;
-        Cell(Type type = Symbol) : type(type) {}
-        Cell(Type type, const std::string &val) : type(type), val(val) {}
+        mutable bool cacheKeyValid;
+        mutable uint64_t cacheKeyValue;
+        Cell(Type type = Symbol) : type(type), cacheKeyValid(false), cacheKeyValue(0) {}
+        Cell(Type type, const std::string &val) : type(type), val(val), cacheKeyValid(false), cacheKeyValue(0) {}
     };
 
     // convert given Cell to a Lisp-readable string
     std::string cellToString(const Cell &exp);
+
+    // return a stable structural cache key for a Cell without allocating the full text form
+    std::string cellCacheKey(const Cell &exp);
 
     // return the Lisp expression represented by the given string
     Cell cellFromString(const std::string &s);

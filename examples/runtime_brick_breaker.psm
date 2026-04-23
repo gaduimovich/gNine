@@ -20,6 +20,7 @@
             (max
               (if (== c 0) 0.03
                 (if (== c 1) 0.05 0.10))
+
               (* (draw-rect 14 18 brick-half-w brick-half-h 1.0)
                  (if (== c 0) 0.96
                    (if (== c 1) 0.35 0.24)))
@@ -38,6 +39,7 @@
               (* (draw-rect 154 18 brick-half-w brick-half-h 1.0)
                  (if (== c 0) 0.96
                    (if (== c 1) 0.35 0.24)))
+
               (* (draw-rect 14 28 brick-half-w brick-half-h 1.0)
                  (if (== c 0) 0.22
                    (if (== c 1) 0.92 0.34)))
@@ -56,6 +58,7 @@
               (* (draw-rect 154 28 brick-half-w brick-half-h 1.0)
                  (if (== c 0) 0.22
                    (if (== c 1) 0.92 0.34)))
+
               (* (draw-rect 14 38 brick-half-w brick-half-h 1.0)
                  (if (== c 0) 0.22
                    (if (== c 1) 0.48 1.00)))
@@ -74,9 +77,11 @@
               (* (draw-rect 154 38 brick-half-w brick-half-h 1.0)
                  (if (== c 0) 0.22
                    (if (== c 1) 0.48 1.00)))
+
               (* (draw-rect 80 paddle-y paddle-half-w paddle-half-h 1.0)
                  (if (== c 0) 0.95
                    (if (== c 1) 0.95 0.95)))
+
               (* (draw-circle 80 70 ball-half 1.0)
                  (if (== c 0) 1.00
                    (if (== c 1) 0.90 0.24))))
@@ -358,6 +363,7 @@
             (max
               (if (== c 0) 0.03
                 (if (== c 1) 0.05 0.10))
+
               (if (> final-b00 0)
                 (* (draw-rect 14 18 brick-half-w brick-half-h 1.0)
                    (if (== c 0) 0.96
@@ -388,6 +394,7 @@
                    (if (== c 0) 0.96
                      (if (== c 1) 0.35 0.24)))
                 0)
+
               (if (> final-b10 0)
                 (* (draw-rect 14 28 brick-half-w brick-half-h 1.0)
                    (if (== c 0) 0.22
@@ -418,6 +425,7 @@
                    (if (== c 0) 0.22
                      (if (== c 1) 0.92 0.34)))
                 0)
+
               (if (> final-b20 0)
                 (* (draw-rect 14 38 brick-half-w brick-half-h 1.0)
                    (if (== c 0) 0.22
@@ -448,31 +456,38 @@
                    (if (== c 0) 0.22
                      (if (== c 1) 0.48 1.00)))
                 0)
+
               (* (draw-rect final-paddle-x paddle-y paddle-half-w paddle-half-h 1.0)
                  (if (== c 0) 0.95
                    (if (== c 1) 0.95 0.95)))
+
               (* (draw-circle final-ball-x final-ball-y ball-half 1.0)
                  (if (== c 0) 1.00
                    (if (== c 1) 0.90 0.24)))
+
               (* (draw-rect 18 10 32 2 1.0)
                  (if (== c 0) 0.12
                    (if (== c 1) 0.16 0.24)))
+
               (if (> final-score 0)
                 (* (draw-rect (+ 2 final-score) 10 final-score 2 1.0)
                    (if (== c 0) 1.00
                      (if (== c 1) 0.94 0.30)))
                 0)
+
               (if (and (== final-alive 0) lost-ball)
                 (* (draw-rect 80 45 24 8 1.0)
                    (if (== c 0) 0.84
                      (if (== c 1) 0.18 0.18)))
                 0)
+
               (if (and (== final-alive 0) won-game)
                 (* (draw-rect 80 45 24 8 1.0)
                    (if (== c 0) 0.20
                      (if (== c 1) 0.72 0.26)))
                 0))
             0 1)))
+
       (tuple
         next-frame
         final-ball-x

@@ -160,7 +160,10 @@ namespace
                throw std::runtime_error(std::string("SDL window creation failed: ") + SDL_GetError());
             _windowId = SDL_GetWindowID(_window);
 
-            _renderer = SDL_CreateRenderer(_window, -1, SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC);
+            // Avoid blocking the preview loop on compositor vsync; the runtime already
+            // controls frame pacing, and preview should stay responsive even when the
+            // game takes longer to evaluate.
+            _renderer = SDL_CreateRenderer(_window, -1, SDL_RENDERER_ACCELERATED);
             if (_renderer == NULL)
                _renderer = SDL_CreateRenderer(_window, -1, SDL_RENDERER_SOFTWARE);
             else

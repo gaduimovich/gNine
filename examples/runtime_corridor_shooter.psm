@@ -1,0 +1,505 @@
+; Pseudo‑3D corridor shooter demo for gNine
+;
+; This program implements a simple pseudo‑3D corridor shooter using only
+; the 2D drawing primitives provided by gNine.  It projects a flat
+; “corridor” down the screen by linearly interpolating the width of
+; the corridor between a narrow horizon and a wide foreground.  Enemies
+; (boxes) and bullets are represented as world‑space objects with a
+; horizontal position (x) in the range ‑1…1 and a depth (z) in the
+; range 0…z‑max.  These are projected to screen space each frame by
+; scaling their positions and sizes by the corridor width at their
+; depth.  The player can move left and right within the corridor
+; bounds and fire a single bullet to shoot approaching enemies.
+;
+; Controls (while previewing with `gnine --runtime --preview`):
+;   Move left  : Left arrow / A
+;   Move right : Right arrow / D
+;   Fire       : Space bar
+;   Restart    : Return/Enter after crash
+;
+; To run the game in runtime mode:
+;   gnine --runtime --preview --display-scale=auto corridor_shooter.psm out.png
+
+(()
+  ; -------------------------------------------------------------------
+  ; Configuration constants
+  (define W 128)                ; Frame width in pixels
+  (define H 96)                 ; Frame height in pixels
+  (define horizon 28)           ; Row index of the horizon line
+  (define z‑max 8.0)            ; Maximum depth (far away) of objects
+  (define spawn‑z z‑max)        ; Depth at which new objects spawn
+  (define speed 0.12)           ; Forward speed of the world (per frame)
+  (define bullet‑speed 0.55)    ; Speed at which bullets travel (per frame)
+  (define corridor‑half‑min 8.0)  ; Half width of corridor at the horizon (pixels)
+  (define corridor‑half‑max 55.0) ; Half width of corridor at the bottom of the screen
+  (define object‑base‑size 0.20)  ; Relative width of obstacles (fraction of corridor half width)
+  (define object‑aspect 1.4)      ; Height/width ratio of obstacles
+  (define bullet‑base‑size 0.04)  ; Relative width of bullets
+  (define bullet‑aspect 0.6)      ; Height/width ratio of bullets
+  (define collision‑x‑thresh 0.35) ; Threshold for bullet vs. obstacle horizontal collision
+  (define collision‑z‑thresh 0.50) ; Threshold for bullet vs. obstacle depth collision
+  ; Number of obstacles to manage; increasing this makes the
+  ; corridor more crowded.  Three or four is plenty for a 96‑pixel
+  ; high display.
+  (define num‑obs 4)
+
+  ; Predetermined horizontal positions for obstacles.  Because gNine
+  ; doesn’t include a random number generator, we instead cycle
+  ; through a fixed pattern of positions.  The function
+  ; `obstacle‑x‑of` returns a world x coordinate in the range
+  ; [‑1, 1] based on the supplied integer index.
+  (define obstacle‑x‑of
+    (lambda (idx)
+      ((lambda (phase)
+         (if (== phase 0) ‑0.8
+           (if (== phase 1) 0.8
+             (if (== phase 2) ‑0.4
+               (if (== phase 3) 0.4
+                 (if (== phase 4) 0.0
+                   (if (== phase 5) ‑0.7
+                     (if (== phase 6) 0.7
+                       (if (== phase 7) ‑0.2
+                         (if (== phase 8) 0.2
+                           0.0))))))))))
+       (mod idx 10))))
+
+  ; Initialise the runtime state.  Each element in the tuple is:
+  ;   frame             – the image for the current frame
+  ;   tick              – integer frame counter
+  ;   player‑x          – player horizontal position in world coords (‑1..1)
+  ;   alive             – 1 if the player is alive, 0 if dead
+  ;   bullet‑active     – 1 if a bullet is in flight, 0 otherwise
+  ;   bullet‑z          – bullet depth (0 at the player, increasing into the screen)
+  ;   bullet‑x          – bullet horizontal position in world coords
+  ;   o0‑z o0‑x ...     – for each obstacle: depth and horizontal position
+  ;   next‑obs‑index    – next index into obstacle‑x‑of for respawn
+  ;   score             – total number of obstacles passed or shot
+  (iterate‑until 100
+    (()
+      ; Starting positions for the obstacles.  We stagger them so
+      ; that the player isn’t overwhelmed immediately.  The depths are
+      ; chosen to be within [0, spawn‑z] and increasing away from the
+      ; player.  Each obstacle’s horizontal position is determined by
+      ; the obstacle‑x‑of function.
+      (define start‑o0‑z 2.0)
+      (define start‑o1‑z 4.0)
+      (define start‑o2‑z 6.0)
+      (define start‑o3‑z 7.5)
+      (define start‑frame
+        (canvas W H 3
+          ; Draw a dark, empty screen for the first frame.  The
+          ; subsequent frames will be drawn in the runtime step.
+          (if (< i horizon)
+            0
+            (if (== c 0) 0.05 (if (== c 1) 0.05 0.07)))))
+      (tuple start‑frame
+             0              ; tick counter
+             0.0            ; player‑x (start at centre)
+             1              ; alive flag
+             0              ; bullet active flag
+             0.0            ; bullet‑z
+             0.0            ; bullet‑x
+             start‑o0‑z (obstacle‑x‑of 0)
+             start‑o1‑z (obstacle‑x‑of 1)
+             start‑o2‑z (obstacle‑x‑of 2)
+             start‑o3‑z (obstacle‑x‑of 3)
+             4              ; next‑obs‑index
+             0))            ; score
+
+    ; -------------------------------------------------------------------
+    ; State update step.  This clause receives the current state
+    ; variables and computes the next frame and next state.  The state
+    ; layout matches the tuple returned from the initialiser above.
+    (((frame tick player‑x alive
+       bullet‑active bullet‑z bullet‑x
+       o0‑z o0‑x o1‑z o1‑x o2‑z o2‑x o3‑z o3‑x
+       next‑obs‑index score))
+      ; Input handling
+      (define key‑left‑p (or key‑left key‑a))
+      (define key‑right‑p (or key‑right key‑d))
+      (define fire‑p (> key‑space 0))
+      (define restart‑p (> key‑return 0))
+
+      ; Determine whether the player just fired.  A bullet can only be
+      ; spawned if none is currently in flight.  If multiple keys are
+      ; pressed, the bullet fires on the first key press only.
+      (define bullet‑just‑fired (and (== bullet‑active 0) (> fire‑p 0)))
+
+      ; Player movement: integrate horizontal input only while alive.
+      ; The player’s speed is proportional to key presses (1 for right,
+      ; 1 for left).  Clamp the position so that the player never
+      ; leaves the nominal [‑1,1] corridor range.
+      (define input‑dx (- key‑right‑p key‑left‑p))
+      (define raw‑player‑x (+ player‑x (* input‑dx 0.12)))
+      (define next‑player‑x (clamp raw‑player‑x ‑1.0 1.0))
+
+      ; Update bullet position.  If the bullet has just been fired then
+      ; it starts at depth 0 and inherits the player’s horizontal
+      ; position.  Otherwise it marches forward by bullet‑speed per
+      ; frame.  We postpone resetting the bullet if it hits an
+      ; obstacle or travels beyond the spawn depth until after
+      ; collisions are processed.
+      (define tmp‑bullet‑active (if bullet‑just‑fired 1 bullet‑active))
+      (define tmp‑bullet‑z (if bullet‑just‑fired 0.0
+                             (if (> bullet‑active 0)
+                               (+ bullet‑z bullet‑speed)
+                               bullet‑z)))
+      (define tmp‑bullet‑x (if bullet‑just‑fired next‑player‑x bullet‑x))
+
+      ; -----------------------------------------------------------------
+      ; Update obstacle depths.  Obstacles move toward the player by
+      ; subtracting the global speed from their z coordinate whenever
+      ; the player is alive.  If the player has died, the obstacles
+      ; remain frozen in place.  When an obstacle goes beyond the
+      ; player (z <= 0), it respawns at the far end of the corridor at
+      ; spawn‑z with a new x position returned by obstacle‑x‑of.
+      (define moving (if (> alive 0) 1 0))
+      ; Compute trial depths by subtracting speed when moving.
+      (define o0‑trial‑z (if (> moving 0) (- o0‑z speed) o0‑z))
+      (define o1‑trial‑z (if (> moving 0) (- o1‑z speed) o1‑z))
+      (define o2‑trial‑z (if (> moving 0) (- o2‑z speed) o2‑z))
+      (define o3‑trial‑z (if (> moving 0) (- o3‑z speed) o3‑z))
+      ; Flags indicating whether each obstacle needs to wrap because it
+      ; has passed the player.  A wrap occurs only if the player is
+      ; alive, so that respawns don’t happen during the game over state.
+      (define wrap0 (and (> moving 0) (<= o0‑trial‑z 0.0)))
+      (define wrap1 (and (> moving 0) (<= o1‑trial‑z 0.0)))
+      (define wrap2 (and (> moving 0) (<= o2‑trial‑z 0.0)))
+      (define wrap3 (and (> moving 0) (<= o3‑trial‑z 0.0)))
+      ; Convert wrap flags to integer (0 or 1) for arithmetic.
+      (define w0 (if wrap0 1 0))
+      (define w1 (if wrap1 1 0))
+      (define w2 (if wrap2 1 0))
+      (define w3 (if wrap3 1 0))
+      ; Cumulative sums of wraps to compute new x positions when
+      ; multiple obstacles wrap in the same frame.  wrap‑cum‑i is the
+      ; number of wraps that occurred among obstacles with index less
+      ; than i.
+      (define wrap‑cum‑0 0)
+      (define wrap‑cum‑1 w0)
+      (define wrap‑cum‑2 (+ w0 w1))
+      (define wrap‑cum‑3 (+ w0 w1 w2))
+      (define wrap‑total (+ w0 w1 w2 w3))
+      ; Depth after applying wrap logic: reset to spawn‑z when
+      ; wrapped, otherwise use the trial depth.
+      (define o0‑wrap‑z (if wrap0 spawn‑z o0‑trial‑z))
+      (define o1‑wrap‑z (if wrap1 spawn‑z o1‑trial‑z))
+      (define o2‑wrap‑z (if wrap2 spawn‑z o2‑trial‑z))
+      (define o3‑wrap‑z (if wrap3 spawn‑z o3‑trial‑z))
+      ; Horizontal positions after wrap.  When wrapping we pick a new
+      ; horizontal coordinate from obstacle‑x‑of using the
+      ; next‑obs‑index plus the number of wraps that have already
+      ; occurred for previous obstacles.  Otherwise retain the current
+      ; horizontal coordinate.
+      (define o0‑wrap‑x (if wrap0 (obstacle‑x‑of (+ next‑obs‑index wrap‑cum‑0)) o0‑x))
+      (define o1‑wrap‑x (if wrap1 (obstacle‑x‑of (+ next‑obs‑index wrap‑cum‑1)) o1‑x))
+      (define o2‑wrap‑x (if wrap2 (obstacle‑x‑of (+ next‑obs‑index wrap‑cum‑2)) o2‑x))
+      (define o3‑wrap‑x (if wrap3 (obstacle‑x‑of (+ next‑obs‑index wrap‑cum‑3)) o3‑x))
+
+      ; -----------------------------------------------------------------
+      ; Bullet–obstacle collision detection.  After wrapping but before
+      ; applying bullet collisions, the obstacle states are given by
+      ; oX‑wrap‑z and oX‑wrap‑x.  If the bullet is active and its
+      ; horizontal position is close to an obstacle and its depth is
+      ; within a small window of that obstacle’s depth, the bullet
+      ; destroys the obstacle.  Each obstacle can only be hit once per
+      ; frame.  All hits in a frame are processed simultaneously and
+      ; respawn new obstacles at the far end.
+      (define bullet‑active‑int (if (> tmp‑bullet‑active 0) 1 0))
+      ; Compute horizontal difference between bullet and each obstacle.
+      (define bx0 (abs (- tmp‑bullet‑x o0‑wrap‑x)))
+      (define bx1 (abs (- tmp‑bullet‑x o1‑wrap‑x)))
+      (define bx2 (abs (- tmp‑bullet‑x o2‑wrap‑x)))
+      (define bx3 (abs (- tmp‑bullet‑x o3‑wrap‑x)))
+      ; Compute depth difference between bullet and obstacles.
+      (define bz0 (abs (- tmp‑bullet‑z o0‑wrap‑z)))
+      (define bz1 (abs (- tmp‑bullet‑z o1‑wrap‑z)))
+      (define bz2 (abs (- tmp‑bullet‑z o2‑wrap‑z)))
+      (define bz3 (abs (- tmp‑bullet‑z o3‑wrap‑z)))
+      ; Flags indicating a bullet hit for each obstacle.
+      (define hit0 (and (> bullet‑active‑int 0) (<= bx0 collision‑x‑thresh) (<= bz0 collision‑z‑thresh)))
+      (define hit1 (and (> bullet‑active‑int 0) (<= bx1 collision‑x‑thresh) (<= bz1 collision‑z‑thresh)))
+      (define hit2 (and (> bullet‑active‑int 0) (<= bx2 collision‑x‑thresh) (<= bz2 collision‑z‑thresh)))
+      (define hit3 (and (> bullet‑active‑int 0) (<= bx3 collision‑x‑thresh) (<= bz3 collision‑z‑thresh)))
+      ; Convert hit flags to integers.
+      (define h0 (if hit0 1 0))
+      (define h1 (if hit1 1 0))
+      (define h2 (if hit2 1 0))
+      (define h3 (if hit3 1 0))
+      ; Cumulative sums of hits, used to assign unique indices when
+      ; respawning multiple obstacles in the same frame.  hit‑cum‑i
+      ; counts the number of bullet hits among obstacles up to index i.
+      (define hit‑cum‑0 h0)
+      (define hit‑cum‑1 (+ h0 h1))
+      (define hit‑cum‑2 (+ h0 h1 h2))
+      (define hit‑cum‑3 (+ h0 h1 h2 h3))
+      (define hit‑total (+ h0 h1 h2 h3))
+      ; Depth and horizontal positions after applying bullet hits.  If
+      ; an obstacle is hit, it respawns at spawn‑z with a new x from
+      ; obstacle‑x‑of.  The index used for selecting x is offset by
+      ; wrap‑total (for earlier wraps) and hit‑cum‑i‑1 for previous
+      ; hits.  Otherwise the obstacle retains the wrap‑adjusted depth
+      ; and x.
+      (define o0‑final‑z (if hit0 spawn‑z o0‑wrap‑z))
+      (define o1‑final‑z (if hit1 spawn‑z o1‑wrap‑z))
+      (define o2‑final‑z (if hit2 spawn‑z o2‑wrap‑z))
+      (define o3‑final‑z (if hit3 spawn‑z o3‑wrap‑z))
+      ; Compute hit order for each obstacle: this is hit‑cum‑i – 1
+      ; whenever hit‑cum‑i is non‑zero.  hit‑cum‑i counts the total
+      ; hits through and including obstacle i.  Subtracting one gives
+      ; zero for the first hit, one for the second, etc.  We only
+      ; interpret hit‑order when the corresponding hit flag is true.
+      (define hit‑ord‑0 (- hit‑cum‑0 1))
+      (define hit‑ord‑1 (- hit‑cum‑1 1))
+      (define hit‑ord‑2 (- hit‑cum‑2 1))
+      (define hit‑ord‑3 (- hit‑cum‑3 1))
+      (define o0‑final‑x (if hit0 (obstacle‑x‑of (+ next‑obs‑index wrap‑total hit‑ord‑0)) o0‑wrap‑x))
+      (define o1‑final‑x (if hit1 (obstacle‑x‑of (+ next‑obs‑index wrap‑total hit‑ord‑1)) o1‑wrap‑x))
+      (define o2‑final‑x (if hit2 (obstacle‑x‑of (+ next‑obs‑index wrap‑total hit‑ord‑2)) o2‑wrap‑x))
+      (define o3‑final‑x (if hit3 (obstacle‑x‑of (+ next‑obs‑index wrap‑total hit‑ord‑3)) o3‑wrap‑x))
+      ; Update next‑obs‑index after all respawns from wraps and hits.
+      (define next‑obs‑index‑2 (+ next‑obs‑index wrap‑total hit‑total))
+      ; Increment score for each wrapped or destroyed obstacle.
+      (define next‑score (+ score wrap‑total hit‑total))
+      ; Reset the bullet if it hit something or travelled beyond
+      ; spawn‑z.  Otherwise keep it active.
+      (define bullet‑reset (or (> hit‑total 0) (>= tmp‑bullet‑z spawn‑z)))
+      (define final‑bullet‑active (if bullet‑reset 0 tmp‑bullet‑active))
+      (define final‑bullet‑z (if bullet‑reset 0.0 tmp‑bullet‑z))
+      (define final‑bullet‑x tmp‑bullet‑x)
+
+      ; -----------------------------------------------------------------
+      ; Collision between player and obstacles.  If the player is alive
+      ; and any obstacle passes within a small horizontal threshold when
+      ; its depth is near zero, the player dies.  We use a very small
+      ; depth window (< 0.3) and a horizontal threshold equal to half
+      ; the obstacle’s world width (object‑base‑size).
+      (define px0 (abs (- next‑player‑x o0‑final‑x)))
+      (define px1 (abs (- next‑player‑x o1‑final‑x)))
+      (define px2 (abs (- next‑player‑x o2‑final‑x)))
+      (define px3 (abs (- next‑player‑x o3‑final‑x)))
+      (define pz0 o0‑final‑z)
+      (define pz1 o1‑final‑z)
+      (define pz2 o2‑final‑z)
+      (define pz3 o3‑final‑z)
+      (define player‑hit0 (and (> alive 0) (<= pz0 0.30) (<= px0 object‑base‑size)))
+      (define player‑hit1 (and (> alive 0) (<= pz1 0.30) (<= px1 object‑base‑size)))
+      (define player‑hit2 (and (> alive 0) (<= pz2 0.30) (<= px2 object‑base‑size)))
+      (define player‑hit3 (and (> alive 0) (<= pz3 0.30) (<= px3 object‑base‑size)))
+      (define player‑hit (or player‑hit0 player‑hit1 player‑hit2 player‑hit3))
+      ; Update alive flag.  If restart is pressed while dead, reset to
+      ; the initial state in this frame by clearing alive.  We do the
+      ; complete reset after drawing the frame, similar to Flappy Bird.
+      (define next‑alive
+        (if restart‑p 1
+          (if player‑hit 0 alive)))
+
+      ; -----------------------------------------------------------------
+      ; Draw the next frame.  We layer up the scene in the order
+      ; ceiling -> walls -> floor -> obstacles -> bullet -> crosshair
+      ; -> score bar -> game‑over overlay.  Colours are defined as
+      ; constants and modulated by depth for some variation.
+      (define next‑frame
+        (canvas W H 3
+          ; Precompute some per‑row quantities outside of channel
+          ; selection so that we don’t recompute them for each colour.
+          (define rel‑i (‑ i horizon))
+          (define row‑ratio (clamp (/ rel‑i (‑ H horizon)) 0 1))
+          ; Corridor half width at this row (linear interpolation
+          ; between min and max widths).  When row‑ratio is 0 the
+          ; width equals the narrow width at the horizon; when it is 1
+          ; the width equals the full width at the bottom of the screen.
+          (define corridor‑half
+            (+ corridor‑half‑min
+               (* (‑ corridor‑half‑max corridor‑half‑min) row‑ratio)))
+          ; Base colours for ceiling, walls and floor.  We modulate
+          ; the brightness of the floor based on row‑ratio to help
+          ; convey depth.
+          (define floor‑bright (+ 0.15 (* 0.50 row‑ratio)))
+          (define wall‑bright 0.28)
+          (define ceil‑bright 0.07)
+          (define floor‑r (* floor‑bright 0.6))
+          (define floor‑g (* floor‑bright 0.6))
+          (define floor‑b (* floor‑bright 0.65))
+          (define wall‑r (* wall‑bright 0.35))
+          (define wall‑g (* wall‑bright 0.35))
+          (define wall‑b (* wall‑bright 0.38))
+          (define ceil‑r (* ceil‑bright 0.30))
+          (define ceil‑g (* ceil‑bright 0.32))
+          (define ceil‑b (* ceil‑bright 0.36))
+          ; Masks for floor, walls and ceiling based on pixel position
+          ; relative to the horizon and corridor width.
+          (define on‑ceiling (< i horizon))
+          (define dx (abs (‑ j (/ W 2))))
+          (define on‑floor (and (>= i horizon) (<= dx corridor‑half)))
+          (define on‑wall (and (>= i horizon) (> dx corridor‑half)))
+          ; Initial background colour by selecting the appropriate base
+          ; colour for each channel.  This forms the base of the
+          ; layering; subsequent objects will use max() to draw on top.
+          (define base‑color
+            (if on‑floor
+              (if (== c 0) floor‑r (if (== c 1) floor‑g floor‑b))
+              (if on‑wall
+                (if (== c 0) wall‑r (if (== c 1) wall‑g wall‑b))
+                (if (== c 0) ceil‑r (if (== c 1) ceil‑g ceil‑b)))))
+
+          ; -----------------------------------------------------------------
+          ; Draw obstacles.  For each obstacle we compute its screen
+          ; coordinates based on its world position.  All obstacles are
+          ; drawn as rectangles with the same base colour.  If the
+          ; obstacle has passed behind the horizon (t <= 0) then we
+          ; avoid drawing it.
+          (define draw‑obstacle
+            (lambda (oz ox)
+              (let
+                ( (t (max 0 (/ (‑ z‑max oz) z‑max)))
+                  (size (* object‑base‑size
+                           (+ corridor‑half‑min
+                              (* (‑ corridor‑half‑max corridor‑half‑min) t))))
+                  (x0 (+ (/ W 2) (* ox (+ corridor‑half‑min
+                                            (* (‑ corridor‑half‑max corridor‑half‑min) t))))))
+                (let ( (hw size)
+                       (hh (* size object‑aspect))
+                       (cy (+ horizon (* t (‑ H horizon)))) )
+                  (* (draw‑rect x0 cy hw hh 1.0)
+                     (if (== c 0) 0.80 (if (== c 1) 0.25 0.25)))))))
+          ; Evaluate all obstacles and accumulate them via max().
+          (define obstacles‑color
+            (max (draw‑obstacle o0‑final‑z o0‑final‑x)
+                 (draw‑obstacle o1‑final‑z o1‑final‑x)
+                 (draw‑obstacle o2‑final‑z o2‑final‑x)
+                 (draw‑obstacle o3‑final‑z o3‑final‑x)))
+
+          ; -----------------------------------------------------------------
+          ; Draw the bullet.  Similar to obstacles, compute its screen
+          ; location and size.  The bullet is drawn as a bright
+          ; rectangle when it is active.  If inactive, it does not
+          ; contribute to the pixel colour.
+          (define bullet‑color
+            (if (> final‑bullet‑active 0)
+              (let
+                ( (t (max 0 (/ (‑ z‑max final‑bullet‑z) z‑max)))
+                  (size (* bullet‑base‑size
+                           (+ corridor‑half‑min
+                              (* (‑ corridor‑half‑max corridor‑half‑min) t))))
+                  (x0 (+ (/ W 2) (* final‑bullet‑x
+                                    (+ corridor‑half‑min
+                                       (* (‑ corridor‑half‑max corridor‑half‑min) t))))) )
+                (let ( (hw size)
+                       (hh (* size bullet‑aspect))
+                       (cy (+ horizon (* t (‑ H horizon)))) )
+                  (* (draw‑rect x0 cy hw hh 1.0)
+                     (if (== c 0) 1.00 (if (== c 1) 0.90 0.20)))))
+              0))
+
+          ; -----------------------------------------------------------------
+          ; Draw crosshair.  Always draw the crosshair to give the
+          ; player a reference for aiming.  The crosshair remains at
+          ; a fixed depth relative to the screen.  It is drawn using
+          ; two perpendicular lines.
+          (define cross‑y (+ horizon (* 0.55 (‑ H horizon))))
+          (define cross‑size 5.0)
+          (define cross‑color
+            (max (* (draw‑line (/ W 2) (‑ cross‑y cross‑size)
+                             (/ W 2) (+ cross‑y cross‑size)
+                             0.7 1.0)
+                    (if (== c 0) 0.95 (if (== c 1) 0.95 1.0)))
+                 (* (draw‑line (‑ (/ W 2) cross‑size) cross‑y
+                             (+ (/ W 2) cross‑size) cross‑y
+                             0.7 1.0)
+                    (if (== c 0) 0.95 (if (== c 1) 0.95 1.0)))))
+
+          ; -----------------------------------------------------------------
+          ; Draw score bar.  The player’s score is represented as a
+          ; horizontal bar near the top of the screen.  It shows up to
+          ; 10 units; additional points wrap around.  The background
+          ; strip is drawn behind the bar so that the bar always
+          ; appears over the corridor.
+          (define s (clamp score 0 99))
+          (define bar‑length (min (mod s 10) 10))
+          (define bar‑w (* bar‑length 3.0))
+          (define score‑bg (* (draw‑rect (+ 10.0 (/ (* 10.0 3.0) 2)) 8.0 15.0 3.0 1.0)
+                              (if (== c 0) 0.10 (if (== c 1) 0.12 0.14))))
+          (define score‑fg (if (> bar‑length 0)
+                              (* (draw‑rect (+ 4.0 (* bar‑w 0.5)) 8.0 bar‑w 2.0 1.0)
+                                 (if (== c 0) 0.90 (if (== c 1) 0.90 0.25)))
+                              0))
+
+          ; -----------------------------------------------------------------
+          ; Game over overlay.  If the player is dead, draw a tinted
+          ; overlay and a centred message to prompt restart.
+          (define game‑over‑overlay
+            (if (== next‑alive 0)
+              (max
+                ; semi‑transparent dark overlay
+                (* (draw‑rect (/ W 2) (/ H 2) (/ W 2) (/ H 2) 1.0)
+                   (if (== c 0) 0.40 (if (== c 1) 0.10 0.10)))
+                ; message background
+                (* (draw‑rect (/ W 2) (/ H 2) 24.0 7.0 1.0)
+                   (if (== c 0) 0.16 (if (== c 1) 0.08 0.08)))
+                ; message bar
+                (* (draw‑rect (/ W 2) (/ H 2) 18.0 2.5 1.0)
+                   (if (== c 0) 0.90 (if (== c 1) 0.95 0.20)))
+                0)
+              0))
+
+          ; Compose the final pixel colour by layering the elements in
+          ; order using max().  We clamp at the end to ensure values
+          ; remain within [0,1].
+          (clamp
+            (max base‑color
+                 obstacles‑color
+                 bullet‑color
+                 cross‑color
+                 score‑bg
+                 score‑fg
+                 game‑over‑overlay)
+            0 1)))
+
+      ; -----------------------------------------------------------------
+      ; Restart logic.  If restart‑p is pressed while the player is
+      ; dead, reset all state back to its initial configuration.  This
+      ; allows the user to quickly try again without quitting the
+      ; program.  Otherwise propagate the computed next state.  When
+      ; the player is alive or has not pressed restart, the state is
+      ; advanced normally.
+      (define final‑state
+        (if (and restart‑p (== next‑alive 1))
+          ; Hard reset: set all variables to their starting values.
+          (tuple next‑frame
+                 0               ; tick
+                 0.0             ; player‑x
+                 1               ; alive
+                 0               ; bullet‑active
+                 0.0             ; bullet‑z
+                 0.0             ; bullet‑x
+                 2.0 (obstacle‑x‑of 0)
+                 4.0 (obstacle‑x‑of 1)
+                 6.0 (obstacle‑x‑of 2)
+                 7.5 (obstacle‑x‑of 3)
+                 4               ; next‑obs‑index
+                 0)              ; score
+          ; Normal advancement: return the computed state.
+          (tuple next‑frame
+                 (+ tick 1)
+                 next‑player‑x
+                 next‑alive
+                 final‑bullet‑active
+                 final‑bullet‑z
+                 final‑bullet‑x
+                 o0‑final‑z o0‑final‑x
+                 o1‑final‑z o1‑final‑x
+                 o2‑final‑z o2‑final‑x
+                 o3‑final‑z o3‑final‑x
+                 next‑obs‑index‑2
+                 next‑score)))
+
+      final‑state)
+
+    ; -------------------------------------------------------------------
+    ; Termination predicate: return 0 to continue forever.  This is
+    ; required by gNine’s iterate‑until construct, although the game
+    ; intentionally does not terminate.
+    (((frame tick player‑x alive bullet‑active bullet‑z bullet‑x
+       o0‑z o0‑x o1‑z o1‑x o2‑z o2‑x o3‑z o3‑x next‑obs‑index score))
+      0)))

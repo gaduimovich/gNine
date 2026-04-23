@@ -453,8 +453,15 @@ namespace gnine
 
          bool lookupOrCompileRuntimeKernel(const Cell &program,
                                            CompiledKernelLookup *result)
-        {
-            const std::string cacheKey = cellToString(program);
+         {
+            LoweredProgram lowered = lowerProgram(program);
+            if (lowered.usesVectorFeatures || lowered.channelPrograms.size() != 1)
+            {
+               result->fallbackReason = lowered.usesVectorFeatures ? "vector_features" : "lowered_shape";
+               return false;
+            }
+
+            const std::string cacheKey = cellCacheKey(program);
             std::unordered_map<std::string, CompiledRuntimeKernel> &cache = runtimeKernelCache();
             std::unordered_map<std::string, CompiledRuntimeKernel>::const_iterator it = cache.find(cacheKey);
             if (it != cache.end())
@@ -463,13 +470,6 @@ namespace gnine
                result->cacheHit = true;
                result->fn = it->second.fn;
                return true;
-            }
-
-            LoweredProgram lowered = lowerProgram(program);
-            if (lowered.usesVectorFeatures || lowered.channelPrograms.size() != 1)
-            {
-               result->fallbackReason = lowered.usesVectorFeatures ? "vector_features" : "lowered_shape";
-               return false;
             }
 
             OMR::JitBuilder::TypeDictionary types;
@@ -493,14 +493,14 @@ namespace gnine
             result->ok = true;
             result->cacheHit = false;
             result->fn = reinterpret_cast<ImageArrayFunctionType *>(entry);
-           cache[cacheKey].fn = result->fn;
-           return true;
-        }
+            cache[cacheKey].fn = result->fn;
+            return true;
+         }
 
          bool lookupOrCompileRuntimeRGBKernel(const Cell &program,
                                               CompiledRGBKernelLookup *result)
          {
-            const std::string cacheKey = cellToString(program);
+            const std::string cacheKey = cellCacheKey(program);
             std::unordered_map<std::string, CompiledRuntimeRGBKernel> &cache = runtimeRGBKernelCache();
             std::unordered_map<std::string, CompiledRuntimeRGBKernel>::const_iterator it = cache.find(cacheKey);
             if (it != cache.end())
@@ -778,7 +778,8 @@ namespace gnine
                   continue;
                if (!appendCompiledBinding(symbols[idx], value, sourceExpr, env, excludedNames,
                                           emittedNames, scalarInputs, inputImages,
-                                          allowDynamicScalarRewrite, argsCell, program))
+                                          allowDynamicScalarRewrite,
+                                          argsCell, program))
                   return false;
             }
             return true;
@@ -803,7 +804,8 @@ namespace gnine
                   continue;
                if (!appendCompiledBinding(*it, value, sourceExpr, env, excludedNames,
                                           emittedNames, scalarInputs, inputImages,
-                                          allowDynamicScalarRewrite, argsCell, program))
+                                          allowDynamicScalarRewrite,
+                                          argsCell, program))
                   return false;
             }
             return true;
@@ -816,6 +818,7 @@ namespace gnine
                                               std::vector<ScalarInputBinding> *scalarInputs,
                                               std::vector<const gnine::Image *> *inputImages,
                                               bool allowDynamicScalarRewrite,
+                                              
                                                Cell *argsCell,
                                                Cell *program)
          {
@@ -888,10 +891,10 @@ namespace gnine
                for (size_t idx = 0; idx < closure->paramPatterns.size(); ++idx)
                   collectPatternBoundNames(closure->paramPatterns[idx], &boundNames);
                nestedExcluded.insert(boundNames.begin(), boundNames.end());
-               if (!appendCompiledReferencedBindings(closure->env, closure->body, nestedExcluded,
+              if (!appendCompiledReferencedBindings(closure->env, closure->body, nestedExcluded,
                                                     emittedNames, scalarInputs, inputImages, allowDynamicScalarRewrite,
                                                     argsCell, program))
-                  return false;
+                 return false;
                program->list.push_back(makeDefineCell(name, makeLambdaCell(closure)));
                return true;
             }
@@ -1049,6 +1052,17 @@ namespace gnine
             heap.markValue(values[idx]);
       }
 
+      ArrayObject::ArrayObject(const std::vector<Value> &elements)
+         : Object(Array), values(elements)
+      {
+      }
+
+      void ArrayObject::trace(Heap &heap)
+      {
+         for (size_t idx = 0; idx < values.size(); ++idx)
+            heap.markValue(values[idx]);
+      }
+
       Heap::Root::Root(Heap &heap, Value &slot)
          : _heap(&heap), _slot(&slot)
       {
@@ -1064,7 +1078,7 @@ namespace gnine
          : _objects(NULL),
            _liveObjects(0),
            _collectionCount(0),
-           _nextCollectionThreshold(16)
+           _nextCollectionThreshold(4096)
       {
       }
 
@@ -1107,6 +1121,11 @@ namespace gnine
          return allocateObject<TupleObject>(values);
       }
 
+      ArrayObject *Heap::allocateArray(const std::vector<Value> &values)
+      {
+         return allocateObject<ArrayObject>(values);
+      }
+
       void Heap::addRoot(Value *slot)
       {
          _roots.push_back(slot);
@@ -1123,10 +1142,19 @@ namespace gnine
       void Heap::collect()
       {
          ++_collectionCount;
+         const char *traceEnv = std::getenv("GNINE_RUNTIME_TRACE");
+         if (traceEnv != NULL && traceEnv[0] != '\0' && std::string(traceEnv) != "0")
+            std::cerr << "runtime.gc.collect count=" << _collectionCount
+                      << " live_before=" << _liveObjects
+                      << " threshold_before=" << _nextCollectionThreshold << std::endl;
          for (size_t idx = 0; idx < _roots.size(); ++idx)
             markValue(*_roots[idx]);
          sweep();
-         _nextCollectionThreshold = std::max(static_cast<size_t>(16), _liveObjects * 2);
+         _nextCollectionThreshold = std::max(static_cast<size_t>(4096), _liveObjects * 8);
+         if (traceEnv != NULL && traceEnv[0] != '\0' && std::string(traceEnv) != "0")
+            std::cerr << "runtime.gc.collect_done count=" << _collectionCount
+                      << " live_after=" << _liveObjects
+                      << " threshold_after=" << _nextCollectionThreshold << std::endl;
       }
 
       void Heap::markValue(const Value &value)
@@ -1197,7 +1225,7 @@ namespace gnine
 
       const Evaluator::ProgramMetadata &Evaluator::programMetadata(const Cell &program)
       {
-         const std::string cacheKey = cellToString(program);
+         const std::string cacheKey = cellCacheKey(program);
          std::map<std::string, ProgramMetadata>::const_iterator cached = _programMetadataCache.find(cacheKey);
          if (cached != _programMetadataCache.end())
             return cached->second;
@@ -1254,7 +1282,7 @@ namespace gnine
       const Evaluator::CompiledCanvasChannelMetadata &
       Evaluator::compiledCanvasChannelMetadata(const Cell &body, int channel)
       {
-         std::pair<std::string, int> key(cellToString(body), channel);
+         std::pair<std::string, int> key(cellCacheKey(body), channel);
          std::map<std::pair<std::string, int>, CompiledCanvasChannelMetadata>::const_iterator cached =
              _compiledCanvasChannelMetadataCache.find(key);
          if (cached != _compiledCanvasChannelMetadataCache.end())
@@ -1340,15 +1368,11 @@ namespace gnine
                   globalEnv->sourceExprs.erase(statement.defineName);
                   if (defineValue.isNumber())
                   {
-                     Value symbolicValue = eval(expr.list[2], symbolicEnv);
-                     Heap::Root symbolicDefineRoot(_heap, symbolicValue);
-                     Cell sourceExpr = requireExpr(symbolicValue, "define");
-                     if (!containsMetadataBuiltinCall(sourceExpr))
-                        globalEnv->sourceExprs[statement.defineName] = sourceExpr;
-                     symbolicEnv->bindings[statement.defineName] = Value::exprValue(expr.list[1]);
+                     if (!containsMetadataBuiltinCall(expr.list[2]) &&
+                         isLowerableCompiledScalarExpr(expr.list[2]))
+                        globalEnv->sourceExprs[statement.defineName] = expr.list[2];
                   }
-                  else
-                     symbolicEnv->bindings[statement.defineName] = defineValue;
+                  symbolicEnv->bindings[statement.defineName] = defineValue;
                   continue;
                }
 
@@ -1429,19 +1453,7 @@ namespace gnine
 
             if (statement.isDefine)
             {
-               Value value = eval(expr.list[2], globalEnv);
-               globalEnv->bindings[statement.defineName] = value;
-
-               if (value.isObject() || value.isBuiltin())
-                  continue;
-
-               Cell defineExpr(Cell::List);
-               defineExpr.list.push_back(Cell(Cell::Symbol, "define"));
-               defineExpr.list.push_back(Cell(Cell::Symbol, statement.defineName));
-               defineExpr.list.push_back(requireExpr(value, "define"));
-               normalized.list.push_back(defineExpr);
-
-               globalEnv->bindings[statement.defineName] = Value::exprValue(Cell(Cell::Symbol, statement.defineName));
+               normalized.list.push_back(expr);
                continue;
             }
 
@@ -1515,6 +1527,8 @@ namespace gnine
                   return "<image>";
                if (value.object->type == Object::Tuple)
                   return "<tuple>";
+               if (value.object->type == Object::Array)
+                  return "<array>";
                if (value.object->type == Object::Environment)
                   return "<environment>";
             }
@@ -1537,6 +1551,8 @@ namespace gnine
                   return "image";
                if (value.object->type == Object::Tuple)
                   return "tuple";
+               if (value.object->type == Object::Array)
+                  return "array";
                if (value.object->type == Object::Environment)
                   return "environment";
             }
@@ -2038,6 +2054,9 @@ namespace gnine
          if (builtinName == "tuple")
             return Value::objectValue(_heap.allocateTuple(args));
 
+         if (builtinName == "array")
+            return Value::objectValue(_heap.allocateArray(args));
+
          if (builtinName == "get")
          {
             if (args.size() != 2)
@@ -2245,6 +2264,90 @@ namespace gnine
             return Value::objectValue(_heap.allocateTuple(sliced));
          }
 
+         if (builtinName == "array-length")
+         {
+            if (args.size() != 1)
+               throw std::runtime_error("array-length expects exactly one argument");
+            return Value::numberValue(static_cast<double>(requireArrayObject(args[0], "array-length")->values.size()));
+         }
+
+         if (builtinName == "array-get")
+         {
+            if (args.size() != 2)
+               throw std::runtime_error("array-get expects exactly two arguments");
+            ArrayObject *array = requireArrayObject(args[0], "array-get");
+            int index = static_cast<int>(requireNumber(args[1], "array-get"));
+            if (index < 0 || index >= static_cast<int>(array->values.size()))
+               throw std::runtime_error("array-get index out of range");
+            return array->values[index];
+         }
+
+         if (builtinName == "array-set")
+         {
+            if (args.size() != 3)
+               throw std::runtime_error("array-set expects exactly three arguments (array idx val)");
+            ArrayObject *src = requireArrayObject(args[0], "array-set");
+            int index = static_cast<int>(requireNumber(args[1], "array-set"));
+            if (index < 0 || index >= static_cast<int>(src->values.size()))
+               throw std::runtime_error("array-set index out of range");
+            std::vector<Value> newValues(src->values);
+            newValues[static_cast<size_t>(index)] = args[2];
+            return Value::objectValue(_heap.allocateArray(newValues));
+         }
+
+         if (builtinName == "array-push")
+         {
+            if (args.size() != 2)
+               throw std::runtime_error("array-push expects exactly two arguments (array val)");
+            ArrayObject *src = requireArrayObject(args[0], "array-push");
+            std::vector<Value> newValues(src->values);
+            newValues.push_back(args[1]);
+            return Value::objectValue(_heap.allocateArray(newValues));
+         }
+
+         if (builtinName == "array-pop")
+         {
+            if (args.size() != 1)
+               throw std::runtime_error("array-pop expects exactly one argument");
+            ArrayObject *src = requireArrayObject(args[0], "array-pop");
+            if (src->values.empty())
+               throw std::runtime_error("array-pop requires a non-empty array");
+            std::vector<Value> newValues(src->values.begin(), src->values.end() - 1);
+            return Value::objectValue(_heap.allocateArray(newValues));
+         }
+
+         if (builtinName == "array-slice")
+         {
+            if (args.size() != 3)
+               throw std::runtime_error("array-slice expects exactly three arguments (array start end)");
+            ArrayObject *src = requireArrayObject(args[0], "array-slice");
+            int start = static_cast<int>(requireNumber(args[1], "array-slice"));
+            int end = static_cast<int>(requireNumber(args[2], "array-slice"));
+            int sz = static_cast<int>(src->values.size());
+            if (start < 0) start = 0;
+            if (end > sz) end = sz;
+            if (start > end) start = end;
+            std::vector<Value> sliced(src->values.begin() + start, src->values.begin() + end);
+            return Value::objectValue(_heap.allocateArray(sliced));
+         }
+
+         if (builtinName == "array-fold")
+         {
+            if (args.size() != 3)
+               throw std::runtime_error("array-fold expects exactly three arguments (fn init array)");
+            ArrayObject *src = requireArrayObject(args[2], "array-fold");
+            Value accum = args[1];
+            Heap::Root accumRoot(_heap, accum);
+            for (size_t idx = 0; idx < src->values.size(); ++idx)
+            {
+               std::vector<Value> foldArgs;
+               foldArgs.push_back(accum);
+               foldArgs.push_back(src->values[idx]);
+               accum = applyCallable(args[0], foldArgs, "array-fold");
+            }
+            return accum;
+         }
+
          throw std::runtime_error("Unsupported runtime builtin: " + builtinName);
       }
 
@@ -2262,7 +2365,7 @@ namespace gnine
          }
 
          if (callable.isBuiltin())
-        {
+         {
             if (allConcreteBuiltinArgs(args))
                return applyBuiltin(callable.builtinName, args);
 
@@ -2449,6 +2552,9 @@ namespace gnine
                 name == "==" || name == "!=" || name == "and" || name == "or" ||
                 name == "not" || name == "min" || name == "max" || name == "abs" ||
                 name == "clamp" || name == "int" || name == "tuple" || name == "get" ||
+                name == "array" || name == "array-length" || name == "array-get" ||
+                name == "array-set" || name == "array-push" || name == "array-pop" ||
+                name == "array-slice" || name == "array-fold" ||
                 name == "width" || name == "height" || name == "channels" || name == "sample-image" ||
                 name == "draw-rect" || name == "draw-circle" ||
                 name == "mod" || name == "floor" || name == "ceil" ||
@@ -2473,8 +2579,6 @@ namespace gnine
          for (size_t idx = 0; idx < args.size(); ++idx)
          {
             if (args[idx].isExpr())
-               return false;
-            if (args[idx].isObject() && args[idx].object->type == Object::Closure)
                return false;
          }
          return true;
@@ -2502,6 +2606,14 @@ namespace gnine
          if (!value.isObject() || value.object->type != Object::Tuple)
             throw std::runtime_error(context + " expects tuple arguments");
          return static_cast<TupleObject *>(value.object);
+      }
+
+      ArrayObject *Evaluator::requireArrayObject(const Value &value,
+                                                 const std::string &context) const
+      {
+         if (!value.isObject() || value.object->type != Object::Array)
+            throw std::runtime_error(context + " expects array arguments");
+         return static_cast<ArrayObject *>(value.object);
       }
 
       bool Evaluator::tryCompiledMapImage(ClosureObject *closure,
@@ -2533,7 +2645,7 @@ namespace gnine
          std::vector<const gnine::Image *> inputImages;
          inputImages.push_back(&source);
          if (!appendCompiledReferencedBindings(closure->env, closure->body, excludedNames, &seenBindings,
-                                               &scalarInputs, &inputImages, true, &argsCell, &program))
+                                               &scalarInputs, &inputImages, false, &argsCell, &program))
          {
             if (fallbackReason != NULL)
                *fallbackReason = "unsupported_capture";
@@ -2654,7 +2766,7 @@ namespace gnine
          inputImages.push_back(&lhs);
          inputImages.push_back(&rhs);
          if (!appendCompiledReferencedBindings(closure->env, closure->body, excludedNames, &seenBindings,
-                                               &scalarInputs, &inputImages, true, &argsCell, &program))
+                                               &scalarInputs, &inputImages, false, &argsCell, &program))
          {
             if (fallbackReason != NULL)
                *fallbackReason = "unsupported_capture";
@@ -3057,11 +3169,11 @@ namespace gnine
                       cachedSymbols != NULL
                           ? appendCompiledReferencedBindings(env, specializedBody, *cachedSymbols,
                                                             excludedNames, &seenBindings,
-                                                            &scalarInputs, &inputImages, true,
+                                                            &scalarInputs, &inputImages, false,
                                                             &argsCell, &program)
                           : appendCompiledReferencedBindings(env, specializedBody, symbols,
                                                             excludedNames, &seenBindings,
-                                                            &scalarInputs, &inputImages, true,
+                                                            &scalarInputs, &inputImages, false,
                                                             &argsCell, &program);
                   if (!appendedBindings)
                   {
@@ -3162,11 +3274,11 @@ namespace gnine
                    cachedSymbols != NULL
                        ? appendCompiledReferencedBindings(env, specializedBody, *cachedSymbols,
                                                          excludedNames, &seenBindings,
-                                                         &scalarInputs, &inputImages, true,
+                                                         &scalarInputs, &inputImages, false,
                                                          &argsCell, &program)
                        : appendCompiledReferencedBindings(env, specializedBody, symbols,
                                                          excludedNames, &seenBindings,
-                                                         &scalarInputs, &inputImages, true,
+                                                         &scalarInputs, &inputImages, false,
                                                          &argsCell, &program);
                if (!appendedBindings)
                {
