@@ -358,96 +358,34 @@
             (max
               (if (== c 0) 0.03
                 (if (== c 1) 0.05 0.10))
-              (if (> final-b00 0)
-                (* (draw-rect 14 18 brick-half-w brick-half-h 1.0)
+              (if (and (>= i 15) (<= i 21))
+                (* (if (and (>= j 2) (<= j 26)) final-b00
+                     (if (and (>= j 30) (<= j 54)) final-b01
+                       (if (and (>= j 58) (<= j 82)) final-b02
+                         (if (and (>= j 86) (<= j 110)) final-b03
+                           (if (and (>= j 114) (<= j 138)) final-b04
+                             (if (and (>= j 142) (<= j 166)) final-b05 0))))))
                    (if (== c 0) 0.96
                      (if (== c 1) 0.35 0.24)))
-                0)
-              (if (> final-b01 0)
-                (* (draw-rect 42 18 brick-half-w brick-half-h 1.0)
-                   (if (== c 0) 0.96
-                     (if (== c 1) 0.35 0.24)))
-                0)
-              (if (> final-b02 0)
-                (* (draw-rect 70 18 brick-half-w brick-half-h 1.0)
-                   (if (== c 0) 0.96
-                     (if (== c 1) 0.35 0.24)))
-                0)
-              (if (> final-b03 0)
-                (* (draw-rect 98 18 brick-half-w brick-half-h 1.0)
-                   (if (== c 0) 0.96
-                     (if (== c 1) 0.35 0.24)))
-                0)
-              (if (> final-b04 0)
-                (* (draw-rect 126 18 brick-half-w brick-half-h 1.0)
-                   (if (== c 0) 0.96
-                     (if (== c 1) 0.35 0.24)))
-                0)
-              (if (> final-b05 0)
-                (* (draw-rect 154 18 brick-half-w brick-half-h 1.0)
-                   (if (== c 0) 0.96
-                     (if (== c 1) 0.35 0.24)))
-                0)
-              (if (> final-b10 0)
-                (* (draw-rect 14 28 brick-half-w brick-half-h 1.0)
-                   (if (== c 0) 0.22
-                     (if (== c 1) 0.92 0.34)))
-                0)
-              (if (> final-b11 0)
-                (* (draw-rect 42 28 brick-half-w brick-half-h 1.0)
-                   (if (== c 0) 0.22
-                     (if (== c 1) 0.92 0.34)))
-                0)
-              (if (> final-b12 0)
-                (* (draw-rect 70 28 brick-half-w brick-half-h 1.0)
-                   (if (== c 0) 0.22
-                     (if (== c 1) 0.92 0.34)))
-                0)
-              (if (> final-b13 0)
-                (* (draw-rect 98 28 brick-half-w brick-half-h 1.0)
-                   (if (== c 0) 0.22
-                     (if (== c 1) 0.92 0.34)))
-                0)
-              (if (> final-b14 0)
-                (* (draw-rect 126 28 brick-half-w brick-half-h 1.0)
-                   (if (== c 0) 0.22
-                     (if (== c 1) 0.92 0.34)))
-                0)
-              (if (> final-b15 0)
-                (* (draw-rect 154 28 brick-half-w brick-half-h 1.0)
-                   (if (== c 0) 0.22
-                     (if (== c 1) 0.92 0.34)))
-                0)
-              (if (> final-b20 0)
-                (* (draw-rect 14 38 brick-half-w brick-half-h 1.0)
-                   (if (== c 0) 0.22
-                     (if (== c 1) 0.48 1.00)))
-                0)
-              (if (> final-b21 0)
-                (* (draw-rect 42 38 brick-half-w brick-half-h 1.0)
-                   (if (== c 0) 0.22
-                     (if (== c 1) 0.48 1.00)))
-                0)
-              (if (> final-b22 0)
-                (* (draw-rect 70 38 brick-half-w brick-half-h 1.0)
-                   (if (== c 0) 0.22
-                     (if (== c 1) 0.48 1.00)))
-                0)
-              (if (> final-b23 0)
-                (* (draw-rect 98 38 brick-half-w brick-half-h 1.0)
-                   (if (== c 0) 0.22
-                     (if (== c 1) 0.48 1.00)))
-                0)
-              (if (> final-b24 0)
-                (* (draw-rect 126 38 brick-half-w brick-half-h 1.0)
-                   (if (== c 0) 0.22
-                     (if (== c 1) 0.48 1.00)))
-                0)
-              (if (> final-b25 0)
-                (* (draw-rect 154 38 brick-half-w brick-half-h 1.0)
-                   (if (== c 0) 0.22
-                     (if (== c 1) 0.48 1.00)))
-                0)
+                (if (and (>= i 25) (<= i 31))
+                  (* (if (and (>= j 2) (<= j 26)) final-b10
+                       (if (and (>= j 30) (<= j 54)) final-b11
+                         (if (and (>= j 58) (<= j 82)) final-b12
+                           (if (and (>= j 86) (<= j 110)) final-b13
+                             (if (and (>= j 114) (<= j 138)) final-b14
+                               (if (and (>= j 142) (<= j 166)) final-b15 0))))))
+                     (if (== c 0) 0.22
+                       (if (== c 1) 0.92 0.34)))
+                  (if (and (>= i 35) (<= i 41))
+                    (* (if (and (>= j 2) (<= j 26)) final-b20
+                         (if (and (>= j 30) (<= j 54)) final-b21
+                           (if (and (>= j 58) (<= j 82)) final-b22
+                             (if (and (>= j 86) (<= j 110)) final-b23
+                               (if (and (>= j 114) (<= j 138)) final-b24
+                                 (if (and (>= j 142) (<= j 166)) final-b25 0))))))
+                       (if (== c 0) 0.22
+                         (if (== c 1) 0.48 1.00)))
+                    0)))
               (* (draw-rect final-paddle-x paddle-y paddle-half-w paddle-half-h 1.0)
                  (if (== c 0) 0.95
                    (if (== c 1) 0.95 0.95)))
