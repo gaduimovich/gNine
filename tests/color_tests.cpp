@@ -281,6 +281,91 @@ namespace
       std::cout << "[PASS] vector_dot_luma\n";
       return 0;
    }
+
+   int runGrayscaleRoundTripCase()
+   {
+      gnine::Image image(3, 2);
+      image(0, 0) = 0.0;
+      image(0, 1) = 0.25;
+      image(0, 2) = 0.5;
+      image(1, 0) = 0.75;
+      image(1, 1) = 1.0;
+      image(1, 2) = 0.125;
+
+      const std::string path = "/tmp/gnine_color_grayscale_roundtrip.png";
+      image.write(path);
+
+      gnine::Image reloaded(path);
+      std::remove(path.c_str());
+
+      if (reloaded.width() != 3 || reloaded.height() != 2 || reloaded.channelCount() != 1)
+      {
+         std::cerr << "grayscale_round_trip_io: unexpected image shape after reload\n";
+         return 1;
+      }
+
+      for (int row = 0; row < 2; ++row)
+      {
+         for (int col = 0; col < 3; ++col)
+         {
+            if (!almostEqual(image(row, col), reloaded(row, col)))
+            {
+               std::cerr << "grayscale_round_trip_io: mismatch at row " << row
+                         << " col " << col << "\n";
+               return 1;
+            }
+         }
+      }
+
+      std::cout << "[PASS] grayscale_round_trip_io\n";
+      return 0;
+   }
+
+   int runVectorRgbScalarAddCase()
+   {
+      gnine::Image image(2, 2, 2, 3);
+      std::vector<double> red = {0.1, 0.2, 0.3, 0.4};
+      std::vector<double> green = {0.2, 0.3, 0.4, 0.5};
+      std::vector<double> blue = {0.3, 0.4, 0.5, 0.6};
+
+      for (int idx = 0; idx < 4; ++idx)
+      {
+         image.getChannelData(0)[idx] = red[idx];
+         image.getChannelData(1)[idx] = green[idx];
+         image.getChannelData(2)[idx] = blue[idx];
+      }
+
+      std::vector<gnine::Image> inputs;
+      inputs.push_back(gnine::Image(image.getData(), image.width(), image.height(), image.stride(), image.channelCount()));
+
+      // Add a constant 0.1 to each channel using the rgb vector builtin
+      std::vector<std::vector<double>> outputs = runLoweredProgram(
+          "((A) (rgb (+ (r (color A)) 0.1) (+ (g (color A)) 0.1) (+ (b (color A)) 0.1)))", inputs);
+
+      if (outputs.size() != 3)
+      {
+         std::cerr << "vector_rgb_scalar_add: expected 3 output channels, got " << outputs.size() << "\n";
+         return 1;
+      }
+
+      std::vector<double> expectedR = {0.2, 0.3, 0.4, 0.5};
+      std::vector<double> expectedG = {0.3, 0.4, 0.5, 0.6};
+      std::vector<double> expectedB = {0.4, 0.5, 0.6, 0.7};
+
+      for (int idx = 0; idx < 4; ++idx)
+      {
+         if (!almostEqual(outputs[0][idx], expectedR[idx]) ||
+             !almostEqual(outputs[1][idx], expectedG[idx]) ||
+             !almostEqual(outputs[2][idx], expectedB[idx]))
+         {
+            std::cerr << "vector_rgb_scalar_add: mismatch at index " << idx << "\n";
+            return 1;
+         }
+      }
+
+      std::cout << "[PASS] vector_rgb_scalar_add\n";
+      return 0;
+   }
 }
 
 int main()
@@ -297,6 +382,8 @@ int main()
    failures += runChannelwiseExecutionCase();
    failures += runVectorChannelSwapCase();
    failures += runVectorDotLumaCase();
+   failures += runGrayscaleRoundTripCase();
+   failures += runVectorRgbScalarAddCase();
 
    shutdownJit();
 

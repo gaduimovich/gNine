@@ -894,6 +894,176 @@ int main()
          require(pongFrame46.keyDown == 1.0, "pong playback should alternate to downward paddle motion");
       }
 
+      // Math builtins: sin, cos, pow, atan2
+      {
+         require(almostEqual(runProgram("(() (sin 0.0))"), 0.0),
+                 "sin(0) should return 0");
+         require(almostEqual(runProgram("(() (cos 0.0))"), 1.0),
+                 "cos(0) should return 1");
+         require(almostEqual(runProgram("(() (pow 2.0 3.0))"), 8.0),
+                 "pow(2,3) should return 8");
+         require(almostEqual(runProgram("(() (atan2 0.0 1.0))"), 0.0),
+                 "atan2(0,1) should return 0");
+      }
+
+      // Numeric builtins: abs, clamp, int
+      {
+         require(almostEqual(runProgram("(() (abs 3.5))"), 3.5),
+                 "abs of positive should return the same value");
+         require(almostEqual(runProgram("(() (abs -3.5))"), 3.5),
+                 "abs of negative should return the positive value");
+         require(almostEqual(runProgram("(() (clamp -0.5 0.0 1.0))"), 0.0),
+                 "clamp below range should return the lower bound");
+         require(almostEqual(runProgram("(() (clamp 1.5 0.0 1.0))"), 1.0),
+                 "clamp above range should return the upper bound");
+         require(almostEqual(runProgram("(() (clamp 0.3 0.0 1.0))"), 0.3),
+                 "clamp inside range should return the value unchanged");
+         require(almostEqual(runProgram("(() (int 3.9))"), 3.0),
+                 "int truncation of positive should round toward zero");
+         require(almostEqual(runProgram("(() (int -3.9))"), -3.0),
+                 "int truncation of negative should round toward zero");
+      }
+
+      // Boolean builtins: not, and, or
+      {
+         require(almostEqual(runProgram("(() (not 1.0))"), 0.0),
+                 "not of truthy value should return 0");
+         require(almostEqual(runProgram("(() (not 0.0))"), 1.0),
+                 "not of falsy value should return 1");
+         require(almostEqual(runProgram("(() (and 1 1))"), 1.0),
+                 "and of two truthy values should return 1");
+         require(almostEqual(runProgram("(() (and 1 0))"), 0.0),
+                 "and with one false should return 0");
+         require(almostEqual(runProgram("(() (or 0 1))"), 1.0),
+                 "or with one true should return 1");
+         require(almostEqual(runProgram("(() (or 0 0))"), 0.0),
+                 "or of two false values should return 0");
+      }
+
+      // min and max with multiple arguments
+      {
+         require(almostEqual(runProgram("(() (min 3 1 2))"), 1.0),
+                 "min of multiple values should return the smallest");
+         require(almostEqual(runProgram("(() (max 3 1 2))"), 3.0),
+                 "max of multiple values should return the largest");
+      }
+
+      // draw-circle in canvas context
+      {
+         gnine::runtime::Evaluator evaluator;
+         gnine::runtime::Value result = evaluator.evaluateExpr(
+             gnine::cellFromString("(canvas 3 2 (draw-circle 1.0 0.0 1.0 1.0))"),
+             std::map<std::string, gnine::runtime::Value>{});
+         require(result.isObject() && result.object->type == gnine::runtime::Object::Image,
+                 "draw-circle inside canvas should return an image");
+         gnine::runtime::ImageObject *imageObj = static_cast<gnine::runtime::ImageObject *>(result.object);
+         require(imageObj->image->width() == 3 && imageObj->image->height() == 2,
+                 "draw-circle canvas result should have the requested dimensions");
+         // circle centered at col=1, row=0, radius=1:
+         // row0: col0→dist2=1→inside, col1→dist2=0→inside, col2→dist2=1→inside
+         // row1: col0→dist2=2→outside, col1→dist2=1→inside, col2→dist2=2→outside
+         require(almostEqual(imageObj->image->operator()(0, 0), 1.0) &&
+                 almostEqual(imageObj->image->operator()(0, 1), 1.0) &&
+                 almostEqual(imageObj->image->operator()(0, 2), 1.0) &&
+                 almostEqual(imageObj->image->operator()(1, 0), 0.0) &&
+                 almostEqual(imageObj->image->operator()(1, 1), 1.0) &&
+                 almostEqual(imageObj->image->operator()(1, 2), 0.0),
+                 "draw-circle should paint pixels within the specified radius");
+      }
+
+      // draw-line in canvas context
+      {
+         gnine::runtime::Evaluator evaluator;
+         // vertical line at column=1, from row=0 to row=1, thickness=0.5 (halfThick=0.25)
+         gnine::runtime::Value result = evaluator.evaluateExpr(
+             gnine::cellFromString("(canvas 3 2 (draw-line 1.0 0.0 1.0 1.0 0.5 1.0))"),
+             std::map<std::string, gnine::runtime::Value>{});
+         require(result.isObject() && result.object->type == gnine::runtime::Object::Image,
+                 "draw-line inside canvas should return an image");
+         gnine::runtime::ImageObject *imageObj = static_cast<gnine::runtime::ImageObject *>(result.object);
+         // only pixels at column=1 are within distance 0.25 of the vertical line
+         require(almostEqual(imageObj->image->operator()(0, 0), 0.0) &&
+                 almostEqual(imageObj->image->operator()(0, 1), 1.0) &&
+                 almostEqual(imageObj->image->operator()(0, 2), 0.0) &&
+                 almostEqual(imageObj->image->operator()(1, 0), 0.0) &&
+                 almostEqual(imageObj->image->operator()(1, 1), 1.0) &&
+                 almostEqual(imageObj->image->operator()(1, 2), 0.0),
+                 "draw-line should paint pixels within the specified thickness");
+      }
+
+      // normalizeProgram
+      {
+         gnine::runtime::Evaluator evaluator;
+         gnine::Cell program = gnine::cellFromString("((A) (define x (+ A 1)) (* x x))");
+         gnine::Cell normalized = evaluator.normalizeProgram(program);
+         require(normalized.type == gnine::Cell::List && normalized.list.size() == 3,
+                 "normalizeProgram should produce a three-element program list");
+         require(normalized.list[0].type == gnine::Cell::List,
+                 "normalizeProgram should preserve the argument list");
+         require(normalized.list[1].type == gnine::Cell::List &&
+                 normalized.list[1].list.size() == 3 &&
+                 normalized.list[1].list[0].type == gnine::Cell::Symbol &&
+                 normalized.list[1].list[0].val == "define",
+                 "normalizeProgram should preserve define statements");
+         require(normalized.list[2].type == gnine::Cell::List,
+                 "normalizeProgram should produce a result expression");
+      }
+
+      // evaluateProgram with outBindings
+      {
+         gnine::runtime::Evaluator evaluator;
+         std::map<std::string, gnine::runtime::Value> outBindings;
+         gnine::runtime::Value result = evaluator.evaluateProgram(
+             gnine::cellFromString("(() (define x 5) (define y 7) (+ x y))"),
+             std::map<std::string, gnine::runtime::Value>{},
+             &outBindings);
+         require(result.isNumber() && almostEqual(result.number, 12.0),
+                 "evaluateProgram with outBindings should return the correct result");
+         require(outBindings.count("x") > 0 && outBindings.at("x").isNumber() &&
+                     almostEqual(outBindings.at("x").number, 5.0),
+                 "evaluateProgram outBindings should contain the define for x");
+         require(outBindings.count("y") > 0 && outBindings.at("y").isNumber() &&
+                     almostEqual(outBindings.at("y").number, 7.0),
+                 "evaluateProgram outBindings should contain the define for y");
+      }
+
+      // GC collection count tracking
+      {
+         gnine::runtime::Heap heap;
+         require(heap.collectionCount() == 0,
+                 "fresh heap should report zero collections");
+         heap.collect();
+         require(heap.collectionCount() == 1,
+                 "heap collection count should increment after explicit collect");
+         heap.collect();
+         require(heap.collectionCount() == 2,
+                 "heap collection count should increment on each collect call");
+      }
+
+      // rgb builtin in map-image (produces a 3-channel image)
+      {
+         gnine::runtime::Evaluator evaluator;
+         gnine::Image imageA(2, 1, 2, 3);
+         imageA(0, 0, 0) = 0.1;
+         imageA(0, 0, 1) = 0.5;
+         imageA(0, 0, 2) = 0.9;
+         imageA(0, 1, 0) = 0.2;
+         imageA(0, 1, 1) = 0.6;
+         imageA(0, 1, 2) = 0.8;
+
+         std::map<std::string, gnine::runtime::Value> bindings;
+         bindings["A"] = evaluator.imageValue(imageA);
+
+         gnine::runtime::Value result = evaluator.evaluateExpr(
+             gnine::cellFromString("(map-image (lambda (x) (rgb (* x 2) x 0.0)) A)"),
+             bindings);
+         require(result.isObject() && result.object->type == gnine::runtime::Object::Image,
+                 "map-image returning rgb should produce an image");
+         gnine::runtime::ImageObject *imageObj = static_cast<gnine::runtime::ImageObject *>(result.object);
+         require(imageObj->image->channelCount() == 3,
+                 "map-image returning rgb should produce a 3-channel image");
+      }
+
       std::cout << "Runtime tests passed" << std::endl;
       return 0;
    }
