@@ -101,6 +101,37 @@ namespace
 #endif
    }
 
+   class BenchmarkProgressReporter
+   {
+   public:
+      BenchmarkProgressReporter(bool enabled, const std::string &label, int total)
+          : _enabled(enabled && total > 0), _label(label), _total(total), _lastPercent(-1)
+      {
+      }
+
+      void update(int current)
+      {
+         if (!_enabled || current <= 0 || current > _total)
+            return;
+
+         int percent = static_cast<int>((100LL * current) / _total);
+         bool shouldPrint = (current == 1 || current == _total || percent >= _lastPercent + 5);
+         if (!shouldPrint)
+            return;
+
+         if (percent > 100)
+            percent = 100;
+         _lastPercent = percent;
+         std::cerr << "benchmark.progress " << _label << " " << current << "/" << _total << " (" << percent << "%)" << std::endl;
+      }
+
+   private:
+      bool _enabled;
+      std::string _label;
+      int _total;
+      int _lastPercent;
+   };
+
 #ifdef GNINE_HAVE_SDL2
    double clampPreviewChannel(double value)
    {
@@ -1824,6 +1855,7 @@ int main(int argc, char *argsRaw[])
       else if (chain_times > 0)
       {
          const int runtimeChainRepeats = benchmark ? benchmarkRepeats : 1;
+         BenchmarkProgressReporter runtimeChainRepeatProgress(benchmark && runtimeChainRepeats > 1, "runtime-chain-repeat", runtimeChainRepeats);
          const Cell &stateArgsCell = effectiveCode.list[0];
          if (stateArgsCell.list.size() != 1)
             throw std::runtime_error((hasIterateUntil ? "iterate-until" : "iterate-state") +
@@ -1837,6 +1869,7 @@ int main(int argc, char *argsRaw[])
 
          for (int repeat = 0; repeat < runtimeChainRepeats; ++repeat)
          {
+            runtimeChainRepeatProgress.update(repeat + 1);
             double repeatCompileMillis = 0.0;
             double repeatExecuteMillis = 0.0;
             int repeatIterationsExecuted = 0;
@@ -1869,9 +1902,12 @@ int main(int argc, char *argsRaw[])
             const std::string doneBindingName = hasIterateUntil
                                                     ? runtimeArgumentBindingName(iterateUntilDone.list[0].list[0], 0)
                                                     : std::string();
+            BenchmarkProgressReporter runtimeChainIterProgress(
+                benchmark && chain_times > 1, "runtime-chain-iter", chain_times);
 
             for (int iter = 1; iter <= chain_times; ++iter)
             {
+               runtimeChainIterProgress.update(iter);
                evaluator.clearExecutionTrace();
                stepBindings[stateBindingName] = runtimeState;
                stepBindings["iter"] = runtime::Value::numberValue(static_cast<double>(iter));
@@ -1937,8 +1973,10 @@ int main(int argc, char *argsRaw[])
          }
 
          const int passes = benchmark ? benchmarkRepeats : 1;
+         BenchmarkProgressReporter runtimePassProgress(benchmark && passes > 1, "runtime-repeat", passes);
          for (int pass = 0; pass < passes; ++pass)
          {
+            runtimePassProgress.update(pass + 1);
             std::pair<runtime::Value, std::pair<double, double>> passResult =
                 runSingleRuntimePass(static_cast<double>(pass + 1), runtimeInputState, 0.0, 0.0);
             runtimeState = passResult.first;
@@ -2128,8 +2166,10 @@ int main(int argc, char *argsRaw[])
                    chainInput.getChannelData(channel));
       }
 
+      BenchmarkProgressReporter chainProgress(benchmark && chain_times > 1, "chain", chain_times);
       for (int i = 0; i < chain_times; i++)
       {
+         chainProgress.update(i + 1);
          std::vector<Image> chainImages;
          chainImages.push_back(Image(chainInput.getData(),
                                      image->width(),
@@ -2178,11 +2218,13 @@ int main(int argc, char *argsRaw[])
          shutdownJit();
          return 1;
       }
+      BenchmarkProgressReporter repeatProgress(benchmark && n_times > 1, "repeat", n_times);
       for (int i = 0; i < n_times; i++)
       {
-        for (int channel = 0; channel < outputChannels; ++channel)
-        {
-           if (loweredProgram.usesVectorFeatures)
+         repeatProgress.update(i + 1);
+         for (int channel = 0; channel < outputChannels; ++channel)
+         {
+            if (loweredProgram.usesVectorFeatures)
                fillVectorArgPointers(inputImages, loweredProgram.argBindings,
                                      dataPtrs, inputWidths, inputHeights, inputStrides);
             else
