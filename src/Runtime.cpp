@@ -1368,11 +1368,15 @@ namespace gnine
                   globalEnv->sourceExprs.erase(statement.defineName);
                   if (defineValue.isNumber())
                   {
-                     if (!containsMetadataBuiltinCall(expr.list[2]) &&
-                         isLowerableCompiledScalarExpr(expr.list[2]))
-                        globalEnv->sourceExprs[statement.defineName] = expr.list[2];
+                     Value symbolicValue = eval(expr.list[2], symbolicEnv);
+                     Heap::Root symbolicDefineRoot(_heap, symbolicValue);
+                     Cell sourceExpr = requireExpr(symbolicValue, "define");
+                     if (!containsMetadataBuiltinCall(sourceExpr))
+                        globalEnv->sourceExprs[statement.defineName] = sourceExpr;
+                     symbolicEnv->bindings[statement.defineName] = Value::exprValue(expr.list[1]);
                   }
-                  symbolicEnv->bindings[statement.defineName] = defineValue;
+                  else
+                     symbolicEnv->bindings[statement.defineName] = defineValue;
                   continue;
                }
 
@@ -1453,7 +1457,19 @@ namespace gnine
 
             if (statement.isDefine)
             {
-               normalized.list.push_back(expr);
+               Value value = eval(expr.list[2], globalEnv);
+               globalEnv->bindings[statement.defineName] = value;
+
+               if (value.isObject() || value.isBuiltin())
+                  continue;
+
+               Cell defineExpr(Cell::List);
+               defineExpr.list.push_back(Cell(Cell::Symbol, "define"));
+               defineExpr.list.push_back(Cell(Cell::Symbol, statement.defineName));
+               defineExpr.list.push_back(requireExpr(value, "define"));
+               normalized.list.push_back(defineExpr);
+
+               globalEnv->bindings[statement.defineName] = Value::exprValue(Cell(Cell::Symbol, statement.defineName));
                continue;
             }
 
@@ -2645,7 +2661,7 @@ namespace gnine
          std::vector<const gnine::Image *> inputImages;
          inputImages.push_back(&source);
          if (!appendCompiledReferencedBindings(closure->env, closure->body, excludedNames, &seenBindings,
-                                               &scalarInputs, &inputImages, false, &argsCell, &program))
+                                               &scalarInputs, &inputImages, true, &argsCell, &program))
          {
             if (fallbackReason != NULL)
                *fallbackReason = "unsupported_capture";
@@ -2766,7 +2782,7 @@ namespace gnine
          inputImages.push_back(&lhs);
          inputImages.push_back(&rhs);
          if (!appendCompiledReferencedBindings(closure->env, closure->body, excludedNames, &seenBindings,
-                                               &scalarInputs, &inputImages, false, &argsCell, &program))
+                                               &scalarInputs, &inputImages, true, &argsCell, &program))
          {
             if (fallbackReason != NULL)
                *fallbackReason = "unsupported_capture";
@@ -3169,11 +3185,11 @@ namespace gnine
                       cachedSymbols != NULL
                           ? appendCompiledReferencedBindings(env, specializedBody, *cachedSymbols,
                                                             excludedNames, &seenBindings,
-                                                            &scalarInputs, &inputImages, false,
+                                                            &scalarInputs, &inputImages, true,
                                                             &argsCell, &program)
                           : appendCompiledReferencedBindings(env, specializedBody, symbols,
                                                             excludedNames, &seenBindings,
-                                                            &scalarInputs, &inputImages, false,
+                                                            &scalarInputs, &inputImages, true,
                                                             &argsCell, &program);
                   if (!appendedBindings)
                   {
@@ -3274,11 +3290,11 @@ namespace gnine
                    cachedSymbols != NULL
                        ? appendCompiledReferencedBindings(env, specializedBody, *cachedSymbols,
                                                          excludedNames, &seenBindings,
-                                                         &scalarInputs, &inputImages, false,
+                                                         &scalarInputs, &inputImages, true,
                                                          &argsCell, &program)
                        : appendCompiledReferencedBindings(env, specializedBody, symbols,
                                                          excludedNames, &seenBindings,
-                                                         &scalarInputs, &inputImages, false,
+                                                         &scalarInputs, &inputImages, true,
                                                          &argsCell, &program);
                if (!appendedBindings)
                {
