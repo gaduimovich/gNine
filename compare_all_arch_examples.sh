@@ -7,8 +7,8 @@ ARM_BUILD_DIR="${ROOT_DIR}/build-arm64"
 X86_BUILD_DIR="${ROOT_DIR}/build-x86_64"
 ARM_CMAKE_BIN="${ARM_CMAKE_BIN:-}"
 X86_CMAKE_BIN="${X86_CMAKE_BIN:-}"
-REPEAT_TIMES=1000
-CHAIN_TIMES=100000
+REPEAT_TIMES=2000
+CHAIN_TIMES=200000
 SHOULD_BUILD=0
 RESULTS_TSV="$(mktemp)"
 
@@ -27,8 +27,8 @@ Options:
   --x86-build DIR      x86_64 build directory. Default: build-x86_64
   --arm-cmake PATH     arm64 cmake binary. Default: auto-detect
   --x86-cmake PATH     x86_64 cmake binary. Default: auto-detect /usr/local/bin/cmake
-  --repeat-times N     Repeat benchmark count. Default: 1000
-  --chain-times N      Chain benchmark count. Default: 100000
+  --repeat-times N     Repeat benchmark count. Default: 2000
+  --chain-times N      Chain benchmark count. Default: 200000
   --build              Force configure/build before benchmarking.
   --help               Show this message.
 
@@ -253,6 +253,8 @@ run_pair "sepia_vector" "examples/sepia_vector.psm" "../example_data/lena.png" "
 run_pair "rgb_triptych" "examples/rgb_triptych.psm" "../example_data/lena.png" "repeat" "${REPEAT_TIMES}" "--runtime"
 run_pair "runtime_pong_v2" "examples/runtime_pong_v2.psm" "" "chain" "${CHAIN_TIMES}" "--runtime"
 run_pair "runtime_snake_v2" "examples/runtime_snake_v2.psm" "" "chain" "${CHAIN_TIMES}" "--runtime"
+run_pair "runtime_flappy_bird_v2" "examples/runtime_flappy_bird_v2.psm" "" "chain" "${CHAIN_TIMES}" "--runtime"
+run_pair "runtime_brick_breaker_v2" "examples/runtime_brick_breaker_v2.psm" "" "chain" "${CHAIN_TIMES}" "--runtime"
 run_pair "metaballs_optimized" "examples/metaballs_optimized.psm" "../example_data/lena.png" "repeat" "${REPEAT_TIMES}" ""
 run_pair "metaballs_binary_optimized" "examples/metaballs_binary_optimized.psm" "../example_data/lena.png" "repeat" "${REPEAT_TIMES}" ""
 run_pair "metaballs_fancy_optimized" "examples/metaballs_fancy_optimized.psm" "../example_data/lena.png" "repeat" "${REPEAT_TIMES}" ""

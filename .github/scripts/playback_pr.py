@@ -41,9 +41,20 @@ CAPTURES = (
         scenario="flappy",
         example_path="examples/runtime_flappy_bird_v2.psm",
         display_scale=4,
-        duration_ms=10000,
+        duration_ms=14000,
+    ),
+    CaptureCase(
+        name="brick_breaker",
+        scenario="brick-breaker",
+        example_path="examples/runtime_brick_breaker_v2.psm",
+        display_scale=4,
+        duration_ms=5000,
     ),
 )
+
+
+def pretty_name(name: str) -> str:
+    return name.replace("_", " ").title()
 
 
 def run(command: list[str], cwd: Path) -> None:
@@ -179,14 +190,14 @@ def main() -> None:
         "",
     ]
     for capture in results:
-        lines.append(f"### {capture['name'].title()}")
+        lines.append(f"### {pretty_name(str(capture['name']))}")
         lines.append(f"- Scenario: `{capture['scenario']}`")
         lines.append(f"- Duration: `{capture['duration_ms']} ms`")
         lines.append(f"- Frames: `{capture['frame_count']}`")
         if capture["gif"] is not None:
             lines.append(f"- GIF: `{capture['gif']}`")
             inline_url = f"{args.inline_base_url}/runtime_{capture['name']}.gif"
-            lines.append(f"![{capture['name'].title()}]({inline_url})")
+            lines.append(f"![{pretty_name(str(capture['name']))}]({inline_url})")
         else:
             lines.append(f"- Frames: `{capture['frames_dir']}`")
         lines.append(f"- Cover: `{capture['output_image']}`")

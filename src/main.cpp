@@ -1201,7 +1201,7 @@ int main(int argc, char *argsRaw[])
       std::cout << "--benchmark-repeats=N reruns runtime benchmarks in one process to expose warm-cache timings, including chained runtime games.\n";
       std::cout << "--emit-frames=PATH writes chained iterations as PATH with _N suffixes.\n";
       std::cout << "--preview opens a live runtime preview window.\n";
-      std::cout << "--preview-playback=snake|pong|flappy runs scripted runtime preview playback without live input.\n";
+      std::cout << "--preview-playback=snake|pong|flappy|brick-breaker runs scripted runtime preview playback without live input.\n";
       std::cout << "--preview-duration-ms=N sets the scripted playback duration in milliseconds.\n";
       std::cout << "--compare[=PATH] writes a side-by-side original/result comparison image.\n";
       std::cout << "--display-scale=N|auto writes output frames enlarged by an integer factor or fits them to the current display.\n";
@@ -1273,7 +1273,7 @@ int main(int argc, char *argsRaw[])
       {
          std::string value = s.substr(19);
          if (!parsePreviewPlaybackScenario(value, &previewPlaybackScenario))
-            throw std::runtime_error("--preview-playback expects snake, pong, or flappy");
+            throw std::runtime_error("--preview-playback expects snake, pong, flappy, or brick-breaker");
          previewPlayback = true;
       }
       else if (s.length() > 22 && s.substr(0, 22) == "--preview-duration-ms=")

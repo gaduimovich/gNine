@@ -202,6 +202,13 @@ jobs:
           path: gameplay-captures/flappy/flappy.gif
           archive: false
 
+      - name: Upload brick breaker gif
+        id: upload-brick-breaker-gif
+        uses: actions/upload-artifact@v7.0.1
+        with:
+          path: gameplay-captures/brick_breaker/brick_breaker.gif
+          archive: false
+
       - name: Publish gameplay GIFs
         if: github.event.pull_request.head.repo.fork == false
         run: |
@@ -213,7 +220,8 @@ jobs:
           cp "$GITHUB_WORKSPACE/gameplay-captures/snake/snake.gif" "$publish_dir/readme_images/runtime_snake.gif"
           cp "$GITHUB_WORKSPACE/gameplay-captures/pong/pong.gif" "$publish_dir/readme_images/runtime_pong.gif"
           cp "$GITHUB_WORKSPACE/gameplay-captures/flappy/flappy.gif" "$publish_dir/readme_images/runtime_flappy.gif"
-          git -C "$publish_dir" add readme_images/runtime_snake.gif readme_images/runtime_pong.gif readme_images/runtime_flappy.gif
+          cp "$GITHUB_WORKSPACE/gameplay-captures/brick_breaker/brick_breaker.gif" "$publish_dir/readme_images/runtime_brick_breaker.gif"
+          git -C "$publish_dir" add readme_images/runtime_snake.gif readme_images/runtime_pong.gif readme_images/runtime_flappy.gif readme_images/runtime_brick_breaker.gif
           if ! git -C "$publish_dir" diff --cached --quiet; then
             git -C "$publish_dir" -c user.name="github-actions[bot]" -c user.email="41898282+github-actions[bot]@users.noreply.github.com" commit -m "Update gameplay captures for PR #${{ github.event.pull_request.number }}"
           fi
@@ -230,6 +238,7 @@ jobs:
             echo "- Snake GIF: [download](${{ steps.upload-snake-gif.outputs.artifact-url }})"
             echo "- Pong GIF: [download](${{ steps.upload-pong-gif.outputs.artifact-url }})"
             echo "- Flappy Bird GIF: [download](${{ steps.upload-flappy-gif.outputs.artifact-url }})"
+            echo "- Brick Breaker GIF: [download](${{ steps.upload-brick-breaker-gif.outputs.artifact-url }})"
             echo "- Full capture bundle: [download artifacts](${{ steps.upload-gameplay-bundle.outputs.artifact-url }})"
           } >> "$GITHUB_STEP_SUMMARY"
 

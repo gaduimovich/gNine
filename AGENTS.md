@@ -37,10 +37,32 @@ cmake --build build-arm64 --target gnine_runtime_tests gnine_semantic_tests gnin
 
 ## Make GIF
 
+Pong:
+
 ```bash
 ./build-arm64/gnine --runtime --emit-frames=/tmp/runtime_pong_v2.png ./examples/runtime_pong_v2.psm /tmp/runtime_pong_v2_final.png
-
 magick -delay 4 -loop 0 /tmp/runtime_pong_v2_*.png /tmp/runtime_pong_v2.gif
+```
+
+Snake:
+
+```bash
+./build-arm64/gnine --runtime --emit-frames=/tmp/runtime_snake_v2.png ./examples/runtime_snake_v2.psm /tmp/runtime_snake_v2_final.png
+magick -delay 4 -loop 0 /tmp/runtime_snake_v2_*.png /tmp/runtime_snake_v2.gif
+```
+
+Flappy Bird:
+
+```bash
+./build-arm64/gnine --runtime --emit-frames=/tmp/runtime_flappy_bird_v2.png ./examples/runtime_flappy_bird_v2.psm /tmp/runtime_flappy_bird_v2_final.png
+magick -delay 4 -loop 0 /tmp/runtime_flappy_bird_v2_*.png /tmp/runtime_flappy_bird_v2.gif
+```
+
+Brick Breaker:
+
+```bash
+./build-arm64/gnine --runtime --emit-frames=/tmp/runtime_brick_breaker_v2.png ./examples/runtime_brick_breaker_v2.psm /tmp/runtime_brick_breaker_v2_final.png
+magick -delay 4 -loop 0 /tmp/runtime_brick_breaker_v2_*.png /tmp/runtime_brick_breaker_v2.gif
 ```
 
 ## Benchmark
@@ -54,19 +76,31 @@ Non-runtime filter benchmark:
 Single-pass runtime benchmark with warm repeats:
 
 ```bash
-./build-arm64/gnine --runtime --benchmark --benchmark-no-write --benchmark-repeats=5 ./examples/canvas_bench_color_squares_1080p.psm /tmp/canvas_bench.png
+./build-arm64/gnine --runtime --benchmark --benchmark-no-write --benchmark-repeats=10 ./examples/canvas_bench_color_squares_1080p.psm /tmp/canvas_bench.png
 ```
 
 Chained runtime game benchmark, Pong:
 
 ```bash
-./build-arm64/gnine --runtime --benchmark --benchmark-no-write --chain-times=300 --benchmark-repeats=3 ./examples/runtime_pong_v2.psm /tmp/runtime_pong_v2_bench.png
+./build-arm64/gnine --runtime --benchmark --benchmark-no-write --chain-times=600 --benchmark-repeats=5 ./examples/runtime_pong_v2.psm /tmp/runtime_pong_v2_bench.png
 ```
 
 Chained runtime game benchmark, Snake:
 
 ```bash
-./build-arm64/gnine --runtime --benchmark --benchmark-no-write --chain-times=300 --benchmark-repeats=3 ./examples/runtime_snake_v2.psm /tmp/runtime_snake_v2_bench.png
+./build-arm64/gnine --runtime --benchmark --benchmark-no-write --chain-times=600 --benchmark-repeats=5 ./examples/runtime_snake_v2.psm /tmp/runtime_snake_v2_bench.png
+```
+
+Chained runtime game benchmark, Flappy Bird:
+
+```bash
+./build-arm64/gnine --runtime --benchmark --benchmark-no-write --chain-times=600 --benchmark-repeats=5 ./examples/runtime_flappy_bird_v2.psm /tmp/runtime_flappy_bird_v2_bench.png
+```
+
+Chained runtime game benchmark, Brick Breaker:
+
+```bash
+./build-arm64/gnine --runtime --benchmark --benchmark-no-write --chain-times=600 --benchmark-repeats=5 ./examples/runtime_brick_breaker_v2.psm /tmp/runtime_brick_breaker_v2_bench.png
 ```
 
 For chained game benchmarks:
