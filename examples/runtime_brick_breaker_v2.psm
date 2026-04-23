@@ -82,7 +82,7 @@
                  (if (== c 0) 0.95
                    (if (== c 1) 0.95 0.95)))
 
-              (* (draw-circle 80 70 ball-half 1.0)
+              (* (draw-rect 80 70 ball-half ball-half 1.0)
                  (if (== c 0) 1.00
                    (if (== c 1) 0.90 0.24))))
             0 1))
@@ -461,7 +461,7 @@
                  (if (== c 0) 0.95
                    (if (== c 1) 0.95 0.95)))
 
-              (* (draw-circle final-ball-x final-ball-y ball-half 1.0)
+              (* (draw-rect final-ball-x final-ball-y ball-half ball-half 1.0)
                  (if (== c 0) 1.00
                    (if (== c 1) 0.90 0.24)))
 
