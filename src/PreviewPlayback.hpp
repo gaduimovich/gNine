@@ -119,14 +119,18 @@ namespace gnine
             input.keyDown = 1.0;
          break;
       case PreviewPlaybackScenario::Flappy:
-         if (frameIndex == 12 || (frameIndex > 12 && ((frameIndex - 12) % 24) == 0))
+         if (frameIndex >= 10 && ((frameIndex - 10) % 20) == 0)
             input.keySpace = 1.0;
+         if (frameIndex > 0 && (frameIndex % 150) == 0)
+            input.keyReturn = 1.0;
          break;
       case PreviewPlaybackScenario::BrickBreaker:
-         if ((frameIndex / 40) % 2 == 0)
+         if ((frameIndex / 55) % 2 == 0)
             input.keyRight = input.keyD = 1.0;
          else
             input.keyLeft = input.keyA = 1.0;
+         if (frameIndex > 0 && (frameIndex % 120) == 0)
+            input.keyReturn = 1.0;
          break;
       case PreviewPlaybackScenario::None:
       default:

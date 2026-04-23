@@ -41,14 +41,14 @@ CAPTURES = (
         scenario="flappy",
         example_path="examples/runtime_flappy_bird_v2.psm",
         display_scale=4,
-        duration_ms=10000,
+        duration_ms=14000,
     ),
     CaptureCase(
         name="brick_breaker",
         scenario="brick-breaker",
         example_path="examples/runtime_brick_breaker_v2.psm",
         display_scale=4,
-        duration_ms=10000,
+        duration_ms=5000,
     ),
 )
 
