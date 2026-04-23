@@ -15,7 +15,8 @@ namespace gnine
       None,
       Snake,
       Pong,
-      Flappy
+      Flappy,
+      BrickBreaker
    };
 
    inline bool parsePreviewPlaybackScenario(const std::string &text, PreviewPlaybackScenario *outScenario)
@@ -38,6 +39,12 @@ namespace gnine
          return true;
       }
 
+      if (text == "brick-breaker")
+      {
+         *outScenario = PreviewPlaybackScenario::BrickBreaker;
+         return true;
+      }
+
       return false;
    }
 
@@ -51,6 +58,8 @@ namespace gnine
          return "pong";
       case PreviewPlaybackScenario::Flappy:
          return "flappy";
+      case PreviewPlaybackScenario::BrickBreaker:
+         return "brick-breaker";
       case PreviewPlaybackScenario::None:
       default:
          return "none";
@@ -112,6 +121,12 @@ namespace gnine
       case PreviewPlaybackScenario::Flappy:
          if (frameIndex == 12 || (frameIndex > 12 && ((frameIndex - 12) % 24) == 0))
             input.keySpace = 1.0;
+         break;
+      case PreviewPlaybackScenario::BrickBreaker:
+         if ((frameIndex / 40) % 2 == 0)
+            input.keyRight = input.keyD = 1.0;
+         else
+            input.keyLeft = input.keyA = 1.0;
          break;
       case PreviewPlaybackScenario::None:
       default:
