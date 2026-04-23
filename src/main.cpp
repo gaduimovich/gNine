@@ -122,7 +122,7 @@ namespace
          if (percent > 100)
             percent = 100;
          _lastPercent = percent;
-         std::cerr << "benchmark.progress " << _label << " " << current << "/" << _total << " (" << percent << "%)" << std::endl;
+         std::cout << "benchmark.progress " << _label << " " << current << "/" << _total << " (" << percent << "%)" << std::endl;
       }
 
    private:
