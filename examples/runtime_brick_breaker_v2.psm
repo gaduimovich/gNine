@@ -82,7 +82,7 @@
                  (if (== c 0) 0.95
                    (if (== c 1) 0.95 0.95)))
 
-              (* (draw-circle (/ W 2) (- H 20) ball-half 1.0)
+              (* (draw-rect (/ W 2) (- H 20) ball-half ball-half 1.0)
                  (if (== c 0) 1.00
                    (if (== c 1) 0.90 0.24))))
             0 1))
@@ -406,7 +406,7 @@
               (* (draw-rect final-paddle-x paddle-y paddle-half-w paddle-half-h 1.0)
                  (if (== c 0) 0.95
                    (if (== c 1) 0.95 0.95)))
-              (* (draw-circle final-ball-x final-ball-y ball-half 1.0)
+              (* (draw-rect final-ball-x final-ball-y ball-half ball-half 1.0)
                  (if (== c 0) 1.00
                    (if (== c 1) 0.90 0.24))))
             0 1)))
