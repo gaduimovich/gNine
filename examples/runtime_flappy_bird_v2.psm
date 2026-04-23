@@ -237,13 +237,6 @@
       (define final-flap-held
         (if restart-pressed 0 flap-key))
 
-      (define final-cloud-a
-        (- (+ W 20) (mod (+ 12 (* 0.25 final-tick)) (+ W 40))))
-      (define final-cloud-b
-        (- (+ W 36) (mod (+ 47 (* 0.16 final-tick)) (+ W 60))))
-      (define final-ground-shift
-        (mod (* 0.9 final-tick) 14))
-
       (define next-frame
         (canvas W H 3
           (clamp
@@ -254,57 +247,22 @@
                     (if (== c 0) 0.12
                       (if (== c 1) 0.18 0.10))))
 
-              (* (draw-rect (* 0.78 W) (* 0.24 H) 9 9 1.0)
-                 (if (== c 0) 1.00
-                   (if (== c 1) 0.84 0.24)))
-
-              (* (max
-                   (draw-rect final-cloud-a 20 5 3 1.0)
-                   (draw-rect (+ final-cloud-a 7) 18 6 4 1.0)
-                   (draw-rect (+ final-cloud-a 14) 20 5 3 1.0))
-                 (if (== c 0) 0.93
-                   (if (== c 1) 0.97 1.00)))
-
-              (* (max
-                   (draw-rect final-cloud-b 28 4 2 1.0)
-                   (draw-rect (+ final-cloud-b 6) 26 5 3 1.0)
-                   (draw-rect (+ final-cloud-b 13) 28 4 2 1.0))
-                 (if (== c 0) 0.90
-                   (if (== c 1) 0.95 0.99)))
-
-              (* (max
-                   (if (and (<= (abs (- j final-pipe0-x)) pipe-half-w)
-                            (< i (- final-pipe0-gap pipe-gap-half)))
-                     1 0)
-                   (if (and (<= (abs (- j final-pipe0-x)) pipe-half-w)
-                            (> i (+ final-pipe0-gap pipe-gap-half)))
-                     1 0)
-                   (draw-rect final-pipe0-x (- final-pipe0-gap pipe-gap-half) pipe-cap-half-w 1.5 1.0)
-                   (draw-rect final-pipe0-x (+ final-pipe0-gap pipe-gap-half) pipe-cap-half-w 1.5 1.0))
+              (* (draw-rect final-pipe0-x (- final-pipe0-gap pipe-gap-half) pipe-cap-half-w 1.5 1.0)
                  (if (== c 0) 0.16
                    (if (== c 1) 0.84 0.24)))
-
-              (* (max
-                   (if (and (<= (abs (- j final-pipe1-x)) pipe-half-w)
-                            (< i (- final-pipe1-gap pipe-gap-half)))
-                     1 0)
-                   (if (and (<= (abs (- j final-pipe1-x)) pipe-half-w)
-                            (> i (+ final-pipe1-gap pipe-gap-half)))
-                     1 0)
-                   (draw-rect final-pipe1-x (- final-pipe1-gap pipe-gap-half) pipe-cap-half-w 1.5 1.0)
-                   (draw-rect final-pipe1-x (+ final-pipe1-gap pipe-gap-half) pipe-cap-half-w 1.5 1.0))
+              (* (draw-rect final-pipe0-x (+ final-pipe0-gap pipe-gap-half) pipe-cap-half-w 1.5 1.0)
                  (if (== c 0) 0.16
                    (if (== c 1) 0.84 0.24)))
-
-              (* (max
-                   (if (and (<= (abs (- j final-pipe2-x)) pipe-half-w)
-                            (< i (- final-pipe2-gap pipe-gap-half)))
-                     1 0)
-                   (if (and (<= (abs (- j final-pipe2-x)) pipe-half-w)
-                            (> i (+ final-pipe2-gap pipe-gap-half)))
-                     1 0)
-                   (draw-rect final-pipe2-x (- final-pipe2-gap pipe-gap-half) pipe-cap-half-w 1.5 1.0)
-                   (draw-rect final-pipe2-x (+ final-pipe2-gap pipe-gap-half) pipe-cap-half-w 1.5 1.0))
+              (* (draw-rect final-pipe1-x (- final-pipe1-gap pipe-gap-half) pipe-cap-half-w 1.5 1.0)
+                 (if (== c 0) 0.16
+                   (if (== c 1) 0.84 0.24)))
+              (* (draw-rect final-pipe1-x (+ final-pipe1-gap pipe-gap-half) pipe-cap-half-w 1.5 1.0)
+                 (if (== c 0) 0.16
+                   (if (== c 1) 0.84 0.24)))
+              (* (draw-rect final-pipe2-x (- final-pipe2-gap pipe-gap-half) pipe-cap-half-w 1.5 1.0)
+                 (if (== c 0) 0.16
+                   (if (== c 1) 0.84 0.24)))
+              (* (draw-rect final-pipe2-x (+ final-pipe2-gap pipe-gap-half) pipe-cap-half-w 1.5 1.0)
                  (if (== c 0) 0.16
                    (if (== c 1) 0.84 0.24)))
 
@@ -312,58 +270,12 @@
                  (if (== c 0) 0.74
                    (if (== c 1) 0.58 0.22)))
 
-              (if (and (>= i ground-top)
-                       (< (mod (+ j final-ground-shift) 14) 6))
-                (if (== c 0) 0.82
-                  (if (== c 1) 0.66 0.26))
-                0)
-
               (* (draw-rect bird-x final-bird-y bird-half bird-half 1.0)
                  (if (== final-alive 0)
                    (if (== c 0) 0.96
                      (if (== c 1) 0.20 0.16))
                    (if (== c 0) 0.98
-                     (if (== c 1) 0.90 0.24))))
-
-              (* (draw-line (- bird-x 2) (+ final-bird-y 0.5)
-                            (+ bird-x 2.5) (+ final-bird-y (* 0.6 (clamp final-bird-vy -2.2 2.2)))
-                            1.0 1.0)
-                 (if (== c 0) 0.82
-                   (if (== c 1) 0.62 0.14)))
-
-              (* (draw-rect (+ bird-x 4) final-bird-y 1.2 0.8 1.0)
-                 (if (== c 0) 1.00
-                   (if (== c 1) 0.52 0.12)))
-
-              (* (draw-rect (+ bird-x 1.0) (- final-bird-y 1.0) 0.9 0.9 1.0)
-                 (if (== c 0) 0.98
-                   (if (== c 1) 0.98 0.98)))
-
-              (* (draw-rect (+ bird-x 1.4) (- final-bird-y 1.0) 0.35 0.35 1.0)
-                 (if (== c 0) 0.08
-                   (if (== c 1) 0.08 0.08)))
-
-              (* (draw-rect 18 10 14 2 1.0)
-                 (if (== c 0) 0.12
-                   (if (== c 1) 0.16 0.24)))
-
-              (if (> final-score 0)
-                (* (draw-rect (+ 4 (* (clamp final-score 0 7) 2)) 10 (* (clamp final-score 0 7) 2) 2 1.0)
-                   (if (== c 0) 1.00
-                     (if (== c 1) 0.94 0.30)))
-                0)
-
-              (if (== final-alive 0)
-                (* (draw-rect (/ W 2) (/ H 2) 24 8 1.0)
-                   (if (== c 0) 0.84
-                     (if (== c 1) 0.18 0.18)))
-                0)
-
-              (if (== final-alive 0)
-                (* (draw-rect (/ W 2) (/ H 2) 18 3 1.0)
-                   (if (== c 0) 0.16
-                     (if (== c 1) 0.10 0.12)))
-                0))
+                     (if (== c 1) 0.90 0.24)))))
             0 1)))
 
       (tuple next-frame final-tick final-bird-y final-bird-vy
