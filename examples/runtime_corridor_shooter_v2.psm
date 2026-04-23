@@ -267,11 +267,11 @@
       (define o1-y-screen (+ o1-base-y (* o1-final-y o1-half lane-scale)))
       (define o2-y-screen (+ o2-base-y (* o2-final-y o2-half lane-scale)))
       (define o3-y-screen (+ o3-base-y (* o3-final-y o3-half lane-scale)))
-      (define face-blink (if (== (mod tick 24) 0) 1 0))
-      (define eye-open (+ 0.14 (* (- 1 face-blink) 0.16)))
-      (define eye-gap 0.40)
-      (define eye-y -0.12)
-      (define mouth-y 0.34)
+      (define face-blink (if (== (mod tick 20) 0) 1 0))
+      (define eye-open (+ 0.16 (* (- 1 face-blink) 0.12)))
+      (define eye-gap 0.36)
+      (define eye-y -0.10)
+      (define mouth-y 0.30)
 
       (define bullet-t (clamp (/ (- z-max final-bullet-z) z-max) 0 1))
       (define bullet-half (+ corridor-half-min (* (- corridor-half-max corridor-half-min) bullet-t)))
@@ -329,33 +329,13 @@
                     (* (draw-rect o3-x-screen o3-y-screen o3-hw o3-hh 1.0)
                        (if (== c 0) enemy-r (if (== c 1) enemy-g enemy-b))))))
               (max
-                (* (draw-rect (+ o0-x-screen (* o0-hw (- eye-gap))) (+ o0-y-screen (* o0-hh eye-y)) (* o0-hw 0.15) (* o0-hh eye-open) 1.0)
+                (* (draw-rect (+ o0-x-screen (* o0-hw (- eye-gap))) (+ o0-y-screen (* o0-hh eye-y)) (* o0-hw 0.16) (* o0-hh eye-open) 1.0)
                    (if (== c 0) 0.95 (if (== c 1) 0.95 0.95)))
                 (max
-                  (* (draw-rect (+ o0-x-screen (* o0-hw eye-gap)) (+ o0-y-screen (* o0-hh eye-y)) (* o0-hw 0.15) (* o0-hh eye-open) 1.0)
+                  (* (draw-rect (+ o0-x-screen (* o0-hw eye-gap)) (+ o0-y-screen (* o0-hh eye-y)) (* o0-hw 0.16) (* o0-hh eye-open) 1.0)
                      (if (== c 0) 0.95 (if (== c 1) 0.95 0.95)))
-                  (max
-                    (* (draw-rect o0-x-screen (+ o0-y-screen (* o0-hh mouth-y)) (* o0-hw 0.35) (* o0-hh 0.08) 1.0)
-                       (if (== c 0) 0.90 (if (== c 1) 0.08 0.08)))
-                    (max
-                      (* (draw-rect (+ o1-x-screen (* o1-hw (- eye-gap))) (+ o1-y-screen (* o1-hh eye-y)) (* o1-hw 0.15) (* o1-hh eye-open) 1.0)
-                         (if (== c 0) 0.95 (if (== c 1) 0.95 0.95)))
-                      (max
-                        (* (draw-rect (+ o1-x-screen (* o1-hw eye-gap)) (+ o1-y-screen (* o1-hh eye-y)) (* o1-hw 0.15) (* o1-hh eye-open) 1.0)
-                           (if (== c 0) 0.95 (if (== c 1) 0.95 0.95)))
-                        (max
-                          (* (draw-rect o1-x-screen (+ o1-y-screen (* o1-hh mouth-y)) (* o1-hw 0.35) (* o1-hh 0.08) 1.0)
-                             (if (== c 0) 0.90 (if (== c 1) 0.08 0.08)))
-                          (max
-                            (* (draw-rect (+ o2-x-screen (* o2-hw (- eye-gap))) (+ o2-y-screen (* o2-hh eye-y)) (* o2-hw 0.15) (* o2-hh eye-open) 1.0)
-                               (if (== c 0) 0.95 (if (== c 1) 0.95 0.95)))
-                            (max
-                              (* (draw-rect (+ o2-x-screen (* o2-hw eye-gap)) (+ o2-y-screen (* o2-hh eye-y)) (* o2-hw 0.15) (* o2-hh eye-open) 1.0)
-                                 (if (== c 0) 0.95 (if (== c 1) 0.95 0.95)))
-                              (max
-                                (* (draw-rect o2-x-screen (+ o2-y-screen (* o2-hh mouth-y)) (* o2-hw 0.35) (* o2-hh 0.08) 1.0)
-                                   (if (== c 0) 0.90 (if (== c 1) 0.08 0.08)))
-                                0)))))))))
+                  (* (draw-rect o0-x-screen (+ o0-y-screen (* o0-hh mouth-y)) (* o0-hw 0.34) (* o0-hh 0.08) 1.0)
+                     (if (== c 0) 0.90 (if (== c 1) 0.08 0.08)))))
 
               (if (> final-bullet-active 0)
                 (* (draw-rect bullet-x-screen bullet-y-screen bullet-hw bullet-hh 1.0)
@@ -377,7 +357,7 @@
                 0)
               (* (draw-rect (/ W 2) 3.0 26.0 2.0 1.0)
                  (if (== c 0) 0.10 (if (== c 1) 0.22 0.14)))
-              (* (draw-rect (+ 7.0 (* (mod tick 4) 3.0)) 3.0 1.0 1.0 1.0)
+              (* (draw-rect (+ 7.0 (* (mod tick 3) 3.0)) 3.0 1.0 1.0 1.0)
                  (if (== c 0) 0.95 (if (== c 1) 0.35 0.10)))
 
               (* (draw-rect 19.5 8.0 15.0 3.0 1.0)
@@ -401,9 +381,7 @@
                   (* (draw-rect (/ W 2) (/ H 2) 18.0 2.5 1.0)
                      (if (== c 0) 0.90 (if (== c 1) 0.95 0.20))))
                 0)
-              (if (== (mod i 3) 0)
-                (* (draw-line 0 i W i 0.22 1.0) atari-scan)
-                0))
+              0)
             0 1)))
 
       (if can-restart
