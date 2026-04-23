@@ -6,6 +6,7 @@
 #include "Parser.h"
 
 #include <list>
+#include <sstream>
 
 namespace gnine
 {
@@ -83,6 +84,36 @@ namespace gnine
       }
    }
 
+   namespace
+   {
+      uint64_t hashCombine(uint64_t seed, uint64_t value)
+      {
+         return seed ^ (value + 0x9e3779b97f4a7c15ULL + (seed << 6) + (seed >> 2));
+      }
+
+      uint64_t hashString(const std::string &text)
+      {
+         uint64_t hash = 1469598103934665603ULL;
+         for (size_t idx = 0; idx < text.size(); ++idx)
+         {
+            hash ^= static_cast<unsigned char>(text[idx]);
+            hash *= 1099511628211ULL;
+         }
+         return hash;
+      }
+
+      uint64_t hashCell(const Cell &exp)
+      {
+         uint64_t hash = 1469598103934665603ULL;
+         hash = hashCombine(hash, static_cast<uint64_t>(exp.type));
+         hash = hashCombine(hash, hashString(exp.val));
+         hash = hashCombine(hash, exp.list.size());
+         for (Cell::iter it = exp.list.begin(); it != exp.list.end(); ++it)
+            hash = hashCombine(hash, hashCell(*it));
+         return hash;
+      }
+   }
+
    // originally from:
    // http://howtowriteaprogram.blogspot.co.uk/2010/11/lisp-interpreter-in-90-lines-of-c.html
    Cell cellFromString(const std::string &s)
@@ -105,6 +136,24 @@ namespace gnine
          return s + ')';
       }
       return exp.val;
+   }
+
+   std::string cellCacheKey(const Cell &exp)
+   {
+      if (exp.cacheKeyValid)
+      {
+         std::ostringstream out;
+         out << std::hex << exp.cacheKeyValue;
+         return out.str();
+      }
+
+      uint64_t hash = hashCell(exp);
+      exp.cacheKeyValue = hash;
+      exp.cacheKeyValid = true;
+
+      std::ostringstream out;
+      out << std::hex << hash;
+      return out.str();
    }
 
 }

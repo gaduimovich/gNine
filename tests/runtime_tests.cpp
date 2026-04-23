@@ -141,6 +141,41 @@ int main()
               20.0,
           },
           {
+              "array_length",
+              "(() (array-length (array 10 20 30)))",
+              3.0,
+          },
+          {
+              "array_get",
+              "(() (array-get (array 10 20 30) 1))",
+              20.0,
+          },
+          {
+              "array_set",
+              "(() (array-get (array-set (array 1 2 3) 1 99) 1))",
+              99.0,
+          },
+          {
+              "array_push",
+              "(() (array-get (array-push (array 1 2) 9) 2))",
+              9.0,
+          },
+          {
+              "array_pop",
+              "(() (array-get (array-pop (array 10 20 30)) 1))",
+              20.0,
+          },
+          {
+              "array_slice",
+              "(() (array-get (array-slice (array 10 20 30 40) 1 3) 0))",
+              20.0,
+          },
+          {
+              "array_fold",
+              "(() (array-fold (lambda (acc x) (+ acc (* x 2))) 0 (array 1 2 3)))",
+              12.0,
+          },
+          {
               "rand_of_deterministic",
               "(() (== (rand-of 42) (rand-of 42)))",
               1.0,
@@ -706,6 +741,20 @@ int main()
              gnine::cellFromString("(() (define state (tuple 7 9)) (+ (get state 0) (get state 1)))"));
          require(result.isNumber() && almostEqual(result.number, 16.0),
                  "tuple/get builtins should support non-image runtime state");
+      }
+
+      {
+         gnine::runtime::Evaluator evaluator;
+         gnine::runtime::Value result = evaluator.evaluateProgram(
+             gnine::cellFromString("(() (array 7 9 11))"));
+         require(result.isObject() && result.object->type == gnine::runtime::Object::Array,
+                 "array builtin should produce a dedicated runtime array object");
+         gnine::runtime::ArrayObject *arrayObj =
+             static_cast<gnine::runtime::ArrayObject *>(result.object);
+         require(arrayObj->values.size() == 3,
+                 "runtime array object should retain all elements");
+         require(arrayObj->values[2].isNumber() && almostEqual(arrayObj->values[2].number, 11.0),
+                 "runtime array object should preserve appended scalar values");
       }
 
       {

@@ -82,7 +82,7 @@ See [docs/language-guide.md](docs/language-guide.md) for the actual language ref
 
 * syntax and execution model
 * scalar sampling, vector/color forms, and runtime forms
-* tuples, lambdas, and chained state
+* tuples, arrays, lambdas, and chained state
 * game-oriented patterns and performance tricks
 
 ## New Features
@@ -93,6 +93,7 @@ See [docs/language-guide.md](docs/language-guide.md) for the actual language ref
 * Scalar comparison and boolean forms include `<`, `<=`, `>`, `>=`, `==`, `!=`, `and`, `or`, `not`, and `if`.
 * Compiled scalar code exposes `width` and `height` as symbols; runtime code exposes `(width A)`, `(height A)`, and `(channels A)`.
 * Tuple forms include `tuple`, `get`, and tuple destructuring in arguments and lambda parameters.
+* Array forms include `array`, `array-length`, `array-get`, `array-set`, `array-push`, `array-pop`, `array-slice`, and `array-fold`.
 * Top-level chained execution forms include `iterate`, `iterate-state`, and `iterate-until`.
 * The chained runtime iterator variable `iter` exposes the current 1-based step count.
 * RGB and vector forms include `vec`, `rgb`, `color`, `r`, `g`, `b`, and `dot`.

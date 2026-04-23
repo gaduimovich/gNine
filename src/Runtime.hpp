@@ -23,6 +23,7 @@ namespace gnine
       struct ClosureObject;
       struct ImageObject;
       struct TupleObject;
+      struct ArrayObject;
 
       struct Value
       {
@@ -67,7 +68,8 @@ namespace gnine
                Environment,
                Closure,
                Image,
-               Tuple
+               Tuple,
+               Array
             };
 
          Type type;
@@ -121,6 +123,14 @@ namespace gnine
          void trace(class Heap &heap) override;
       };
 
+      struct ArrayObject : public Object
+      {
+         std::vector<Value> values;
+
+         explicit ArrayObject(const std::vector<Value> &elements);
+         void trace(class Heap &heap) override;
+      };
+
       class Heap
       {
       public:
@@ -149,6 +159,7 @@ namespace gnine
          ImageObject *allocateImage(const gnine::Image &image);
          ImageObject *allocateImage(gnine::Image &&image);
          TupleObject *allocateTuple(const std::vector<Value> &values);
+         ArrayObject *allocateArray(const std::vector<Value> &values);
 
          void addRoot(Value *slot);
          void removeRoot(Value *slot);
@@ -252,6 +263,8 @@ namespace gnine
          ImageObject *requireImageObject(const Value &value,
                                          const std::string &context) const;
          TupleObject *requireTupleObject(const Value &value,
+                                         const std::string &context) const;
+         ArrayObject *requireArrayObject(const Value &value,
                                          const std::string &context) const;
          bool tryCompiledMapImage(ClosureObject *closure,
                                   const gnine::Image &source,

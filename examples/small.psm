@@ -1,0 +1,14 @@
+(())
+  (iterate-until 100
+    (()
+      (tuple
+        (canvas 32 24 3
+          (if (== c 0) 0.1
+            (if (== c 1) 0.2 0.3)))
+        0))
+
+    (((frame x))
+      (tuple frame x))
+
+    (((frame x))
+      0)))

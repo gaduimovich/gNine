@@ -87,15 +87,21 @@ namespace
       if (SDL_InitSubSystem(SDL_INIT_VIDEO) != 0)
          return 1;
 
+      int scale = 1;
       SDL_Rect bounds;
       if (SDL_GetDisplayUsableBounds(0, &bounds) != 0)
+      {
+         SDL_QuitSubSystem(SDL_INIT_VIDEO);
          return 1;
+      }
 
       const int maxWidth = std::max(1, static_cast<int>(bounds.w * 0.85));
       const int maxHeight = std::max(1, static_cast<int>(bounds.h * 0.85));
       const int scaleX = std::max(1, maxWidth / imageWidth);
       const int scaleY = std::max(1, maxHeight / imageHeight);
-      return std::max(1, std::min(scaleX, scaleY));
+      scale = std::max(1, std::min(scaleX, scaleY));
+      SDL_QuitSubSystem(SDL_INIT_VIDEO);
+      return scale;
 #else
       return 1;
 #endif
@@ -154,7 +160,10 @@ namespace
                throw std::runtime_error(std::string("SDL window creation failed: ") + SDL_GetError());
             _windowId = SDL_GetWindowID(_window);
 
-            _renderer = SDL_CreateRenderer(_window, -1, SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC);
+            // Avoid blocking the preview loop on compositor vsync; the runtime already
+            // controls frame pacing, and preview should stay responsive even when the
+            // game takes longer to evaluate.
+            _renderer = SDL_CreateRenderer(_window, -1, SDL_RENDERER_ACCELERATED);
             if (_renderer == NULL)
                _renderer = SDL_CreateRenderer(_window, -1, SDL_RENDERER_SOFTWARE);
             else

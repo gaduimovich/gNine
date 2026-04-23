@@ -178,6 +178,24 @@ Both top-level runtime arguments and lambda parameters may destructure tuples:
 
 This matters for games, because state is usually passed around as one tuple.
 
+Runtime arrays are useful when the state is sparse or variable-sized. They are
+built with `array` and updated immutably with helpers like `array-set`,
+`array-push`, `array-pop`, and `array-slice`:
+
+```lisp
+(() 
+  (define xs (array 10 20 30))
+  (define ys (array-push xs 40))
+  (array-get ys 3))
+```
+
+For reductions, use `array-fold`:
+
+```lisp
+(() 
+  (array-fold (lambda (acc x) (+ acc x)) 0 (array 1 2 3 4)))
+```
+
 ## Color and Vector Programs
 
 If you write only scalar expressions, gNine runs the program channel-wise on RGB inputs. In that mode:

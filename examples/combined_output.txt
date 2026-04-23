@@ -1,0 +1,1347 @@
+copy_files("copy_examples" ${CMAKE_CURRENT_SOURCE_DIR}/*.psm ${CMAKE_CURRENT_BINARY_DIR})
+
+add_custom_command(
+   OUTPUT compose_out.png
+   COMMAND gnine --logCommand compose.psm ../example_data/lena.png ../example_data/duck.png compose_out.png
+   DEPENDS gnine compose.psm
+)
+
+add_custom_command(
+   OUTPUT erode_3x3_out.png
+   COMMAND gnine --logCommand erode_3x3.psm ../example_data/lena.png erode_3x3_out.png
+   DEPENDS gnine erode_3x3.psm
+)
+
+add_custom_command(
+   OUTPUT dilate_3x3_out.png
+   COMMAND gnine --logCommand dilate_3x3.psm ../example_data/lena.png dilate_3x3_out.png
+   DEPENDS gnine dilate_3x3.psm
+)
+
+add_custom_command(
+   OUTPUT erode_5x5_out.png
+   COMMAND gnine --logCommand erode_5x5.psm ../example_data/lena.png erode_5x5_out.png
+   DEPENDS gnine erode_5x5.psm
+)
+
+add_custom_command(
+   OUTPUT dilate_5x5_out.png
+   COMMAND gnine --logCommand dilate_5x5.psm ../example_data/lena.png dilate_5x5_out.png
+   DEPENDS gnine dilate_5x5.psm
+)
+
+add_custom_command(
+   OUTPUT min_out.png
+   COMMAND gnine --logCommand min.psm ../example_data/lena.png ../example_data/duck.png min_out.png
+   DEPENDS gnine min.psm
+)
+
+add_custom_command(
+   OUTPUT metaballs_out.png
+   COMMAND gnine --logCommand metaballs.psm ../example_data/lena.png metaballs_out.png
+   DEPENDS gnine metaballs.psm
+)
+
+add_custom_command(
+   OUTPUT metaballs_binary_out.png
+   COMMAND gnine --logCommand metaballs_binary.psm ../example_data/lena.png metaballs_binary_out.png
+   DEPENDS gnine metaballs_binary.psm
+)
+
+add_custom_command(
+   OUTPUT metaballs_fancy_out.png
+   COMMAND gnine --logCommand metaballs_fancy.psm ../example_data/lena.png metaballs_fancy_out.png
+   DEPENDS gnine metaballs_fancy.psm
+)
+
+add_custom_command(
+   OUTPUT box_3x3_out_1.png
+   COMMAND gnine --logCommand box_3x3.psm ../example_data/lena.png box_3x3_out_1.png
+   DEPENDS gnine box_3x3.psm
+)
+
+add_custom_command(
+   OUTPUT box_3x3_out_2.png
+   COMMAND gnine --logCommand box_3x3.psm metaballs_fancy_out.png box_3x3_out_2.png
+   DEPENDS gnine box_3x3.psm metaballs_fancy_out.png
+)
+
+add_custom_command(
+   OUTPUT box_5x5_out_1.png
+   COMMAND gnine --logCommand box_5x5.psm ../example_data/lena.png box_5x5_out_1.png
+   DEPENDS gnine box_5x5.psm
+)
+
+add_custom_command(
+   OUTPUT box_5x5_out_2.png
+   COMMAND gnine --logCommand box_5x5.psm metaballs_fancy_out.png box_5x5_out_2.png
+   DEPENDS gnine box_5x5.psm metaballs_fancy_out.png
+)
+
+add_custom_command(
+   OUTPUT lena_edge.png
+   COMMAND gnine --logCommand double_absdiff.psm ../example_data/lena.png box_5x5_out_1.png lena_edge.png
+   DEPENDS gnine absdiff.psm box_5x5_out_2.png 
+)
+
+add_custom_command(
+   OUTPUT metaball_edges.png
+   COMMAND gnine --logCommand double_absdiff.psm metaballs_fancy_out.png box_5x5_out_2.png metaball_edges.png
+   DEPENDS gnine absdiff.psm metaballs_fancy_out.png box_5x5_out_2.png 
+)
+
+add_custom_command(
+   OUTPUT threshold.png
+   COMMAND gnine --logCommand threshold.psm ../example_data/lena.png threshold.png
+   DEPENDS gnine threshold.psm 
+)
+
+add_custom_command(
+   OUTPUT abs_edges.png
+   COMMAND gnine --logCommand abs_edges.psm ../example_data/lena.png box_5x5_out_1.png abs_edges.png
+   DEPENDS gnine abs_edges.psm box_5x5_out_1.png
+)
+
+add_custom_command(
+   OUTPUT midtones_notch.png
+   COMMAND gnine --logCommand midtones_notch.psm ../example_data/lena.png midtones_notch.png
+   DEPENDS gnine midtones_notch.psm
+)
+
+add_custom_command(
+   OUTPUT detail_boost.png
+   COMMAND gnine --logCommand detail_boost.psm ../example_data/lena.png box_5x5_out_1.png detail_boost.png
+   DEPENDS gnine detail_boost.psm box_5x5_out_1.png
+)
+
+add_custom_command(
+   OUTPUT halo_edges.png
+   COMMAND gnine --logCommand halo_edges.psm ../example_data/lena.png box_5x5_out_1.png halo_edges.png
+   DEPENDS gnine halo_edges.psm box_5x5_out_1.png
+)
+
+add_custom_command(
+   OUTPUT posterize_4.png
+   COMMAND gnine --logCommand posterize_4.psm ../example_data/lena.png posterize_4.png
+   DEPENDS gnine posterize_4.psm
+)
+
+add_custom_command(
+   OUTPUT sepia_vector.png
+   COMMAND gnine --logCommand sepia_vector.psm ../example_data/lena.png sepia_vector.png
+   DEPENDS gnine sepia_vector.psm
+)
+
+add_custom_command(
+   OUTPUT rgb_triptych.png
+   COMMAND gnine --logCommand --runtime rgb_triptych.psm ../example_data/lena.png rgb_triptych.png
+   DEPENDS gnine rgb_triptych.psm
+)
+
+add_custom_target(examples ALL DEPENDS copy_examples copy_example_data compose_out.png erode_3x3_out.png dilate_3x3_out.png erode_5x5_out.png dilate_5x5_out.png min_out.png metaballs_out.png metaballs_binary_out.png metaballs_fancy_out.png box_3x3_out_1.png box_3x3_out_2.png box_5x5_out_1.png box_5x5_out_2.png metaball_edges.png lena_edge.png threshold.png abs_edges.png midtones_notch.png detail_boost.png halo_edges.png posterize_4.png sepia_vector.png rgb_triptych.png)
+
+add_subdirectory(game_of_life)
+; Runtime canvas demo that lays out the red, green, and blue channels side by side.
+; Render with:
+;   ./gnine --runtime rgb_triptych.psm ../example_data/lena.png rgb_triptych.png
+
+((A)
+  (define W (width A))
+  (define H (height A))
+  (define gutter 16)
+  (define split-1 (+ W gutter))
+  (define split-2 (+ split-1 W gutter))
+  (canvas (+ (* 3 W) (* 2 gutter)) H 3
+    (if (< j W)
+      (if (== c 0) (A 0 0) 0)
+      (if (< j split-1)
+        1
+        (if (< j (+ split-1 W))
+          (if (== c 1) (A 0 (- split-1)) 0)
+          (if (< j split-2)
+            1
+            (if (== c 2) (A 0 (- split-2)) 0)))))))
+; Runtime Flappy Bird demo, low-resolution render variant.
+; Use preview/display scaling to enlarge it cheaply.
+;
+; Preview controls:
+;   flap: Space / Up / W
+;   restart after crash: Return
+;
+; Suggested preview command:
+;   ./build-arm64/gnine --runtime --preview --display-scale=auto \
+;     ./examples/runtime_flappy_bird_v2.psm /tmp/runtime_flappy_bird_v2.png
+
+(()
+  (define W 128)
+  (define H 96)
+  (define ground-h 12)
+  (define ground-top (- H ground-h))
+  (define ground-center (+ ground-top (/ ground-h 2)))
+  (define bird-x 34)
+  (define bird-half 3)
+  (define pipe-half-w 5)
+  (define pipe-cap-half-w 7)
+  (define pipe-gap-half 11)
+  (define safe-gap-half (- pipe-gap-half bird-half 0.5))
+  (define pipe-spacing 40)
+  (define pipe-speed 1.15)
+  (define gravity 0.16)
+  (define flap-impulse -1.85)
+  (define min-vy flap-impulse)
+  (define max-vy 2.70)
+  (define bird-min-y (+ bird-half 4))
+  (define bird-max-y (- ground-top bird-half 1))
+  (define start-bird-y 44)
+  (define start-pipe0-x (+ W 12))
+  (define start-pipe1-x (+ start-pipe0-x pipe-spacing))
+  (define start-pipe2-x (+ start-pipe1-x pipe-spacing))
+
+  (define gap-center-of
+    (lambda (idx)
+      ((lambda (phase)
+         (if (== phase 0) 42
+           (if (== phase 1) 34
+             (if (== phase 2) 48
+               (if (== phase 3) 30
+                 (if (== phase 4) 52
+                   (if (== phase 5) 38
+                     (if (== phase 6) 56
+                       (if (== phase 7) 32
+                         (if (== phase 8) 46
+                           (if (== phase 9) 40
+                             (if (== phase 10) 50 36))))))))))))
+        (mod idx 12))))
+
+  (iterate-until 100
+    (()
+      (define start-gap0 (gap-center-of 0))
+      (define start-gap1 (gap-center-of 1))
+      (define start-gap2 (gap-center-of 2))
+      (define start-flap-held (or key-space key-up key-w))
+      (define start-frame
+        (canvas W H 3
+          (clamp
+            (max
+              (+ (if (== c 0) 0.18
+                   (if (== c 1) 0.38 0.62))
+                 (* (/ (- H i) H)
+                    (if (== c 0) 0.12
+                      (if (== c 1) 0.18 0.10))))
+              (* (draw-rect (/ W 2) ground-center W (/ ground-h 2) 1.0)
+                 (if (== c 0) 0.74
+                   (if (== c 1) 0.58 0.22)))
+              (* (draw-circle bird-x start-bird-y bird-half 1.0)
+                 (if (== c 0) 0.98
+                   (if (== c 1) 0.90 0.24))))
+            0 1)))
+      (tuple start-frame 0 start-bird-y 0
+             start-pipe0-x start-pipe1-x start-pipe2-x
+             start-gap0 start-gap1 start-gap2
+             3 0 1 start-flap-held))
+
+    (((frame tick bird-y bird-vy
+             pipe0-x pipe1-x pipe2-x
+             pipe0-gap pipe1-gap pipe2-gap
+             next-gap-index score alive flap-held))
+
+      (define flap-key (or key-space key-up key-w))
+      (define flap-pressed
+        (and (> alive 0)
+             (> flap-key 0)
+             (== flap-held 0)))
+      (define restart-pressed
+        (and (== alive 0)
+             (> key-return 0)))
+
+      (define next-tick-base (+ tick 1))
+
+      (define accelerated-vy
+        (if (> alive 0)
+          (clamp (+ bird-vy gravity) min-vy max-vy)
+          bird-vy))
+
+      (define next-bird-vy-base
+        (if flap-pressed
+          flap-impulse
+          accelerated-vy))
+
+      (define trial-bird-y
+        (if (> alive 0)
+          (+ bird-y next-bird-vy-base)
+          bird-y))
+
+      (define pipe0-trial-x
+        (if (> alive 0)
+          (- pipe0-x pipe-speed)
+          pipe0-x))
+      (define pipe1-trial-x
+        (if (> alive 0)
+          (- pipe1-x pipe-speed)
+          pipe1-x))
+      (define pipe2-trial-x
+        (if (> alive 0)
+          (- pipe2-x pipe-speed)
+          pipe2-x))
+
+      (define pipe0-wrap
+        (and (> alive 0)
+             (< (+ pipe0-trial-x pipe-cap-half-w) 0)))
+      (define pipe0-next-gap
+        (if pipe0-wrap
+          (gap-center-of next-gap-index)
+          pipe0-gap))
+      (define pipe0-next-x
+        (if pipe0-wrap
+          (+ (max pipe1-trial-x pipe2-trial-x) pipe-spacing)
+          pipe0-trial-x))
+      (define gap-index-1
+        (+ next-gap-index (if pipe0-wrap 1 0)))
+
+      (define pipe1-wrap
+        (and (> alive 0)
+             (< (+ pipe1-trial-x pipe-cap-half-w) 0)))
+      (define pipe1-next-gap
+        (if pipe1-wrap
+          (gap-center-of gap-index-1)
+          pipe1-gap))
+      (define pipe1-next-x
+        (if pipe1-wrap
+          (+ (max pipe0-next-x pipe2-trial-x) pipe-spacing)
+          pipe1-trial-x))
+      (define gap-index-2
+        (+ gap-index-1 (if pipe1-wrap 1 0)))
+
+      (define pipe2-wrap
+        (and (> alive 0)
+             (< (+ pipe2-trial-x pipe-cap-half-w) 0)))
+      (define pipe2-next-gap
+        (if pipe2-wrap
+          (gap-center-of gap-index-2)
+          pipe2-gap))
+      (define pipe2-next-x
+        (if pipe2-wrap
+          (+ (max pipe0-next-x pipe1-next-x) pipe-spacing)
+          pipe2-trial-x))
+      (define gap-index-3
+        (+ gap-index-2 (if pipe2-wrap 1 0)))
+
+      (define passed0
+        (and (> alive 0)
+             (> pipe0-x bird-x)
+             (<= pipe0-next-x bird-x)))
+      (define passed1
+        (and (> alive 0)
+             (> pipe1-x bird-x)
+             (<= pipe1-next-x bird-x)))
+      (define passed2
+        (and (> alive 0)
+             (> pipe2-x bird-x)
+             (<= pipe2-next-x bird-x)))
+
+      (define next-score-base
+        (+ score
+           (if passed0 1 0)
+           (if passed1 1 0)
+           (if passed2 1 0)))
+
+      (define hit-bounds
+        (or (< trial-bird-y bird-min-y)
+            (> trial-bird-y bird-max-y)))
+
+      (define hit-pipe0
+        (and (> alive 0)
+             (<= (abs (- pipe0-next-x bird-x)) (+ pipe-half-w bird-half))
+             (or (< trial-bird-y (- pipe0-next-gap safe-gap-half))
+                 (> trial-bird-y (+ pipe0-next-gap safe-gap-half)))))
+      (define hit-pipe1
+        (and (> alive 0)
+             (<= (abs (- pipe1-next-x bird-x)) (+ pipe-half-w bird-half))
+             (or (< trial-bird-y (- pipe1-next-gap safe-gap-half))
+                 (> trial-bird-y (+ pipe1-next-gap safe-gap-half)))))
+      (define hit-pipe2
+        (and (> alive 0)
+             (<= (abs (- pipe2-next-x bird-x)) (+ pipe-half-w bird-half))
+             (or (< trial-bird-y (- pipe2-next-gap safe-gap-half))
+                 (> trial-bird-y (+ pipe2-next-gap safe-gap-half)))))
+
+      (define next-alive-base
+        (if (or hit-bounds hit-pipe0 hit-pipe1 hit-pipe2)
+          0
+          alive))
+
+      (define shown-bird-y-base
+        (clamp trial-bird-y bird-min-y bird-max-y))
+
+      (define final-tick
+        (if restart-pressed 0 next-tick-base))
+      (define final-bird-y
+        (if restart-pressed start-bird-y shown-bird-y-base))
+      (define final-bird-vy
+        (if restart-pressed 0 next-bird-vy-base))
+      (define final-pipe0-x
+        (if restart-pressed start-pipe0-x pipe0-next-x))
+      (define final-pipe1-x
+        (if restart-pressed start-pipe1-x pipe1-next-x))
+      (define final-pipe2-x
+        (if restart-pressed start-pipe2-x pipe2-next-x))
+      (define final-pipe0-gap
+        (if restart-pressed (gap-center-of 0) pipe0-next-gap))
+      (define final-pipe1-gap
+        (if restart-pressed (gap-center-of 1) pipe1-next-gap))
+      (define final-pipe2-gap
+        (if restart-pressed (gap-center-of 2) pipe2-next-gap))
+      (define final-next-gap-index
+        (if restart-pressed 3 gap-index-3))
+      (define final-score
+        (if restart-pressed 0 next-score-base))
+      (define final-alive
+        (if restart-pressed 1 next-alive-base))
+      (define final-flap-held
+        (if restart-pressed 0 flap-key))
+
+      (define final-cloud-a
+        (- (+ W 20) (mod (+ 12 (* 0.25 final-tick)) (+ W 40))))
+      (define final-cloud-b
+        (- (+ W 36) (mod (+ 47 (* 0.16 final-tick)) (+ W 60))))
+      (define final-ground-shift
+        (mod (* 0.9 final-tick) 14))
+
+      (define next-frame
+        (canvas W H 3
+          (clamp
+            (max
+              (+ (if (== c 0) 0.18
+                   (if (== c 1) 0.38 0.62))
+                 (* (/ (- H i) H)
+                    (if (== c 0) 0.12
+                      (if (== c 1) 0.18 0.10))))
+
+              (* (draw-circle (* 0.78 W) (* 0.24 H) 9 1.0)
+                 (if (== c 0) 1.00
+                   (if (== c 1) 0.84 0.24)))
+
+              (* (max
+                   (draw-circle final-cloud-a 20 5 1.0)
+                   (draw-circle (+ final-cloud-a 7) 18 6 1.0)
+                   (draw-circle (+ final-cloud-a 14) 20 5 1.0))
+                 (if (== c 0) 0.93
+                   (if (== c 1) 0.97 1.00)))
+
+              (* (max
+                   (draw-circle final-cloud-b 28 4 1.0)
+                   (draw-circle (+ final-cloud-b 6) 26 5 1.0)
+                   (draw-circle (+ final-cloud-b 13) 28 4 1.0))
+                 (if (== c 0) 0.90
+                   (if (== c 1) 0.95 0.99)))
+
+              (* (max
+                   (if (and (<= (abs (- j final-pipe0-x)) pipe-half-w)
+                            (< i (- final-pipe0-gap pipe-gap-half)))
+                     1 0)
+                   (if (and (<= (abs (- j final-pipe0-x)) pipe-half-w)
+                            (> i (+ final-pipe0-gap pipe-gap-half)))
+                     1 0)
+                   (draw-rect final-pipe0-x (- final-pipe0-gap pipe-gap-half) pipe-cap-half-w 1.5 1.0)
+                   (draw-rect final-pipe0-x (+ final-pipe0-gap pipe-gap-half) pipe-cap-half-w 1.5 1.0))
+                 (if (== c 0) 0.16
+                   (if (== c 1) 0.84 0.24)))
+
+              (* (max
+                   (if (and (<= (abs (- j final-pipe1-x)) pipe-half-w)
+                            (< i (- final-pipe1-gap pipe-gap-half)))
+                     1 0)
+                   (if (and (<= (abs (- j final-pipe1-x)) pipe-half-w)
+                            (> i (+ final-pipe1-gap pipe-gap-half)))
+                     1 0)
+                   (draw-rect final-pipe1-x (- final-pipe1-gap pipe-gap-half) pipe-cap-half-w 1.5 1.0)
+                   (draw-rect final-pipe1-x (+ final-pipe1-gap pipe-gap-half) pipe-cap-half-w 1.5 1.0))
+                 (if (== c 0) 0.16
+                   (if (== c 1) 0.84 0.24)))
+
+              (* (max
+                   (if (and (<= (abs (- j final-pipe2-x)) pipe-half-w)
+                            (< i (- final-pipe2-gap pipe-gap-half)))
+                     1 0)
+                   (if (and (<= (abs (- j final-pipe2-x)) pipe-half-w)
+                            (> i (+ final-pipe2-gap pipe-gap-half)))
+                     1 0)
+                   (draw-rect final-pipe2-x (- final-pipe2-gap pipe-gap-half) pipe-cap-half-w 1.5 1.0)
+                   (draw-rect final-pipe2-x (+ final-pipe2-gap pipe-gap-half) pipe-cap-half-w 1.5 1.0))
+                 (if (== c 0) 0.16
+                   (if (== c 1) 0.84 0.24)))
+
+              (* (draw-rect (/ W 2) ground-center W (/ ground-h 2) 1.0)
+                 (if (== c 0) 0.74
+                   (if (== c 1) 0.58 0.22)))
+
+              (if (and (>= i ground-top)
+                       (< (mod (+ j final-ground-shift) 14) 6))
+                (if (== c 0) 0.82
+                  (if (== c 1) 0.66 0.26))
+                0)
+
+              (* (draw-circle bird-x final-bird-y bird-half 1.0)
+                 (if (== final-alive 0)
+                   (if (== c 0) 0.96
+                     (if (== c 1) 0.20 0.16))
+                   (if (== c 0) 0.98
+                     (if (== c 1) 0.90 0.24))))
+
+              (* (draw-line (- bird-x 2) (+ final-bird-y 0.5)
+                            (+ bird-x 2.5) (+ final-bird-y (* 0.6 (clamp final-bird-vy -2.2 2.2)))
+                            1.0 1.0)
+                 (if (== c 0) 0.82
+                   (if (== c 1) 0.62 0.14)))
+
+              (* (draw-rect (+ bird-x 4) final-bird-y 1.2 0.8 1.0)
+                 (if (== c 0) 1.00
+                   (if (== c 1) 0.52 0.12)))
+
+              (* (draw-circle (+ bird-x 1.0) (- final-bird-y 1.0) 0.9 1.0)
+                 (if (== c 0) 0.98
+                   (if (== c 1) 0.98 0.98)))
+
+              (* (draw-circle (+ bird-x 1.4) (- final-bird-y 1.0) 0.35 1.0)
+                 (if (== c 0) 0.08
+                   (if (== c 1) 0.08 0.08)))
+
+              (* (draw-rect 18 10 14 2 1.0)
+                 (if (== c 0) 0.12
+                   (if (== c 1) 0.16 0.24)))
+
+              (if (> final-score 0)
+                (* (draw-rect (+ 4 (* (clamp final-score 0 7) 2)) 10 (* (clamp final-score 0 7) 2) 2 1.0)
+                   (if (== c 0) 1.00
+                     (if (== c 1) 0.94 0.30)))
+                0)
+
+              (if (== final-alive 0)
+                (* (draw-rect (/ W 2) (/ H 2) 24 8 1.0)
+                   (if (== c 0) 0.84
+                     (if (== c 1) 0.18 0.18)))
+                0)
+
+              (if (== final-alive 0)
+                (* (draw-rect (/ W 2) (/ H 2) 18 3 1.0)
+                   (if (== c 0) 0.16
+                     (if (== c 1) 0.10 0.12)))
+                0))
+            0 1)))
+
+      (tuple next-frame final-tick final-bird-y final-bird-vy
+             final-pipe0-x final-pipe1-x final-pipe2-x
+             final-pipe0-gap final-pipe1-gap final-pipe2-gap
+             final-next-gap-index final-score final-alive final-flap-held))
+
+    (((frame tick bird-y bird-vy
+             pipe0-x pipe1-x pipe2-x
+             pipe0-gap pipe1-gap pipe2-gap
+             next-gap-index score alive flap-held))
+      0)))
+; Runtime Pong demo.
+; This version uses iterate-until so the game state evolves indefinitely:
+;   frame, ball-x, ball-y, vx, vy, left-paddle-y, right-paddle-y,
+;   left-score, right-score
+;
+; Preview controls:
+;   left paddle: Up / Down
+; The right paddle remains AI-controlled.
+;
+; Render with:
+;   ./gnine --runtime --emit-frames=runtime_pong.png \
+;     runtime_pong.psm \
+;     runtime_pong_final.png
+
+(iterate-until 100
+  (()
+    (define W 240)
+    (define H 135)
+    (tuple
+      (canvas W H 3
+        (if (== c 0) 0.04
+          (if (== c 1) 0.06 0.12)))
+      (/ W 2)
+      (/ H 2)
+      (max 3 (int (/ W 90)))
+      (max 2 (int (/ H 120)))
+      (/ H 2)
+      (/ H 2)
+      0
+      0))
+
+  (((frame ball-x ball-y vx vy left-y right-y left-score right-score))
+    (define W (width frame))
+    (define H (height frame))
+    (define mid-x (/ W 2))
+    (define paddle-half-h (max 5 (int (/ H 9))))
+    (define paddle-half-w (max 2 (int (/ W 90))))
+    (define paddle-left-x (int (/ W 14)))
+    (define paddle-right-x (- W paddle-left-x))
+    (define paddle-speed (max 2 (int (/ H 80))))
+    (define ball-half (max 2 (int (/ W 110))))
+    (define serve-vx (max 3 (int (/ W 90))))
+    (define serve-vy (max 2 (int (/ H 120))))
+    (define wall-thickness (max 1 (int (/ H 150))))
+    (define paddle-min (+ wall-thickness paddle-half-h))
+    (define paddle-max (- H wall-thickness paddle-half-h 1))
+    (define top-limit (+ wall-thickness ball-half))
+    (define bottom-limit (- H wall-thickness ball-half 1))
+    (define net-half-w (max 1 (int (/ W 220))))
+    (define net-half-h (max 3 (int (/ H 18))))
+    (define score-bar-half-h (max 3 (int (/ H 40))))
+    (define score-bar-max-half-w (max 16 (int (/ W 10))))
+    (define score-y (+ wall-thickness score-bar-half-h 8))
+    (define left-score-center (- mid-x (max 18 (int (/ W 7)))))
+    (define right-score-center (+ mid-x (max 18 (int (/ W 7)))))
+
+    (define left-input (- key-down key-up))
+
+    (define moved-left-y
+      (clamp
+        (+ left-y
+           (* paddle-speed left-input))
+        paddle-min
+        paddle-max))
+
+    (define moved-right-y
+      (clamp
+        (+ right-y (clamp (- ball-y right-y) (- paddle-speed) paddle-speed))
+        paddle-min
+        paddle-max))
+
+    (define trial-x (+ ball-x vx))
+    (define trial-y (+ ball-y vy))
+    (define left-scored (< trial-x 0))
+    (define right-scored (>= trial-x W))
+
+    (define clamped-y
+      (clamp trial-y top-limit bottom-limit))
+
+    (define left-hit
+      (and (< vx 0)
+           (<= (abs (- clamped-y moved-left-y)) paddle-half-h)
+           (<= trial-x (+ paddle-left-x paddle-half-w ball-half))))
+
+    (define right-hit
+      (and (> vx 0)
+           (<= (abs (- clamped-y moved-right-y)) paddle-half-h)
+           (>= trial-x (- paddle-right-x paddle-half-w ball-half))))
+
+    (define reset-ball (or left-scored right-scored))
+    (define serve-left-y (/ H 2))
+    (define serve-right-y (/ H 2))
+
+    (define next-ball-x
+      (if reset-ball
+        mid-x
+        (if left-hit
+          (+ paddle-left-x paddle-half-w ball-half 1)
+          (if right-hit
+            (- paddle-right-x paddle-half-w ball-half 1)
+            trial-x))))
+
+    (define next-ball-y
+      (if reset-ball
+        (/ H 2)
+        clamped-y))
+
+    (define next-left-score
+      (if right-scored
+        (+ left-score 1)
+        left-score))
+
+    (define next-right-score
+      (if left-scored
+        (+ right-score 1)
+        right-score))
+
+    (define shown-left-score (clamp next-left-score 0 5))
+    (define shown-right-score (clamp next-right-score 0 5))
+    (define left-score-half-w (* score-bar-max-half-w (/ shown-left-score 5)))
+    (define right-score-half-w (* score-bar-max-half-w (/ shown-right-score 5)))
+
+    (define total-score (+ next-left-score next-right-score))
+    (define serve-vy-sign
+      (if (== (- total-score (* 2 (int (/ total-score 2)))) 0)
+        1
+        -1))
+
+    (define next-left-y
+      (if reset-ball
+        serve-left-y
+        moved-left-y))
+
+    (define next-right-y
+      (if reset-ball
+        serve-right-y
+        moved-right-y))
+
+    (define next-frame
+      (canvas W H 3
+        (clamp
+          (max
+            (if (<= (abs (- i (/ H 2))) (/ H 2))
+              (if (== c 0) 0.04
+                (if (== c 1) 0.06 0.12))
+              0)
+            (if (<= (abs (- i wall-thickness)) wall-thickness)
+              (if (== c 0) 0.98
+                (if (== c 1) 0.42 0.16))
+              0)
+            (if (<= (abs (- i (- H wall-thickness 1))) wall-thickness)
+              (if (== c 0) 0.98
+                (if (== c 1) 0.42 0.16))
+              0)
+            (if (and (<= (abs (- j mid-x)) net-half-w)
+                     (<= (abs (- i (/ H 2))) (* 0.44 H))
+                     (<= (abs (- (- i (/ H 2))
+                                  (* (int (/ (- i (/ H 2)) (max 1 (* net-half-h 2))))
+                                     (max 1 (* net-half-h 2)))))
+                         net-half-h))
+              (if (== c 0) 0.18
+                (if (== c 1) 0.22 0.34))
+              0)
+            (if (and (<= (abs (- i next-left-y)) paddle-half-h)
+                     (<= (abs (- j paddle-left-x)) paddle-half-w))
+              (if (== c 0) 0.12
+                (if (== c 1) 0.96 0.22))
+              0)
+            (if (and (<= (abs (- i next-right-y)) paddle-half-h)
+                     (<= (abs (- j paddle-right-x)) paddle-half-w))
+              (if (== c 0) 0.18
+                (if (== c 1) 0.52 1.00))
+              0)
+            (if (and (<= (abs (- i next-ball-y)) ball-half)
+                     (<= (abs (- j next-ball-x)) ball-half))
+              (if (== c 0) 1.00
+                (if (== c 1) 0.94 0.30))
+              0)
+            (if (and (> next-left-score 0)
+                     (<= (abs (- i score-y)) score-bar-half-h)
+                     (<= (abs (- j left-score-center)) left-score-half-w))
+              (if (== c 0) 0.12
+                (if (== c 1) 0.96 0.22))
+              0)
+            (if (and (> next-right-score 0)
+                     (<= (abs (- i score-y)) score-bar-half-h)
+                     (<= (abs (- j right-score-center)) right-score-half-w))
+              (if (== c 0) 0.18
+                (if (== c 1) 0.52 1.00))
+              0)
+            0)
+          0 1)))
+
+    (define bounced-vy
+      (if (or (< trial-y top-limit) (> trial-y bottom-limit))
+        (- vy)
+        vy))
+
+    (define min-vy
+      (max 1 (int (/ H 90))))
+    (define max-vy
+      (max 2 (int (/ H 45))))
+
+    (define paddle-target-vy
+      (if left-hit
+        (clamp (/ (- clamped-y next-left-y) (max 1 ball-half)) (- max-vy) max-vy)
+        (if right-hit
+          (clamp (/ (- clamped-y next-right-y) (max 1 ball-half)) (- max-vy) max-vy)
+          bounced-vy)))
+
+    (define stabilized-vy
+      (clamp
+        (if (and (> paddle-target-vy (- min-vy))
+                 (< paddle-target-vy min-vy))
+          (if (>= paddle-target-vy 0)
+            min-vy
+            (- min-vy))
+          paddle-target-vy)
+        (- max-vy)
+        max-vy))
+
+    (define next-vx
+      (if reset-ball
+        (if (< trial-x 0)
+          serve-vx
+          (- serve-vx))
+        (if left-hit
+          (abs vx)
+          (if right-hit
+            (- (abs vx))
+            vx))))
+
+    (define next-vy
+      (if reset-ball
+        (* serve-vy serve-vy-sign)
+        stabilized-vy))
+
+    (tuple next-frame next-ball-x next-ball-y next-vx next-vy
+           next-left-y next-right-y next-left-score next-right-score))
+
+  (((frame ball-x ball-y vx vy left-y right-y left-score right-score))
+    0))
+; Snake for gnine runtime mode with image-backed trail state.
+; Arrow keys or WASD steer the snake in --preview mode.
+;
+; This version keeps the snake body in an image, so length is no longer
+; capped by unrolled tuple fields. The display is grid-scale by design.
+
+ (()
+  (define W 18)
+  (define H 18)
+  (define board-center 8.5)
+  (define board-half 8.5)
+  (define food-x-of
+    (lambda (idx)
+      (if (== idx 0) 11
+        (if (== idx 1) 14
+          (if (== idx 2) 14
+            (if (== idx 3) 7
+              (if (== idx 4) 7
+                (if (== idx 5) 15
+                  (if (== idx 6) 15
+                    (if (== idx 7) 3 -10))))))))))
+  (define food-y-of
+    (lambda (idx)
+      (if (== idx 0) 9
+        (if (== idx 1) 9
+          (if (== idx 2) 4
+            (if (== idx 3) 4
+              (if (== idx 4) 13
+                (if (== idx 5) 13
+                  (if (== idx 6) 3
+                    (if (== idx 7) 3 -10))))))))))
+
+  (iterate-until 100
+    (()
+      (define len 3)
+      (define head-x 6)
+      (define head-y 9)
+      (define dx 1)
+      (define dy 0)
+      (define food-index 0)
+      (define move-count 2)
+
+      (define food-x (food-x-of food-index))
+      (define food-y (food-y-of food-index))
+
+      (define trail
+        (canvas W H
+          (max
+            (if (and (== j head-x) (== i head-y)) 2 0)
+            (if (and (== j 5) (== i 9)) 1 0)
+            (if (and (== j 4) (== i 9)) 0 0))))
+
+      (define base-frame
+        (canvas W H 3
+          (max
+            (if (== c 0) 0.02
+              (if (== c 1) 0.03 0.05))
+            (* (draw-rect board-center board-center board-half board-half 1.0)
+               (if (== c 0) 0.05
+                 (if (== c 1) 0.09 0.07)))
+            (* (draw-rect food-x food-y 0.45 0.45 1.0)
+               (if (== c 0) 1.00
+                 (if (== c 1) 0.34 0.14)))
+            (* (draw-rect head-x head-y 0.45 0.45 1.0)
+               (if (== c 0) 0.18
+                 (if (== c 1) 0.95 0.30))))))
+
+      (define frame
+        (zip-image
+          (lambda (base body)
+            (max
+              base
+              (* (if (> body (- move-count len)) 1 0)
+                 (if (== c 0) 0.08
+                   (if (== c 1) 0.55 0.16)))
+              (* (clamp (/ (+ 1 (- body (- move-count len))) 6) 0 1)
+                 (if (== c 0) 0.20
+                   (if (== c 1) 0.95 0.30)))))
+          base-frame trail))
+
+      (tuple frame 0 1 len head-x head-y dx dy move-count trail food-index))
+
+    (((frame tick alive len head-x head-y dx dy move-count trail food-index))
+      (define next-tick (+ tick 1))
+      (define want-up (or key-up key-w))
+      (define want-down (or key-down key-s))
+      (define want-left (or key-left key-a))
+      (define want-right (or key-right key-d))
+
+      (define desired-dx
+        (if want-up 0
+          (if want-down 0
+            (if want-left -1
+              (if want-right 1 dx)))))
+      (define desired-dy
+        (if want-up -1
+          (if want-down 1
+            (if want-left 0
+              (if want-right 0 dy)))))
+
+      (define reversed
+        (and (== desired-dx (- dx))
+             (== desired-dy (- dy))))
+
+      (define step-dx (if reversed dx desired-dx))
+      (define step-dy (if reversed dy desired-dy))
+
+      (define move-now
+        (and (> alive 0)
+             (== (int (/ next-tick 4)) (/ next-tick 4))))
+
+      (define food-phase
+        (- food-index (* 8 (int (/ food-index 8)))))
+      (define food-x (food-x-of food-phase))
+      (define food-y (food-y-of food-phase))
+
+      (define next-head-x
+        (if move-now (+ head-x step-dx) head-x))
+      (define next-head-y
+        (if move-now (+ head-y step-dy) head-y))
+      (define next-move-count
+        (+ move-count (if move-now 1 0)))
+
+      (define ate
+        (and move-now
+             (== next-head-x food-x)
+             (== next-head-y food-y)))
+
+      (define wall-hit
+        (and move-now
+             (or (< next-head-x 0)
+                 (>= next-head-x W)
+                 (< next-head-y 0)
+                 (>= next-head-y H))))
+      (define hit-tail
+        (and move-now
+             (> (sample-image trail next-head-x next-head-y)
+                (- next-move-count (+ len (if ate 1 0))))))
+
+      (define next-alive
+        (if (or wall-hit hit-tail) 0 alive))
+      (define next-len
+        (+ len (if ate 1 0)))
+      (define next-food-index
+        (if ate (+ food-index 1) food-index))
+
+      (define next-food-phase
+        (- next-food-index (* 8 (int (/ next-food-index 8)))))
+      (define next-food-x (food-x-of next-food-phase))
+      (define next-food-y (food-y-of next-food-phase))
+
+      (define next-trail
+        (map-image
+          (lambda (x)
+            (if (and move-now (== j next-head-x) (== i next-head-y))
+              next-move-count
+              x))
+          trail))
+
+      (define base-frame
+        (canvas W H 3
+          (max
+            (if (== c 0) 0.02
+              (if (== c 1) 0.03 0.05))
+            (* (draw-rect board-center board-center board-half board-half 1.0)
+               (if (== c 0) 0.05
+                 (if (== c 1) 0.09 0.07)))
+            (* (draw-rect next-food-x next-food-y 0.45 0.45 1.0)
+               (if (== c 0) 1.00
+                 (if (== c 1) 0.34 0.14)))
+            (* (draw-rect next-head-x next-head-y 0.45 0.45 1.0)
+               (if (== next-alive 0)
+                 (if (== c 0) 0.95
+                   (if (== c 1) 0.10 0.10))
+                 (if (== c 0) 0.18
+                   (if (== c 1) 0.95 0.30))))
+            (if (== next-alive 0)
+              (* (draw-rect board-center board-center 3.0 1.0 1.0)
+                 (if (== c 0) 0.60
+                   (if (== c 1) 0.08 0.08)))
+              0))))
+
+      (define next-frame
+        (zip-image
+          (lambda (base body)
+            (max
+              base
+              (* (if (> body (- next-move-count next-len)) 1 0)
+                 (if (== c 0) 0.08
+                   (if (== c 1) 0.55 0.16)))
+              (* (clamp (/ (+ 1 (- body (- next-move-count next-len))) 6) 0 1)
+                 (if (== c 0) 0.20
+                   (if (== c 1) 0.95 0.30)))))
+          base-frame next-trail))
+
+      (tuple next-frame next-tick next-alive next-len
+             next-head-x next-head-y step-dx step-dy next-move-count next-trail
+             next-food-index))
+
+    (((frame tick alive len head-x head-y dx dy move-count trail food-index))
+      0)))
+; Basic Snake for gnine runtime mode.
+; Arrow keys or WASD steer the snake in --preview mode.
+;
+; Preview:
+;   rtk /Users/gduimovi/dev/gNine/build-arm64/gnine --runtime --preview \
+;     /Users/gduimovi/dev/gNine/examples/runtime_snake.psm \
+;     /tmp/runtime_snake.png
+;
+; Headless compile/run check:
+;   rtk /Users/gduimovi/dev/gNine/build-arm64/gnine --runtime \
+;     /Users/gduimovi/dev/gNine/examples/runtime_snake.psm \
+;     /tmp/runtime_snake.png
+
+(iterate-until 100
+  (()
+    (define grid-w 24)
+    (define grid-h 24)
+    (define cell 14)
+    (define cell-half 6)
+    (define pad 24)
+    (define W (+ (* grid-w cell) (* pad 2)))
+    (define H (+ (* grid-h cell) (* pad 2)))
+    (define first-center (+ pad cell-half))
+    (define board-center (+ first-center (* 0.5 (* (- grid-w 1) cell))))
+    (define board-half (+ cell-half (* 0.5 (* (- grid-w 1) cell))))
+    (define cell-center (lambda (p) (+ first-center (* p cell))))
+    (define food-x-of
+      (lambda (idx)
+        (if (== idx 0) 15
+          (if (== idx 1) 18
+            (if (== idx 2) 18
+              (if (== idx 3) 10
+                (if (== idx 4) 10
+                  (if (== idx 5) 20
+                    (if (== idx 6) 20
+                      (if (== idx 7) 5 -10))))))))))
+    (define food-y-of
+      (lambda (idx)
+        (if (== idx 0) 12
+          (if (== idx 1) 12
+            (if (== idx 2) 7
+              (if (== idx 3) 7
+                (if (== idx 4) 17
+                  (if (== idx 5) 17
+                    (if (== idx 6) 5
+                      (if (== idx 7) 5 -10))))))))))
+
+    (define len 3)
+    (define head-x 6)
+    (define head-y 12)
+    (define dx 1)
+    (define dy 0)
+    (define t1-x 5)
+    (define t1-y 12)
+    (define t2-x 4)
+    (define t2-y 12)
+    (define t3-x -10)
+    (define t3-y -10)
+    (define t4-x -10)
+    (define t4-y -10)
+    (define t5-x -10)
+    (define t5-y -10)
+    (define t6-x -10)
+    (define t6-y -10)
+    (define food-index 0)
+
+    (define food-x (food-x-of food-index))
+    (define food-y (food-y-of food-index))
+    (define head-px (cell-center head-x))
+    (define head-py (cell-center head-y))
+    (define t1-px (cell-center t1-x))
+    (define t1-py (cell-center t1-y))
+    (define t2-px (cell-center t2-x))
+    (define t2-py (cell-center t2-y))
+    (define t3-px (cell-center t3-x))
+    (define t3-py (cell-center t3-y))
+    (define t4-px (cell-center t4-x))
+    (define t4-py (cell-center t4-y))
+    (define t5-px (cell-center t5-x))
+    (define t5-py (cell-center t5-y))
+    (define t6-px (cell-center t6-x))
+    (define t6-py (cell-center t6-y))
+    (define food-px (cell-center food-x))
+    (define food-py (cell-center food-y))
+
+    (define frame
+      (canvas W H 3
+        (max
+          (if (== c 0) 0.02
+            (if (== c 1) 0.03 0.05))
+          (* (draw-rect board-center board-center board-half board-half 1.0)
+             (if (== c 0) 0.05
+               (if (== c 1) 0.09 0.07)))
+          (* (draw-rect food-px food-py cell-half cell-half 1.0)
+             (if (== c 0) 1.00
+               (if (== c 1) 0.34 0.14)))
+          (* (draw-rect head-px head-py cell-half cell-half 1.0)
+             (if (== c 0) 0.18
+               (if (== c 1) 0.95 0.30)))
+          (* (draw-rect t1-px t1-py cell-half cell-half 1.0)
+             (if (== c 0) 0.10
+               (if (== c 1) 0.72 0.22)))
+          (* (draw-rect t2-px t2-py cell-half cell-half 1.0)
+             (if (== c 0) 0.10
+               (if (== c 1) 0.60 0.20))))))
+
+    (tuple frame 0 1 len head-x head-y dx dy
+           t1-x t1-y t2-x t2-y t3-x t3-y t4-x t4-y t5-x t5-y t6-x t6-y
+           food-index))
+
+  (((frame tick alive len head-x head-y dx dy
+           t1-x t1-y t2-x t2-y t3-x t3-y t4-x t4-y t5-x t5-y t6-x t6-y
+           food-index))
+
+    (define grid-w 24)
+    (define grid-h 24)
+    (define cell 14)
+    (define cell-half 6)
+    (define pad 24)
+    (define W (+ (* grid-w cell) (* pad 2)))
+    (define H (+ (* grid-h cell) (* pad 2)))
+    (define first-center (+ pad cell-half))
+    (define board-center (+ first-center (* 0.5 (* (- grid-w 1) cell))))
+    (define board-half (+ cell-half (* 0.5 (* (- grid-w 1) cell))))
+    (define cell-center (lambda (p) (+ first-center (* p cell))))
+    (define food-x-of
+      (lambda (idx)
+        (if (== idx 0) 15
+          (if (== idx 1) 18
+            (if (== idx 2) 18
+              (if (== idx 3) 10
+                (if (== idx 4) 10
+                  (if (== idx 5) 20
+                    (if (== idx 6) 20
+                      (if (== idx 7) 5 -10))))))))))
+    (define food-y-of
+      (lambda (idx)
+        (if (== idx 0) 12
+          (if (== idx 1) 12
+            (if (== idx 2) 7
+              (if (== idx 3) 7
+                (if (== idx 4) 17
+                  (if (== idx 5) 17
+                    (if (== idx 6) 5
+                      (if (== idx 7) 5 -10))))))))))
+
+    (define next-tick (+ tick 1))
+    (define want-up (or key-up key-w))
+    (define want-down (or key-down key-s))
+    (define want-left (or key-left key-a))
+    (define want-right (or key-right key-d))
+
+    (define desired-dx
+      (if want-up 0
+        (if want-down 0
+          (if want-left -1
+            (if want-right 1 dx)))))
+    (define desired-dy
+      (if want-up -1
+        (if want-down 1
+          (if want-left 0
+            (if want-right 0 dy)))))
+
+    (define reversed
+      (and (== desired-dx (- dx))
+           (== desired-dy (- dy))))
+
+    (define step-dx (if reversed dx desired-dx))
+    (define step-dy (if reversed dy desired-dy))
+
+    (define move-now
+      (and (> alive 0)
+           (== (int (/ next-tick 5)) (/ next-tick 5))))
+
+    (define food-phase
+      (- food-index (* 8 (int (/ food-index 8)))))
+    (define food-active 1)
+    (define food-x (food-x-of food-phase))
+    (define food-y (food-y-of food-phase))
+
+    (define trial-head-x
+      (if move-now (+ head-x step-dx) head-x))
+    (define trial-head-y
+      (if move-now (+ head-y step-dy) head-y))
+
+    (define ate
+      (and move-now
+           food-active
+           (== trial-head-x food-x)
+           (== trial-head-y food-y)))
+
+    (define wall-hit
+      (and move-now
+           (or (< trial-head-x 0)
+               (>= trial-head-x grid-w)
+               (< trial-head-y 0)
+               (>= trial-head-y grid-h))))
+
+    (define hit-t1
+      (and move-now
+           (or (> len 2) (and ate (> len 1)))
+           (== trial-head-x t1-x)
+           (== trial-head-y t1-y)))
+    (define hit-t2
+      (and move-now
+           (or (> len 3) (and ate (> len 2)))
+           (== trial-head-x t2-x)
+           (== trial-head-y t2-y)))
+    (define hit-t3
+      (and move-now
+           (or (> len 4) (and ate (> len 3)))
+           (== trial-head-x t3-x)
+           (== trial-head-y t3-y)))
+    (define hit-t4
+      (and move-now
+           (or (> len 5) (and ate (> len 4)))
+           (== trial-head-x t4-x)
+           (== trial-head-y t4-y)))
+    (define hit-t5
+      (and move-now
+           (or (> len 6) (and ate (> len 5)))
+           (== trial-head-x t5-x)
+           (== trial-head-y t5-y)))
+    (define hit-t6
+      (and move-now
+           (and ate (> len 6))
+           (== trial-head-x t6-x)
+           (== trial-head-y t6-y)))
+
+    (define next-alive
+      (if (or wall-hit hit-t1 hit-t2 hit-t3 hit-t4 hit-t5 hit-t6)
+        0
+        alive))
+
+    (define next-len
+      (min 7 (+ len (if ate 1 0))))
+
+    (define next-food-index
+      (if ate (+ food-index 1) food-index))
+
+    (define next-head-x trial-head-x)
+    (define next-head-y trial-head-y)
+    (define next-t1-x (if move-now head-x t1-x))
+    (define next-t1-y (if move-now head-y t1-y))
+    (define next-t2-x (if move-now t1-x t2-x))
+    (define next-t2-y (if move-now t1-y t2-y))
+    (define next-t3-x (if move-now t2-x t3-x))
+    (define next-t3-y (if move-now t2-y t3-y))
+    (define next-t4-x (if move-now t3-x t4-x))
+    (define next-t4-y (if move-now t3-y t4-y))
+    (define next-t5-x (if move-now t4-x t5-x))
+    (define next-t5-y (if move-now t4-y t5-y))
+    (define next-t6-x (if move-now t5-x t6-x))
+    (define next-t6-y (if move-now t5-y t6-y))
+
+    (define next-food-phase
+      (- next-food-index (* 8 (int (/ next-food-index 8)))))
+    (define next-food-active 1)
+    (define next-food-x (food-x-of next-food-phase))
+    (define next-food-y (food-y-of next-food-phase))
+
+    (define next-head-px (cell-center next-head-x))
+    (define next-head-py (cell-center next-head-y))
+    (define next-t1-px (cell-center next-t1-x))
+    (define next-t1-py (cell-center next-t1-y))
+    (define next-t2-px (cell-center next-t2-x))
+    (define next-t2-py (cell-center next-t2-y))
+    (define next-t3-px (cell-center next-t3-x))
+    (define next-t3-py (cell-center next-t3-y))
+    (define next-t4-px (cell-center next-t4-x))
+    (define next-t4-py (cell-center next-t4-y))
+    (define next-t5-px (cell-center next-t5-x))
+    (define next-t5-py (cell-center next-t5-y))
+    (define next-t6-px (cell-center next-t6-x))
+    (define next-t6-py (cell-center next-t6-y))
+    (define next-food-px (cell-center next-food-x))
+    (define next-food-py (cell-center next-food-y))
+
+    (define next-frame
+      (canvas W H 3
+        (max
+          (if (== c 0) 0.02
+            (if (== c 1) 0.03 0.05))
+          (* (draw-rect board-center board-center board-half board-half 1.0)
+             (if (== c 0) 0.05
+               (if (== c 1) 0.09 0.07)))
+          (if next-food-active
+            (* (draw-rect next-food-px next-food-py cell-half cell-half 1.0)
+               (if (== c 0) 1.00
+                 (if (== c 1) 0.34 0.14)))
+            0)
+          (* (draw-rect next-head-px next-head-py cell-half cell-half 1.0)
+             (if (== next-alive 0)
+               (if (== c 0) 0.95
+                 (if (== c 1) 0.10 0.10))
+               (if (== c 0) 0.18
+                 (if (== c 1) 0.95 0.30))))
+          (if (> next-len 1)
+            (* (draw-rect next-t1-px next-t1-py cell-half cell-half 1.0)
+               (if (== c 0) 0.10
+                 (if (== c 1) 0.72 0.22)))
+            0)
+          (if (> next-len 2)
+            (* (draw-rect next-t2-px next-t2-py cell-half cell-half 1.0)
+               (if (== c 0) 0.10
+                 (if (== c 1) 0.60 0.20)))
+            0)
+          (if (> next-len 3)
+            (* (draw-rect next-t3-px next-t3-py cell-half cell-half 1.0)
+               (if (== c 0) 0.10
+                 (if (== c 1) 0.52 0.18)))
+            0)
+          (if (> next-len 4)
+            (* (draw-rect next-t4-px next-t4-py cell-half cell-half 1.0)
+               (if (== c 0) 0.10
+                 (if (== c 1) 0.46 0.18)))
+            0)
+          (if (> next-len 5)
+            (* (draw-rect next-t5-px next-t5-py cell-half cell-half 1.0)
+               (if (== c 0) 0.10
+                 (if (== c 1) 0.40 0.18)))
+            0)
+          (if (> next-len 6)
+            (* (draw-rect next-t6-px next-t6-py cell-half cell-half 1.0)
+               (if (== c 0) 0.10
+                 (if (== c 1) 0.34 0.18)))
+            0)
+          (if (> next-food-index 0)
+            (* (draw-rect 28 10 5 3 1.0)
+               (if (== c 0) 0.95
+                 (if (== c 1) 0.78 0.20)))
+            0)
+          (if (> next-food-index 1)
+            (* (draw-rect 42 10 5 3 1.0)
+               (if (== c 0) 0.95
+                 (if (== c 1) 0.78 0.20)))
+            0)
+          (if (> next-food-index 2)
+            (* (draw-rect 56 10 5 3 1.0)
+               (if (== c 0) 0.95
+                 (if (== c 1) 0.78 0.20)))
+            0)
+          (if (> next-food-index 3)
+            (* (draw-rect 76 14 6 4 1.0)
+               (if (== c 0) 0.95
+                 (if (== c 1) 0.78 0.20)))
+            0)
+          (if (== next-alive 0)
+            (* (draw-rect board-center board-center 56 18 1.0)
+               (if (== c 0) 0.60
+                 (if (== c 1) 0.08 0.08)))
+            0))))
+
+    (tuple next-frame next-tick next-alive next-len
+           next-head-x next-head-y step-dx step-dy
+           next-t1-x next-t1-y next-t2-x next-t2-y next-t3-x next-t3-y
+           next-t4-x next-t4-y next-t5-x next-t5-y next-t6-x next-t6-y
+           next-food-index))
+
+  (((frame tick alive len head-x head-y dx dy
+           t1-x t1-y t2-x t2-y t3-x t3-y t4-x t4-y t5-x t5-y t6-x t6-y
+           food-index))
+    0))
